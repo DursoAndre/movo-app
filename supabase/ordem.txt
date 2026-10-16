@@ -53,3 +53,5 @@ admin_metricas_v3.sql
 monitoramento.sql
 lp_events.sql
 account_data_rights.sql
+challenge_acertos.sql
+challenge_acertos_saida.sql
