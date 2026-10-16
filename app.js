@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v179";
+const APP_BUILD = "v180";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -8260,7 +8260,7 @@ const DESAFIO_FORMATOS = [
   { id: "semfinal", label: "Toda semana + final", semana: true, final: true },
   { id: "semana", label: "Só toda semana", semana: true, final: false },
 ];
-function desafioNumRS(v) { const x = Number(String(v == null ? "" : v).replace(",", ".")); return x > 0 ? Math.min(100, Math.round(x * 100) / 100) : 0; }
+function desafioNumRS(v) { const x = Number(String(v == null ? "" : v).replace(",", ".")); return x > 0 ? Math.min(100000, Math.round(x * 100) / 100) : 0; }
 // Configuração de uma fase (semana/final) a partir do que está salvo no desafio (com os padrões antigos).
 function desafioFaseCfg(stakes, fase) {
   const st = stakes || {};
@@ -8303,10 +8303,12 @@ function desafioFraseFase(cfg, n, quando) {
     return n <= 2 ? `${quando}: quem ficar atrás paga ${r(cfg.valor)} a quem ficar na frente` : `${quando}: o último paga ${r(cfg.valor)} ao 1º`;
   }
   const pote = cfg.valor * n;
-  const nPrem = Math.min(cfg.div.length, n);
+  const pequeno = cfg.div.length > 1 && n < cfg.div.length + 2;
+  const div = pequeno ? [100] : cfg.div;
+  const nPrem = Math.min(div.length, n);
   const partes = [];
-  for (let i = 0; i < nPrem; i++) partes.push(`${desafioOrd(i + 1)} leva ${r((pote * cfg.div[i]) / 100)}`);
-  return `${quando}: todos entram com ${r(cfg.valor)}; ${partes.join(", ")}`;
+  for (let i = 0; i < nPrem; i++) partes.push(`${desafioOrd(i + 1)} leva ${r((pote * div[i]) / 100)}`);
+  return `${quando}: todos entram com ${r(cfg.valor)}; ${partes.join(", ")}${pequeno ? ` (grupo pequeno: com menos de ${cfg.div.length + 2} pessoas no início, tudo pro 1º)` : ""}`;
 }
 // Pior caso de uma pessoa: pagar tudo que pode pagar (semanas × valor, mais o final).
 function desafioPiorCaso(stakes, semanas) {
@@ -8362,7 +8364,7 @@ function DesafioPremioForm({ stakes, setStakes, semanas }) {
           </div>
           {prev.linhas.length ? prev.linhas.map((l, i) => <div key={i} className="gt-dsf-hint" style={{ margin: "2px 0" }}>{l}</div>) : <div className="gt-dsf-hint">Coloque o valor pra ver a prévia.</div>}
           {prev.pior > 0 && <div style={{ marginTop: 8 }}><b>Pior caso pra cada um: {desafioBRL(Math.round(prev.pior * 100))}</b></div>}
-          <div className="gt-dsf-hint">Em empate, a fatia das posições empatadas é dividida. Máximo de 6 pessoas e R$ 100 por fase.</div>
+          <div className="gt-dsf-hint">Em empate, a fatia das posições empatadas é dividida. Divisão em 2 prêmios precisa de 4+ pessoas no início (3 prêmios, 5+); com menos gente, vira tudo pro 1º.</div>
           <label className="gt-dsf-hint" style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
             <input type="checkbox" checked={!!stakes.termos} onChange={(e) => set({ termos: e.target.checked })} style={{ marginTop: 3 }} />
             <span>Tenho 18 anos ou mais e aceito o combinado. {DESAFIO_TERMO}</span>

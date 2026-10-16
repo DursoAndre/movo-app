@@ -3,6 +3,7 @@
 --   'pote'   = todos entram com "valor"; o pote é dividido por colocação (divisao: [100], [70,30] ou [50,30,20])
 -- Padrões retrocompatíveis: semana = 'ultimo', final = 'pote' com [100] (cada um paga ao campeão).
 -- Soma zero por construção, para qualquer tamanho de grupo. Empate divide a(s) fatia(s) das posições empatadas.
+-- Sem teto de valores nem de pessoas. Divisão em vários prêmios exige grupo mínimo na data de início.
 -- Idempotente. Depende de challenge_acertos.sql.
 
 create or replace function public._challenge_stakes_check() returns trigger language plpgsql as $$
@@ -13,8 +14,9 @@ declare
   d jsonb; soma int; ph text;
   chaves text[] := array['semana_valor','final_valor','semana_modo','final_modo','semana_divisao','final_divisao'];
 begin
-  if vs < 0 or vs > 100 then raise exception 'valor da semana deve ficar entre R$ 0 e R$ 100'; end if;
-  if vf < 0 or vf > 100 then raise exception 'valor do final deve ficar entre R$ 0 e R$ 100'; end if;
+  -- sem teto de negócio (o Movo não lida com o dinheiro); só um limite técnico contra estouro de número
+  if vs < 0 or vs > 100000 then raise exception 'valor da semana inválido'; end if;
+  if vf < 0 or vf > 100000 then raise exception 'valor do final inválido'; end if;
   foreach ph in array array['semana', 'final'] loop
     if coalesce(new.stakes->>(ph || '_modo'), '') not in ('', 'ultimo', 'pote') then raise exception 'modo inválido'; end if;
     d := new.stakes->(ph || '_divisao');
@@ -133,7 +135,7 @@ declare
   ch public.challenges;
   hoje date := (now() at time zone 'America/Sao_Paulo')::date;
   vs int; vf int; n int := 0;
-  ms text; mf text; ds int[]; df int[];
+  ms text; mf text; ds int[]; df int[]; n0 int;
   w record;
 begin
   select * into ch from public.challenges where id = p_id;
@@ -146,6 +148,13 @@ begin
     from jsonb_array_elements_text(coalesce(ch.stakes->'semana_divisao', '[100]'::jsonb)) with ordinality t(x, ord);
   select coalesce(array_agg(x::int order by ord), array[100]) into df
     from jsonb_array_elements_text(coalesce(ch.stakes->'final_divisao', '[100]'::jsonb)) with ordinality t(x, ord);
+
+  -- Divisão em mais de um prêmio só vale se o grupo, na data de início, tinha gente suficiente
+  -- (2 prêmios = 4 pessoas, 3 prêmios = 5). Senão, vira "tudo pro 1º".
+  select count(*) into n0 from public.challenge_members m
+   where m.challenge_id = p_id and ((m.joined_at at time zone 'America/Sao_Paulo')::date <= ch.start_date or m.user_id = ch.owner_id);
+  if array_length(ds, 1) > 1 and n0 < array_length(ds, 1) + 2 then ds := array[100]; end if;
+  if array_length(df, 1) > 1 and n0 < array_length(df, 1) + 2 then df := array[100]; end if;
 
   if vs > 0 then
     for w in
@@ -166,28 +175,24 @@ begin
 end;
 $$;
 
--- Desafios com valores: no máximo 6 pessoas.
+revoke all on function public._challenge_settle(uuid, text, int, text, int, int[], jsonb) from public, anon, authenticated;
+revoke all on function public._challenge_stakes_check() from public, anon, authenticated;
+revoke all on function public._challenge_close(uuid) from public, anon, authenticated;
+
+-- Sem limite de pessoas: entrar é só entrar (volta ao comportamento original).
 create or replace function public.join_challenge(p_code text)
 returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
-  v_id uuid; v_st jsonb; v_n int;
+  v_id uuid;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
-  select id, stakes into v_id, v_st from public.challenges where invite_code = upper(trim(p_code));
+  select id into v_id from public.challenges where invite_code = upper(trim(p_code));
   if v_id is null then raise exception 'convite inválido'; end if;
-  select count(*) into v_n from public.challenge_members where challenge_id = v_id and user_id <> auth.uid();
-  if v_n >= 6 and (coalesce(nullif(v_st->>'semana_valor', '')::numeric, 0) > 0 or coalesce(nullif(v_st->>'final_valor', '')::numeric, 0) > 0) then
-    raise exception 'desafios com valores aceitam até 6 pessoas';
-  end if;
   insert into public.challenge_members (challenge_id, user_id) values (v_id, auth.uid())
   on conflict do nothing;
   return v_id;
 end;
 $$;
-
-revoke all on function public._challenge_settle(uuid, text, int, text, int, int[], jsonb) from public, anon, authenticated;
-revoke all on function public._challenge_stakes_check() from public, anon, authenticated;
-revoke all on function public._challenge_close(uuid) from public, anon, authenticated;
 revoke all on function public.join_challenge(text) from public, anon;
 grant execute on function public.join_challenge(text) to authenticated;
