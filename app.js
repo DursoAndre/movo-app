@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v182";
+const APP_BUILD = "v183";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -8804,7 +8804,17 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
           </div>
         )}
         {status.fase === "antes" && (
-          <div className="gt-card"><div className="gt-dsf-hint" style={{ margin: 0 }}>Os treinos que você registrar a partir de {desafioDataCurta(ch.start_date)} contam automaticamente. Chama a galera enquanto isso</div></div>
+          <div className="gt-card">
+            <div className="gt-field-label">QUEM JÁ ENTROU · {ov.members.length}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0 10px" }}>
+              {ov.members.map((m) => (
+                <span key={m.user_id} className="gt-dsf-hint" style={{ margin: 0, padding: "6px 12px", borderRadius: 999, border: "1px solid var(--border, #2a2a2a)", color: "var(--text)" }}>
+                  {m.is_me ? "Você" : m.nome}{m.user_id === ch.owner_id ? " · criou" : ""}
+                </span>
+              ))}
+            </div>
+            <div className="gt-dsf-hint" style={{ margin: 0 }}>Os treinos que você registrar a partir de {desafioDataCurta(ch.start_date)} contam automaticamente. Chama a galera enquanto isso.</div>
+          </div>
         )}
 
         {status.fase !== "antes" && (
