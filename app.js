@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v178";
+const APP_BUILD = "v179";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -45,8 +45,9 @@ const ORIGEM_KEY = "treino-app:origem";
     const q = new URLSearchParams(window.location.search || "");
     const clean = (v) => (v ? String(v).replace(/[^A-Za-z0-9_\-]/g, "").slice(0, 40) : null);
     let convite = null;
-    if (q.get("desafio")) convite = "desafio"; else if (q.get("treinador")) convite = "treinador"; else if (q.get("prof")) convite = "prof";
-    localStorage.setItem(ORIGEM_KEY, JSON.stringify({ src: clean(q.get("utm_source")), pos: clean(q.get("pos")), convite, ts: Date.now() }));
+    if (q.get("desafio")) convite = "desafio"; else if (q.get("treinador")) convite = "treinador"; else if (q.get("prof")) convite = "prof"; else if (q.get("amigo")) convite = "amigo";
+    const ref = clean(q.get("amigo"));
+    localStorage.setItem(ORIGEM_KEY, JSON.stringify({ src: clean(q.get("utm_source")), pos: clean(q.get("pos")), convite, ref: ref ? ref.toUpperCase() : null, ts: Date.now() }));
   } catch (e) {}
 })();
 
@@ -7959,7 +7960,7 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
   const [semanas, setSemanas] = useState(4);
   const [modeloId, setModeloId] = useState("meta");
   const [rules, setRules] = useState(() => desafioNormalizeRules(desafioDefaultRules()));
-  const [stakes, setStakes] = useState({ semana: "", final: "", semana_valor: "", final_valor: "", termos: false });
+  const [stakes, setStakes] = useState({ semana: "", final: "", formato: "sem", sem_modo: "ultimo", sem_valor: "", sem_div: "tudo", fin_modo: "pote", fin_valor: "", fin_div: "tudo", termos: false });
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState("");
   const [criado, setCriado] = useState(null);
@@ -8000,7 +8001,7 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
     }
   }
   async function criar() {
-    if ((desafioValoresStakes(stakes).semana > 0 || desafioValoresStakes(stakes).final > 0) && !stakes.termos) { setErro("Aceite os termos pra usar valores em R$."); return; }
+    { const pe = desafioPremioErro(stakes); if (pe) { setErro(pe); return; } }
     setSaving(true);
     setErro("");
     const { data, error } = await supabaseClient.rpc("create_challenge", {
@@ -8185,17 +8186,7 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
             <input className="gt-input" placeholder="Ex: paga um café pra quem ganhou" value={stakes.semana} maxLength={80} onChange={(e) => setStakes({ ...stakes, semana: e.target.value })} />
             <div className="gt-field-label" style={{ marginTop: 16 }}>PRÊMIO FINAL</div>
             <input className="gt-input" placeholder="Ex: vale-presente dos perdedores" value={stakes.final} maxLength={80} onChange={(e) => setStakes({ ...stakes, final: e.target.value })} />
-            <div className="gt-field-label" style={{ marginTop: 16 }}>VALOR EM R$ (opcional)</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="gt-input" inputMode="decimal" placeholder="Perde a semana: R$" value={stakes.semana_valor} maxLength={6} onChange={(e) => setStakes({ ...stakes, semana_valor: e.target.value.replace(/[^0-9.,]/g, "") })} />
-              <input className="gt-input" inputMode="decimal" placeholder="Final: R$" value={stakes.final_valor} maxLength={6} onChange={(e) => setStakes({ ...stakes, final_valor: e.target.value.replace(/[^0-9.,]/g, "") })} />
-            </div>
-            {(desafioValoresStakes(stakes).semana > 0 || desafioValoresStakes(stakes).final > 0) && (
-              <label className="gt-dsf-hint" style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
-                <input type="checkbox" checked={!!stakes.termos} onChange={(e) => setStakes({ ...stakes, termos: e.target.checked })} style={{ marginTop: 3 }} />
-                <span>{DESAFIO_TERMO}</span>
-              </label>
-            )}
+            <DesafioPremioForm stakes={stakes} setStakes={setStakes} semanas={semanas} />
             <div className="gt-card" style={{ marginTop: 18 }}>
               <div className="gt-field-label">RESUMO</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18 }}>{nome.trim()}</div>
@@ -8217,24 +8208,171 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
 }
 
 // Tela do desafio: minha semana, pista, placar, semanas, regras e gestão.
+// "Traga seu amigo pro Movo": link pessoal; mostra só quantos entraram e quantos já treinaram (sem nomes).
+function IndicarAmigoCard({ showToast, logEvent }) {
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    supabaseClient.rpc("my_referral").then(({ data, error }) => { if (vivo && !error && data) setInfo(data); });
+    return () => { vivo = false; };
+  }, []);
+  if (!info) return null;
+  const link = `${conviteLinkBase()}?amigo=${encodeURIComponent(info.code)}`;
+  const texto = `Tô usando o Movo pra organizar meus treinos e manter a constância 💪 Vem treinar comigo: ${link}`;
+  function whats() {
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
+    if (logEvent) logEvent("indicar_amigo", { via: "whatsapp" });
+  }
+  async function outros() {
+    try { if (navigator.share) { await navigator.share({ text: texto }); if (logEvent) logEvent("indicar_amigo", { via: "share" }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+    try { await navigator.clipboard.writeText(texto); showToast("Convite copiado"); if (logEvent) logEvent("indicar_amigo", { via: "copiar" }); } catch (e) { showToast(link); }
+  }
+  return (
+    <div className="gt-settings-card">
+      <div className="gt-settings-label">Traga seu amigo pro Movo</div>
+      <div className="gt-settings-hint" style={{ display: "block", marginTop: 4 }}>Mande seu link pelo WhatsApp. Quando o amigo criar a conta, você vê aqui quantos entraram.</div>
+      <div className="gt-settings-body">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="gt-btn small" onClick={whats}>Chamar no WhatsApp</button>
+          <button className="gt-btn small secondary" onClick={outros}>Outros</button>
+        </div>
+        <div style={{ display: "flex", gap: 24, marginTop: 12 }}>
+          <div><div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24 }}>{info.entraram}</div><div className="gt-dsf-hint" style={{ margin: 0 }}>entraram pelo seu link</div></div>
+          <div><div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24 }}>{info.treinaram}</div><div className="gt-dsf-hint" style={{ margin: 0 }}>já registraram treino</div></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Prêmios P1: controle de acertos (o Movo só organiza a conta; não toca em dinheiro) ----
 function desafioBRL(cents) { return (Number(cents || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
-function desafioValoresStakes(stakes) {
-  const st = stakes || {};
-  const n = (v) => { const x = Number(String(v == null ? "" : v).replace(",", ".")); return x > 0 ? x : 0; };
-  return { semana: n(st.semana_valor), final: n(st.final_valor) };
-}
 const DESAFIO_TERMO = "O Movo apenas organiza a conta entre vocês: não recebe, guarda nem repassa dinheiro. Os acertos são combinados e pagos diretamente entre os participantes (ex.: Pix). Ao ativar valores, você declara ter 18 anos ou mais. Os valores ficam travados quando o desafio começa.";
 
-function desafioStakesPayload(st) {
-  const v = desafioValoresStakes(st);
-  const out = { semana: String(st.semana || "").trim(), final: String(st.final || "").trim() };
-  if (v.semana > 0) out.semana_valor = Math.min(500, Math.round(v.semana * 100) / 100);
-  if (v.final > 0) out.final_valor = Math.min(2000, Math.round(v.final * 100) / 100);
-  if (v.semana > 0 || v.final > 0) out.termos = "true";
+const DESAFIO_DIVISOES = [
+  { id: "tudo", label: "Tudo pro 1º", v: [100] },
+  { id: "70_30", label: "70% / 30%", v: [70, 30] },
+  { id: "50_30_20", label: "50 / 30 / 20", v: [50, 30, 20] },
+];
+const DESAFIO_FORMATOS = [
+  { id: "sem", label: "Sem valor", semana: false, final: false },
+  { id: "final", label: "Só no final", semana: false, final: true },
+  { id: "semfinal", label: "Toda semana + final", semana: true, final: true },
+  { id: "semana", label: "Só toda semana", semana: true, final: false },
+];
+function desafioNumRS(v) { const x = Number(String(v == null ? "" : v).replace(",", ".")); return x > 0 ? Math.min(100, Math.round(x * 100) / 100) : 0; }
+// Configuração de uma fase (semana/final) a partir do que está salvo no desafio (com os padrões antigos).
+function desafioFaseCfg(stakes, fase) {
+  const st = stakes || {};
+  const valor = desafioNumRS(st[`${fase}_valor`]);
+  const modo = st[`${fase}_modo`] || (fase === "semana" ? "ultimo" : "pote");
+  const div = Array.isArray(st[`${fase}_divisao`]) && st[`${fase}_divisao`].length ? st[`${fase}_divisao`].map(Number) : [100];
+  return { valor, modo, div };
+}
+function desafioPremioErro(f) {
+  const fm = DESAFIO_FORMATOS.find((x) => x.id === f.formato) || DESAFIO_FORMATOS[0];
+  if (fm.semana && !desafioNumRS(f.sem_valor)) return "Coloque o valor da semana (ou escolha “Sem valor”).";
+  if (fm.final && !desafioNumRS(f.fin_valor)) return "Coloque o valor do final (ou escolha “Sem valor”).";
+  if ((fm.semana || fm.final) && !f.termos) return "Aceite o combinado pra usar valores em R$.";
+  return "";
+}
+function desafioStakesPayload(f) {
+  const out = { semana: String(f.semana || "").trim(), final: String(f.final || "").trim() };
+  const fm = DESAFIO_FORMATOS.find((x) => x.id === f.formato) || DESAFIO_FORMATOS[0];
+  const fase = (k, ativo, modo, valor, divId) => {
+    const v = desafioNumRS(valor);
+    if (!ativo || !v) return;
+    out[`${k}_valor`] = v;
+    out[`${k}_modo`] = modo;
+    if (modo === "pote") out[`${k}_divisao`] = (DESAFIO_DIVISOES.find((d) => d.id === divId) || DESAFIO_DIVISOES[0]).v;
+  };
+  fase("semana", fm.semana, f.sem_modo, f.sem_valor, f.sem_div);
+  fase("final", fm.final, f.fin_modo, f.fin_valor, f.fin_div);
+  if (out.semana_valor || out.final_valor) out.termos = "true";
   return out;
 }
-function DesafioAcertos({ id, meId, showToast, logEvent }) {
+function desafioValoresStakes(stakes) {
+  return { semana: desafioFaseCfg(stakes, "semana").valor, final: desafioFaseCfg(stakes, "final").valor };
+}
+function desafioOrd(i) { return `${i}º`; }
+// Frase de uma fase para um grupo de n pessoas, em linguagem de combinado.
+function desafioFraseFase(cfg, n, quando) {
+  const r = (x) => desafioBRL(Math.round(x * 100));
+  if (!cfg.valor) return "";
+  if (cfg.modo === "ultimo") {
+    return n <= 2 ? `${quando}: quem ficar atrás paga ${r(cfg.valor)} a quem ficar na frente` : `${quando}: o último paga ${r(cfg.valor)} ao 1º`;
+  }
+  const pote = cfg.valor * n;
+  const nPrem = Math.min(cfg.div.length, n);
+  const partes = [];
+  for (let i = 0; i < nPrem; i++) partes.push(`${desafioOrd(i + 1)} leva ${r((pote * cfg.div[i]) / 100)}`);
+  return `${quando}: todos entram com ${r(cfg.valor)}; ${partes.join(", ")}`;
+}
+// Pior caso de uma pessoa: pagar tudo que pode pagar (semanas × valor, mais o final).
+function desafioPiorCaso(stakes, semanas) {
+  const s = desafioFaseCfg(stakes, "semana");
+  const f = desafioFaseCfg(stakes, "final");
+  return (s.valor ? s.valor * semanas : 0) + (f.valor || 0);
+}
+function desafioCombinadoLinhas(stakes, n, semanas) {
+  const s = desafioFaseCfg(stakes, "semana");
+  const f = desafioFaseCfg(stakes, "final");
+  const linhas = [];
+  if (s.valor) linhas.push(desafioFraseFase(s, n, "Toda semana"));
+  if (f.valor) linhas.push(desafioFraseFase(f, n, "No final"));
+  return { linhas, pior: desafioPiorCaso(stakes, semanas) };
+}
+function DesafioPremioForm({ stakes, setStakes, semanas }) {
+  const fm = DESAFIO_FORMATOS.find((x) => x.id === stakes.formato) || DESAFIO_FORMATOS[0];
+  const [prevN, setPrevN] = useState(4);
+  const set = (p) => setStakes({ ...stakes, ...p });
+  const virtual = desafioStakesPayload(stakes);
+  const prev = desafioCombinadoLinhas(virtual, prevN, semanas);
+  const chip = (ativo, label, onClick, key) => (
+    <button key={key} type="button" className={`gt-btn small ${ativo ? "" : "secondary"}`} style={{ marginRight: 6, marginBottom: 6 }} onClick={onClick}>{label}</button>
+  );
+  const fase = (titulo, ativo, pre, modoKey, valorKey, divKey) => ativo && (
+    <div style={{ marginTop: 12 }}>
+      <div className="gt-field-label">{titulo}</div>
+      <div>
+        {chip(stakes[modoKey] === "ultimo", "Só o último paga", () => set({ [modoKey]: "ultimo" }), "u")}
+        {chip(stakes[modoKey] === "pote", "Pote: todos entram", () => set({ [modoKey]: "pote" }), "p")}
+      </div>
+      <input className="gt-input" inputMode="decimal" placeholder={stakes[modoKey] === "pote" ? "Quanto cada um entra (R$)" : "Quanto o último paga (R$)"} value={stakes[valorKey]} maxLength={6}
+        onChange={(e) => set({ [valorKey]: e.target.value.replace(/[^0-9.,]/g, "") })} />
+      {stakes[modoKey] === "pote" && (
+        <div style={{ marginTop: 6 }}>
+          <div className="gt-dsf-hint" style={{ margin: "0 0 4px" }}>Como o pote é dividido (a partir de 4 pessoas fazem mais sentido 70/30 e 50/30/20)</div>
+          {DESAFIO_DIVISOES.map((d) => chip(stakes[divKey] === d.id, d.label, () => set({ [divKey]: d.id }), d.id))}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div>
+      <div className="gt-field-label" style={{ marginTop: 16 }}>VALE DINHEIRO? (opcional)</div>
+      <div>{DESAFIO_FORMATOS.map((f) => chip(stakes.formato === f.id, f.label, () => set({ formato: f.id }), f.id))}</div>
+      {fase("TODA SEMANA", fm.semana, "sem", "sem_modo", "sem_valor", "sem_div")}
+      {fase("NO FINAL", fm.final, "fin", "fin_modo", "fin_valor", "fin_div")}
+      {(fm.semana || fm.final) && (
+        <div className="gt-card" style={{ marginTop: 12 }}>
+          <div className="gt-field-label">COMO FICA</div>
+          <div style={{ marginBottom: 6 }}>
+            {[3, 4, 6].map((n) => chip(prevN === n, `${n} pessoas`, () => setPrevN(n), n))}
+          </div>
+          {prev.linhas.length ? prev.linhas.map((l, i) => <div key={i} className="gt-dsf-hint" style={{ margin: "2px 0" }}>{l}</div>) : <div className="gt-dsf-hint">Coloque o valor pra ver a prévia.</div>}
+          {prev.pior > 0 && <div style={{ marginTop: 8 }}><b>Pior caso pra cada um: {desafioBRL(Math.round(prev.pior * 100))}</b></div>}
+          <div className="gt-dsf-hint">Em empate, a fatia das posições empatadas é dividida. Máximo de 6 pessoas e R$ 100 por fase.</div>
+          <label className="gt-dsf-hint" style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
+            <input type="checkbox" checked={!!stakes.termos} onChange={(e) => set({ termos: e.target.checked })} style={{ marginTop: 3 }} />
+            <span>Tenho 18 anos ou mais e aceito o combinado. {DESAFIO_TERMO}</span>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+function DesafioAcertos({ id, meId, showToast, logEvent, nMembros, nSemanas }) {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState(false);
   const [aberto, setAberto] = useState(false);
@@ -8261,11 +8399,7 @@ function DesafioAcertos({ id, meId, showToast, logEvent }) {
   return (
     <div className="gt-card">
       <div className="gt-field-label">ACERTOS · R$</div>
-      <div className="gt-dsf-hint" style={{ marginTop: 0 }}>
-        {dados.semana_valor_cents > 0 ? `Quem perde a semana paga ${desafioBRL(dados.semana_valor_cents)}` : ""}
-        {dados.semana_valor_cents > 0 && dados.final_valor_cents > 0 ? " · " : ""}
-        {dados.final_valor_cents > 0 ? `Final: cada um paga ${desafioBRL(dados.final_valor_cents)} a quem vencer` : ""}
-      </div>
+      {(() => { const cb = desafioCombinadoLinhas(dados.stakes, nMembros || 3, nSemanas || 1); return <div className="gt-dsf-hint" style={{ marginTop: 0 }}>{cb.linhas.join(" · ")}</div>; })()}
       {dados.entries.length === 0 ? (
         <div className="gt-dsf-hint">Nada a acertar ainda. As semanas fecham no dia seguinte ao fim de cada uma.</div>
       ) : (
@@ -8429,7 +8563,7 @@ function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChang
     carregar();
   }
   async function salvarEdicao() {
-    const { error } = await supabaseClient.rpc("update_challenge", { p_id: id, p_nome: formNome, p_rules: ch.rules, p_stakes: desafioStakesPayload({ ...stakes, semana: formStakes.semana, final: formStakes.final }) });
+    const { error } = await supabaseClient.rpc("update_challenge", { p_id: id, p_nome: formNome, p_rules: ch.rules, p_stakes: { ...(ch.stakes || {}), semana: formStakes.semana.trim(), final: formStakes.final.trim() } });
     if (error) { showToast("Não consegui salvar agora"); desafioLogErro("update_challenge", error.message); return; }
     setEditando(false);
     showToast("Desafio atualizado");
@@ -8582,7 +8716,7 @@ function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChang
           </div>
         )}
 
-        {(valoresRS.semana > 0 || valoresRS.final > 0) && <DesafioAcertos id={id} meId={meId} showToast={showToast} logEvent={logEvent} />}
+        {(valoresRS.semana > 0 || valoresRS.final > 0) && <DesafioAcertos id={id} meId={meId} showToast={showToast} logEvent={logEvent} nMembros={ov.members.length} nSemanas={ch.weeks} />}
 
         <div className="gt-card">
           <button className="gt-dsf-collapse" onClick={() => setRegrasAbertas(!regrasAbertas)}>Regras e apostas {regrasAbertas ? "▴" : "▾"}</button>
@@ -8595,7 +8729,7 @@ function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChang
               <div><b>Treinar junto:</b> {rules.bonusJuntos > 0 ? `${desafioFmtPts(rules.bonusJuntos)} pt por vez, pra cada um, com confirmação` : "sem bônus"}</div>
               <div><b>Semana:</b> {stakes.semana ? `quem perde ${stakes.semana}` : "sem aposta definida"}</div>
               <div><b>Final:</b> {stakes.final || "sem prêmio definido"}</div>
-              {(valoresRS.semana > 0 || valoresRS.final > 0) && <div><b>Valores:</b> {valoresRS.semana > 0 ? `${desafioBRL(valoresRS.semana * 100)} por semana perdida` : ""}{valoresRS.semana > 0 && valoresRS.final > 0 ? " · " : ""}{valoresRS.final > 0 ? `${desafioBRL(valoresRS.final * 100)} no final` : ""}. {DESAFIO_TERMO}</div>}
+              {(valoresRS.semana > 0 || valoresRS.final > 0) && (() => { const cb = desafioCombinadoLinhas(stakes, ov.members.length, ch.weeks); return <div><b>Combinado em R$:</b> {cb.linhas.join(" · ")}. Pior caso pra cada um: {desafioBRL(Math.round(cb.pior * 100))}. {DESAFIO_TERMO}</div>; })()}
               <div className="gt-dsf-hint">Duração: {desafioDataCurta(ch.start_date)} a {desafioDataCurta(desafioEnd(ch))}. As regras ficam travadas depois que o desafio começa.</div>
             </div>
           )}
@@ -8819,7 +8953,7 @@ function DesafiosPanel({ session, desafios, desafiosOk, reload, sessions, ativid
         <div className="gt-modal-backdrop" onClick={() => setPreview(null)}>
           <div className="gt-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Entrar no desafio?</h3>
-            <p><b style={{ color: "var(--text)" }}>{preview.data.nome}</b><br />{preview.data.members} pessoa{preview.data.members === 1 ? "" : "s"} · {preview.data.weeks} semana{preview.data.weeks === 1 ? "" : "s"} · começa {desafioDataCurta(preview.data.start_date)}{(() => { const v = desafioValoresStakes(preview.data.stakes); return v.semana > 0 || v.final > 0 ? <><br />💰 Valendo R$: {v.semana > 0 ? `${desafioBRL(v.semana * 100)} por semana perdida` : ""}{v.semana > 0 && v.final > 0 ? " · " : ""}{v.final > 0 ? `${desafioBRL(v.final * 100)} no final` : ""}<br /><span style={{ fontSize: 12 }}>{DESAFIO_TERMO}</span></> : null; })()}</p>
+            <p><b style={{ color: "var(--text)" }}>{preview.data.nome}</b><br />{preview.data.members} pessoa{preview.data.members === 1 ? "" : "s"} · {preview.data.weeks} semana{preview.data.weeks === 1 ? "" : "s"} · começa {desafioDataCurta(preview.data.start_date)}{(() => { const v = desafioValoresStakes(preview.data.stakes); if (!(v.semana > 0 || v.final > 0)) return null; const cb = desafioCombinadoLinhas(preview.data.stakes, Math.max(2, preview.data.members), preview.data.weeks); return <><br /><b>Combinado do grupo</b> (hoje com {preview.data.members} pessoa{preview.data.members === 1 ? "" : "s"}):{cb.linhas.map((l, i) => <React.Fragment key={i}><br />{l}</React.Fragment>)}<br />Pior caso pra você: {desafioBRL(Math.round(cb.pior * 100))}<br /><span style={{ fontSize: 12 }}>{DESAFIO_TERMO}</span></>; })()}</p>
             <p>Só os dias e tipos de treino que contam pro placar ficam visíveis pro grupo. Cargas e fichas continuam privadas.</p>
             <div className="gt-modal-actions">
               <button className="gt-btn" onClick={entrar} disabled={entrando}>{entrando ? "Entrando…" : "Entrar"}</button>
@@ -12555,7 +12689,7 @@ function App() {
       if (localStorage.getItem(`treino-app:origemGravada:${session.user.id}`)) return;
       const o = JSON.parse(localStorage.getItem(ORIGEM_KEY) || "null") || {};
       let host = null; try { host = String(window.location.hostname || "").slice(0, 80) || null; } catch (e) {}
-      supabaseClient.from("user_origem").upsert({ user_id: session.user.id, src: o.src || null, pos: o.pos || null, convite: o.convite || null, host }, { onConflict: "user_id", ignoreDuplicates: true }).then(({ error }) => {
+      supabaseClient.from("user_origem").upsert({ user_id: session.user.id, src: o.src || null, pos: o.pos || null, convite: o.convite || null, ref_code: o.ref || null, host }, { onConflict: "user_id", ignoreDuplicates: true }).then(({ error }) => {
         if (!error) { try { localStorage.setItem(`treino-app:origemGravada:${session.user.id}`, "1"); } catch (e) {} }
       });
     } catch (e) {}
@@ -16804,6 +16938,7 @@ function App() {
 
             <div className="gt-settings-group">
               <div className="gt-settings-group-title">Amigos e ranking</div>
+              <IndicarAmigoCard showToast={showToast} logEvent={logEvent} />
               <div className="gt-settings-card">
                 <div className="gt-settings-label-row">
                   <div className="gt-settings-label">Amigos</div>

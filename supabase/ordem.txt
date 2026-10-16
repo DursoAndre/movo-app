@@ -55,3 +55,5 @@ lp_events.sql
 account_data_rights.sql
 challenge_acertos.sql
 challenge_acertos_saida.sql
+challenge_formatos.sql
+indicacoes.sql

@@ -198,6 +198,7 @@ begin
   )) then raise exception 'você não participa deste desafio'; end if;
   perform public._challenge_close(p_id);
   select jsonb_build_object(
+    'stakes', c.stakes,
     'semana_valor_cents', round(coalesce(nullif(c.stakes->>'semana_valor', '')::numeric, 0) * 100)::int,
     'final_valor_cents', round(coalesce(nullif(c.stakes->>'final_valor', '')::numeric, 0) * 100)::int,
     'entries', coalesce((
