@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<!-- Movo — Copyright (c) 2026 Andre. Todos os direitos reservados. Ver LICENSE. -->
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Movo</title>
+<meta name="theme-color" content="#14161A" />
+<meta name="description" content="Movo — todos os seus treinos e atividades, numa só evolução." />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Movo" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+
+<style>
+  /* overscroll-behavior-y:contain evita que um "puxão" de scroll dentro do
+     app (ex: na tela Hoje, quando não tem conteúdo suficiente pra rolar)
+     vaze pro documento inteiro e arraste o cabeçalho pra fora da tela — o
+     famoso "bounce" do navegador no celular. min-height:100dvh (em vez de
+     só 100vh) evita que o #root fique mais alto que a altura visível de
+     verdade no celular (100vh é a altura "cheia", contando a área que a
+     barra do navegador pode ocupar; 100dvh é a altura realmente visível
+     agora) — sem isso, o #root podia sobrar alguns pixels maior que a tela
+     e o documento virava rolável à toa, mesmo sem ter conteúdo extra. */
+  html, body { margin:0; padding:0; background:#14161A; height:100%; overscroll-behavior-y:contain; }
+  #root { min-height:100vh; min-height:100dvh; }
+  #boot-status { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; min-height:100vh; font-family:'Roboto Mono',monospace; color:#9AA0A6; padding:24px 18px; font-size:13px; box-sizing:border-box; }
+  #boot-error { display:none; font-family:monospace; color:#FF5A36; background:#1D2024; border:1px solid #FF5A36; padding:16px; margin:16px; border-radius:6px; white-space:pre-wrap; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="boot-status">
+    <svg width="40" height="40" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="36" y="126" width="44" height="74" rx="14" fill="#C6F135"/>
+      <rect x="98" y="86" width="44" height="114" rx="14" fill="#C6F135"/>
+      <rect x="160" y="46" width="44" height="154" rx="14" fill="#C6F135"/>
+      <circle cx="182" cy="25" r="13" fill="#C6F135"/>
+    </svg>
+    <div>Carregando…</div>
+  </div>
+</div>
+<div id="boot-error"></div>
+
+<script>
+  // Definido ANTES de tentar carregar qualquer script externo, e com captura
+  // de fase (capture:true), pra pegar também falhas de carregamento de <script>
+  // (que não borbulham normalmente) — não só erros de execução do código.
+  function showBootError(msg) {
+    var el = document.getElementById("boot-error");
+    var status = document.getElementById("boot-status");
+    if (status) status.style.display = "none";
+    if (el) {
+      el.style.display = "block";
+      el.textContent = "Erro ao carregar o app:\n\n" + msg + "\n\nTira um print desta mensagem inteira e manda pro Claude.";
+    }
+  }
+  window.addEventListener("error", function (e) {
+    var msg = (e.error && e.error.stack) || e.message || (e.target && e.target.src ? "Falha ao carregar: " + e.target.src : String(e));
+    showBootError(msg);
+  }, true);
+  window.addEventListener("unhandledrejection", function (e) {
+    showBootError(String((e.reason && e.reason.stack) || e.reason));
+  });
+</script>
+
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" onerror="showBootError('Falha ao carregar o React via CDN (cdn.jsdelivr.net). Verifique sua conexão com a internet, ou se algum bloqueador de anúncios / firewall / rede da empresa está bloqueando cdn.jsdelivr.net.')"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" onerror="showBootError('Falha ao carregar o ReactDOM via CDN (cdn.jsdelivr.net). Verifique sua conexão com a internet, ou se algum bloqueador de anúncios / firewall / rede da empresa está bloqueando cdn.jsdelivr.net.')"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js" onerror="showBootError('Falha ao carregar o Babel via CDN (cdn.jsdelivr.net). Verifique sua conexão com a internet, ou se algum bloqueador de anúncios / firewall / rede da empresa está bloqueando cdn.jsdelivr.net.')"></script>
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie_light.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="showBootError('Falha ao carregar o Supabase via CDN (cdn.jsdelivr.net). Verifique sua conexão com a internet, ou se algum bloqueador de anúncios / firewall / rede da empresa está bloqueando cdn.jsdelivr.net.')"></script>
+
+<script>
+  setTimeout(function () {
+    if (!window.React || !window.ReactDOM || !window.Babel) {
+      showBootError(
+        "As bibliotecas externas não terminaram de carregar a tempo (React: " + (!!window.React) +
+        ", ReactDOM: " + (!!window.ReactDOM) + ", Babel: " + (!!window.Babel) +
+        ", Supabase: " + (!!(window.supabase)) +
+        ").\n\nIsso costuma acontecer quando a internet está lenta/instável ou algo está bloqueando o CDN cdn.jsdelivr.net. Tenta recarregar a página (puxar pra baixo ou Ctrl+Shift+R)."
+      );
+    }
+  }, 6000);
+</script>
+
+<script>
+  fetch("app.js", { cache: "no-store" })
+    .then((r) => {
+      if (!r.ok) throw new Error("Falha ao buscar app.js: HTTP " + r.status);
+      return r.text();
+    })
+    .then((code) => {
+      // runtime: "classic" força o Babel a gerar React.createElement(...) em vez de
+      // "import {jsx} from react/jsx-runtime" (o padrão moderno, que precisa de um
+      // bundler e não funciona como script solto no navegador).
+      const out = Babel.transform(code, {
+        presets: [["react", { runtime: "classic" }]],
+        filename: "app.js",
+      }).code;
+      const script = document.createElement("script");
+      script.text = out;
+      document.body.appendChild(script);
+    })
+    .catch((err) => showBootError((err && err.stack) || String(err)));
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>

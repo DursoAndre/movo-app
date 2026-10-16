@@ -1,0 +1,50 @@
+# Publica o Movo no GitHub Pages a cada push na main: compila o app (esbuild) e sobe a pasta dist/.
+# Precisa de: Settings → Pages → Build and deployment → Source = "GitHub Actions".
+name: Publicar no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Compilar
+        run: npm run build
+      - name: Conferir o resultado
+        run: |
+          test -f dist/index.html
+          ls dist/app.*.js
+          ! grep -q "cdn.jsdelivr.net" dist/index.html
+          test -s dist/vendor/react.js && test -s dist/vendor/react-dom.js && test -s dist/vendor/supabase.js && test -s dist/vendor/lottie.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

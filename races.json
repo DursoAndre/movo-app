@@ -1,0 +1,721 @@
+{
+ "atualizado_em": "2026-10-06",
+ "provas": [
+  {
+   "nome": "Maratona de Jurerê",
+   "data_inicio": "2026-10-10",
+   "data_fim": "2026-10-11",
+   "cidade": "Florianópolis",
+   "uf": "SC",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-de-jurere-2026-10-10"
+  },
+  {
+   "nome": "Run for Your Lives - SP",
+   "data_inicio": "2026-10-10",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    5
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "run-for-your-lives-sp-2026-10-10"
+  },
+  {
+   "nome": "Corrida New Balance 15K",
+   "data_inicio": "2026-10-11",
+   "data_fim": null,
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    7.5,
+    15
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "corrida-new-balance-15k-2026-10-11"
+  },
+  {
+   "nome": "Maratona Sesc de Pelotas",
+   "data_inicio": "2026-10-11",
+   "data_fim": null,
+   "cidade": "Pelotas",
+   "uf": "RS",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-sesc-de-pelotas-2026-10-11"
+  },
+  {
+   "nome": "Meia Maratona de Bebedouro",
+   "data_inicio": "2026-10-11",
+   "data_fim": null,
+   "cidade": "Bebedouro",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "meia-maratona-de-bebedouro-2026-10-11"
+  },
+  {
+   "nome": "Track&Field Run Series - Diamond Mall",
+   "data_inicio": "2026-10-11",
+   "data_fim": null,
+   "cidade": "Belo Horizonte",
+   "uf": "MG",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "track-field-run-series-diamond-mall-2026-10-11"
+  },
+  {
+   "nome": "Track&Field Run Series - JK Iguatemi III",
+   "data_inicio": "2026-10-11",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": "https://www.tfsports.com.br/run-series/jk-iguatemi-iii-2026/",
+   "fonte": "running.life",
+   "id": "track-field-run-series-jk-iguatemi-iii-2026-10-11"
+  },
+  {
+   "nome": "Festival 21k de Pipa",
+   "data_inicio": "2026-10-17",
+   "data_fim": "2026-10-18",
+   "cidade": "Tibau do Sul",
+   "uf": "RN",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    30
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "festival-21k-de-pipa-2026-10-17"
+  },
+  {
+   "nome": "HYROX São Paulo",
+   "data_inicio": "2026-10-17",
+   "data_fim": "2026-10-18",
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "hyrox",
+   "distancias": [],
+   "link_oficial": "https://runnerreg.co/race/hyrox-sao-paulo-1785082278",
+   "fonte": "running.life + hybridfitnessmedia",
+   "id": "hyrox-sao-paulo-2026-10-17"
+  },
+  {
+   "nome": "Hoka Sunset Run Manaus",
+   "data_inicio": "2026-10-17",
+   "data_fim": null,
+   "cidade": "Manaus",
+   "uf": "AM",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "hoka-sunset-run-manaus-2026-10-17"
+  },
+  {
+   "nome": "Maratona Internacional de Pomerode",
+   "data_inicio": "2026-10-17",
+   "data_fim": "2026-10-18",
+   "cidade": "Pomerode",
+   "uf": "SC",
+   "modalidade": "corrida",
+   "distancias": [
+    6,
+    21,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-internacional-de-pomerode-2026-10-17"
+  },
+  {
+   "nome": "Track&Field Run Series - Center Norte III",
+   "data_inicio": "2026-10-18",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": "https://www.tfsports.com.br/run-series/center-norte-iii-2026/",
+   "fonte": "running.life",
+   "id": "track-field-run-series-center-norte-iii-2026-10-18"
+  },
+  {
+   "nome": "Maratona de Aracaju",
+   "data_inicio": "2026-10-31",
+   "data_fim": "2026-11-01",
+   "cidade": "Aracaju",
+   "uf": "SE",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-de-aracaju-2026-10-31"
+  },
+  {
+   "nome": "Live! Run XP Niterói",
+   "data_inicio": "2026-11-01",
+   "data_fim": null,
+   "cidade": "Niterói",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "live-run-xp-niteroi-2026-11-01"
+  },
+  {
+   "nome": "Maratona Internacional Maurício de Nassau",
+   "data_inicio": "2026-11-01",
+   "data_fim": null,
+   "cidade": "Caruaru",
+   "uf": "PE",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-internacional-mauricio-de-nassau-2026-11-01"
+  },
+  {
+   "nome": "Maratona Pedra Azul",
+   "data_inicio": "2026-11-01",
+   "data_fim": null,
+   "cidade": "Domingos Martins",
+   "uf": "ES",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-pedra-azul-2026-11-01"
+  },
+  {
+   "nome": "Meia Maratona Blue Run Salvador",
+   "data_inicio": "2026-11-01",
+   "data_fim": null,
+   "cidade": "Salvador",
+   "uf": "BA",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "meia-maratona-blue-run-salvador-2026-11-01"
+  },
+  {
+   "nome": "Meia Maratona da Polícia Federal - Maranhão",
+   "data_inicio": "2026-11-01",
+   "data_fim": null,
+   "cidade": "São Luís",
+   "uf": "MA",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "meia-maratona-da-policia-federal-maranhao-2026-11-01"
+  },
+  {
+   "nome": "Track&Field Run Series - ParkShoppingBarigüi",
+   "data_inicio": "2026-11-01",
+   "data_fim": null,
+   "cidade": "Curitiba",
+   "uf": "PR",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "track-field-run-series-parkshoppingbarigui-2026-11-01"
+  },
+  {
+   "nome": "Meia Maratona de Caravaggio",
+   "data_inicio": "2026-11-07",
+   "data_fim": null,
+   "cidade": "Farroupilha",
+   "uf": "RS",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "meia-maratona-de-caravaggio-2026-11-07"
+  },
+  {
+   "nome": "Ultramaratona Fênix",
+   "data_inicio": "2026-11-07",
+   "data_fim": null,
+   "cidade": "São Bernardo do Campo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "ultramaratona-fenix-2026-11-07"
+  },
+  {
+   "nome": "Hoka Speed Run Rio de Janeiro",
+   "data_inicio": "2026-11-08",
+   "data_fim": null,
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    7.5,
+    15,
+    30
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "hoka-speed-run-rio-de-janeiro-2026-11-08"
+  },
+  {
+   "nome": "Maratona de Curitiba",
+   "data_inicio": "2026-11-15",
+   "data_fim": null,
+   "cidade": "Curitiba",
+   "uf": "PR",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21.1,
+    42.2
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "maratona-de-curitiba-2026-11-15"
+  },
+  {
+   "nome": "Santander Meia de Sampa",
+   "data_inicio": "2026-11-15",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "gazetasp",
+   "id": "santander-meia-de-sampa-2026-11-15"
+  },
+  {
+   "nome": "Track&Field Run Series - RioMar Fortaleza II",
+   "data_inicio": "2026-11-15",
+   "data_fim": null,
+   "cidade": "Fortaleza",
+   "uf": "CE",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "O Povo",
+   "id": "track-field-run-series-riomar-fortaleza-ii-2026-11-15"
+  },
+  {
+   "nome": "Maratona Monumental de Brasília",
+   "data_inicio": "2026-11-21",
+   "data_fim": "2026-11-22",
+   "cidade": "Brasília",
+   "uf": "DF",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    42
+   ],
+   "link_oficial": "https://www.maratonamonumentalbsb.com.br",
+   "fonte": "panrotas",
+   "id": "maratona-monumental-de-brasilia-2026-11-21"
+  },
+  {
+   "nome": "Circuito Rio Antigo - Porto Maravilha",
+   "data_inicio": "2026-11-29",
+   "data_fim": null,
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-rio-antigo-porto-maravilha-2026-11-29"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Curitiba",
+   "data_inicio": "2026-11-29",
+   "data_fim": null,
+   "cidade": "Curitiba",
+   "uf": "PR",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-curitiba-2026-11-29"
+  },
+  {
+   "nome": "Fla Run - Etapa II",
+   "data_inicio": "2026-11-29",
+   "data_fim": null,
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "fla-run-etapa-ii-2026-11-29"
+  },
+  {
+   "nome": "Track&Field Run Series - Farol Santander",
+   "data_inicio": "2026-11-29",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [],
+   "link_oficial": "https://www.tfsports.com.br/run-series/farol-santander-2026/",
+   "fonte": "running.life",
+   "id": "track-field-run-series-farol-santander-2026-11-29"
+  },
+  {
+   "nome": "Track&Field Run Series - Motiva Aeroportos Curitiba",
+   "data_inicio": "2026-11-29",
+   "data_fim": null,
+   "cidade": "Curitiba",
+   "uf": "PR",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "track-field-run-series-motiva-aeroportos-curitiba-2026-11-29"
+  },
+  {
+   "nome": "Bonito 21K",
+   "data_inicio": "2026-12-05",
+   "data_fim": null,
+   "cidade": "Bonito",
+   "uf": "MS",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "bonito-21k-2026-12-05"
+  },
+  {
+   "nome": "Summer 48K",
+   "data_inicio": "2026-12-05",
+   "data_fim": null,
+   "cidade": "Itapeva Norte",
+   "uf": "RS",
+   "modalidade": "corrida",
+   "distancias": [
+    25,
+    48
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "summer-48k-2026-12-05"
+  },
+  {
+   "nome": "21K Milagres Run",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "São Miguel dos Milagres",
+   "uf": "AL",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "21k-milagres-run-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Brasília",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "Brasília",
+   "uf": "DF",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-brasilia-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Cuiabá",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "Cuiabá",
+   "uf": "MT",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-cuiaba-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Palmas",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "Palmas",
+   "uf": "TO",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-palmas-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Porto Alegre",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "Porto Alegre",
+   "uf": "RS",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-porto-alegre-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Rio de Janeiro",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-rio-de-janeiro-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - São Luís",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "São Luís",
+   "uf": "MA",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-sao-luis-2026-12-06"
+  },
+  {
+   "nome": "Circuito das Estações - Verão - Teresina",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "Teresina",
+   "uf": "PI",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "circuito-das-estacoes-verao-teresina-2026-12-06"
+  },
+  {
+   "nome": "Track&Field Run Series - Shopping Vila Olímpia II",
+   "data_inicio": "2026-12-06",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    22
+   ],
+   "link_oficial": "https://www.tfsports.com.br/run-series/shopping-vila-olimpia-ii-2026/",
+   "fonte": "running.life",
+   "id": "track-field-run-series-shopping-vila-olimpia-ii-2026-12-06"
+  },
+  {
+   "nome": "King and Queen of the Sea - Copacabana",
+   "data_inicio": "2026-12-12",
+   "data_fim": "2026-12-13",
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "outras",
+   "distancias": [
+    2.6
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "king-and-queen-of-the-sea-copacabana-2026-12-12"
+  },
+  {
+   "nome": "Track&Field Run Series - Villa Lobos III",
+   "data_inicio": "2026-12-20",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    15
+   ],
+   "link_oficial": "https://www.tfsports.com.br/run-series/villa-lobos-iii-2026/",
+   "fonte": "running.life",
+   "id": "track-field-run-series-villa-lobos-iii-2026-12-20"
+  },
+  {
+   "nome": "São Silvestre",
+   "data_inicio": "2026-12-31",
+   "data_fim": null,
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "corrida",
+   "distancias": [
+    15
+   ],
+   "link_oficial": "https://www.saosilvestre.com.br",
+   "fonte": "panrotas",
+   "id": "sao-silvestre-2026-12-31"
+  },
+  {
+   "nome": "HYROX São Paulo",
+   "data_inicio": "2027-05-08",
+   "data_fim": "2027-05-09",
+   "cidade": "São Paulo",
+   "uf": "SP",
+   "modalidade": "hyrox",
+   "distancias": [],
+   "link_oficial": "https://hyrox.com/event/hyrox-sao-paulo/",
+   "fonte": "roxradar + running.life",
+   "id": "hyrox-sao-paulo-2027-2027-05-08"
+  },
+  {
+   "nome": "Rio de Janeiro Marathon",
+   "data_inicio": "2027-05-27",
+   "data_fim": "2027-05-30",
+   "cidade": "Rio de Janeiro",
+   "uf": "RJ",
+   "modalidade": "corrida",
+   "distancias": [
+    5,
+    10,
+    21,
+    42
+   ],
+   "link_oficial": null,
+   "fonte": "ahotu",
+   "id": "rio-de-janeiro-marathon-2027-05-27"
+  }
+ ]
+}
