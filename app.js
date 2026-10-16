@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v180";
+const APP_BUILD = "v181";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -7951,7 +7951,7 @@ function DesafioNomesAtividades({ nomes, onChange }) {
   );
 }
 
-function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
+function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent }) {
   const hoje = todayISO();
   const [step, setStep] = useState(1);
   const [nome, setNome] = useState(() => { const m = new Date(hoje + "T12:00:00").toLocaleDateString("pt-BR", { month: "long" }); return `Desafio de ${m.charAt(0).toUpperCase()}${m.slice(1)}`; });
@@ -8056,6 +8056,7 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
             <button className="gt-btn" onClick={convidarWhatsApp}>Chamar no WhatsApp</button>
             <button className="gt-btn secondary" onClick={compartilharConvite}>Outros apps / copiar</button>
           </div>
+          <DesafioConvidarAmigos chId={criado.id} friends={friends} membroIds={[]} showToast={showToast} logEvent={logEvent} />
           <button className="gt-btn secondary" style={{ marginTop: 6 }} onClick={() => onClose(criado.id)}>Abrir desafio</button>
         </div>
       </div>
@@ -8208,6 +8209,111 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
 }
 
 // Tela do desafio: minha semana, pista, placar, semanas, regras e gestão.
+// Convidar amigos da lista (sem link): escolhe e envia; o amigo vê um cartão em Desafios.
+function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent }) {
+  const [convidados, setConvidados] = useState([]);
+  const [sel, setSel] = useState([]);
+  const [busca, setBusca] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  async function carregar() {
+    const { data, error } = await supabaseClient.rpc("challenge_invited_ids", { p_id: chId });
+    if (!error && Array.isArray(data)) setConvidados(data);
+  }
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [chId]);
+  const candidatos = (friends || []).filter((f) => (membroIds || []).indexOf(f.id) < 0);
+  const vis = busca.trim() ? candidatos.filter((f) => (f.nome || f.email || "").toLowerCase().includes(busca.trim().toLowerCase())) : candidatos;
+  async function enviar() {
+    if (!sel.length) return;
+    setEnviando(true);
+    const { data, error } = await supabaseClient.rpc("invite_friends_to_challenge", { p_id: chId, p_user_ids: sel });
+    setEnviando(false);
+    if (error) { showToast("Não consegui convidar agora"); return; }
+    if (logEvent) logEvent("desafio_convite_amigo", { n: sel.length });
+    showToast(`${data || sel.length} convite${(data || sel.length) === 1 ? "" : "s"} enviado${(data || sel.length) === 1 ? "" : "s"}`);
+    setSel([]);
+    carregar();
+  }
+  return (
+    <div className="gt-card">
+      <div className="gt-field-label">CONVIDAR AMIGOS</div>
+      {candidatos.length === 0 ? (
+        <div className="gt-dsf-hint" style={{ marginTop: 0 }}>
+          {(friends || []).length === 0
+            ? "Você ainda não tem amigos no Movo. Adicione em Configurações → Amigos e ranking, ou chame pelo WhatsApp com o código."
+            : "Todos os seus amigos já estão neste desafio."}
+        </div>
+      ) : (
+        <>
+          <div className="gt-dsf-hint" style={{ marginTop: 0 }}>O amigo recebe um convite aqui no app e só entra se aceitar.</div>
+          {candidatos.length > 8 && <input className="gt-input" placeholder="Buscar amigo" value={busca} onChange={(e) => setBusca(e.target.value)} />}
+          <div style={{ maxHeight: 220, overflowY: "auto", marginTop: 6 }}>
+            {vis.map((f) => {
+              const jaConvidado = convidados.indexOf(f.id) >= 0;
+              return (
+                <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, opacity: jaConvidado ? 0.55 : 1 }}>
+                  <input type="checkbox" disabled={jaConvidado} checked={jaConvidado || sel.indexOf(f.id) >= 0}
+                    onChange={(e) => setSel(e.target.checked ? sel.concat([f.id]) : sel.filter((x) => x !== f.id))} />
+                  <span style={{ flex: 1 }}>{f.nome || f.email}</span>
+                  {jaConvidado && <span className="gt-dsf-hint" style={{ margin: 0 }}>convidado</span>}
+                </label>
+              );
+            })}
+          </div>
+          <button className="gt-btn small" style={{ marginTop: 8 }} disabled={!sel.length || enviando} onClick={enviar}>{enviando ? "Enviando…" : `Convidar${sel.length ? ` (${sel.length})` : ""}`}</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Convites de desafio que eu recebi de amigos.
+function DesafioConvitesRecebidos({ chave, showToast, logEvent, onEntrou }) {
+  const [lista, setLista] = useState([]);
+  const [busy, setBusy] = useState(null);
+  async function carregar() {
+    const { data, error } = await supabaseClient.rpc("my_challenge_invites");
+    if (!error && Array.isArray(data)) setLista(data);
+  }
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [chave]);
+  async function responder(c, aceitar) {
+    setBusy(c.challenge_id);
+    const { error } = await supabaseClient.rpc(aceitar ? "accept_challenge_invite" : "decline_challenge_invite", { p_id: c.challenge_id });
+    setBusy(null);
+    if (error) { showToast("Não consegui agora"); return; }
+    if (logEvent) logEvent(aceitar ? "desafio_convite_aceito" : "desafio_convite_recusado");
+    await carregar();
+    if (aceitar) { showToast("Você entrou no desafio"); onEntrou(c.challenge_id); }
+  }
+  if (!lista.length) return null;
+  return (
+    <div>
+      {lista.map((c) => {
+        const v = desafioValoresStakes(c.stakes);
+        const cb = desafioCombinadoLinhas(c.stakes, Math.max(2, c.members), c.weeks);
+        return (
+          <div className="gt-card" key={c.challenge_id} style={{ marginBottom: 10 }}>
+            <div className="gt-field-label">{c.from_nome.toUpperCase()} TE CHAMOU</div>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18 }}>{c.nome}</div>
+            <div className="gt-dsf-hint">{c.members} pessoa{c.members === 1 ? "" : "s"} · {c.weeks} semana{c.weeks === 1 ? "" : "s"} · começa {desafioDataCurta(c.start_date)}</div>
+            {(v.semana > 0 || v.final > 0) && (
+              <div className="gt-dsf-hint">
+                <b>Combinado do grupo</b> (hoje com {c.members} pessoa{c.members === 1 ? "" : "s"}):
+                {cb.linhas.map((l, i) => <div key={i}>{l}</div>)}
+                <div>Pior caso pra você: {desafioBRL(Math.round(cb.pior * 100))}</div>
+                <div style={{ fontSize: 12 }}>{DESAFIO_TERMO}</div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="gt-btn small" disabled={busy === c.challenge_id} onClick={() => responder(c, true)}>{v.semana > 0 || v.final > 0 ? "Entrar e aceitar o combinado" : "Entrar"}</button>
+              <button className="gt-btn secondary small" disabled={busy === c.challenge_id} onClick={() => responder(c, false)}>Agora não</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // "Traga seu amigo pro Movo": link pessoal; mostra só quantos entraram e quantos já treinaram (sem nomes).
 function IndicarAmigoCard({ showToast, logEvent }) {
   const [info, setInfo] = useState(null);
@@ -8449,7 +8555,7 @@ function DesafioAcertos({ id, meId, showToast, logEvent, nMembros, nSemanas }) {
   );
 }
 
-function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChanged, showToast, logEvent, listaAtivos, onTrocar }) {
+function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose, onChanged, showToast, logEvent, listaAtivos, onTrocar }) {
   const meId = session.user.id;
   const [ov, setOv] = useState(null);
   const [erro, setErro] = useState(false);
@@ -8737,6 +8843,8 @@ function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChang
           )}
         </div>
 
+        <DesafioConvidarAmigos chId={id} friends={friends} membroIds={ov.members.map((m) => m.user_id)} showToast={showToast} logEvent={logEvent} />
+
         <div className="gt-card">
           <div className="gt-field-label">CONVITE</div>
           <div className="gt-dsf-convite">
@@ -8792,7 +8900,7 @@ function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChang
 }
 
 // Aba "Desafios" dentro de Evolução › Ranking: lista, criar e entrar por código/convite.
-function DesafiosPanel({ session, desafios, desafiosOk, reload, sessions, atividadeById, showToast, logEvent, pendingCode, clearPendingCode, resumos, avisos, falhou }) {
+function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, sessions, atividadeById, showToast, logEvent, pendingCode, clearPendingCode, resumos, avisos, falhou }) {
   const [criarOpen, setCriarOpen] = useState(false);
   const [abertoId, setAbertoId] = useState(null);
   const [codigo, setCodigo] = useState("");
@@ -8914,6 +9022,7 @@ function DesafiosPanel({ session, desafios, desafiosOk, reload, sessions, ativid
           <p className="gt-dsf-hint">Crie um desafio com os amigos: meta por semana, pontos, bônus por treinar junto e uma aposta pra dar graça.</p>
         </div>
       )}
+      <DesafioConvitesRecebidos chave={lista.length} showToast={showToast} logEvent={logEvent} onEntrou={(cid) => { reload(); setAbertoId(cid); }} />
       <DesafioAvisosCards avisos={avisos || {}} resumos={resumos || {}} desafios={lista} onAcao={abrirCartaoAviso} onAbrir={setAbertoId} />
       {ativos.map(card)}
       <button className="gt-btn" style={{ marginTop: 8 }} onClick={() => setCriarOpen(true)}>+ Novo desafio</button>
@@ -8930,6 +9039,7 @@ function DesafiosPanel({ session, desafios, desafiosOk, reload, sessions, ativid
 
       {criarOpen && (
         <DesafioCriarModal
+          friends={friends}
           onClose={(idParaAbrir) => { setCriarOpen(false); if (idParaAbrir) setAbertoId(idParaAbrir); }}
           onCreated={() => reload()}
           showToast={showToast}
@@ -8938,6 +9048,7 @@ function DesafiosPanel({ session, desafios, desafiosOk, reload, sessions, ativid
       )}
       {abertoId && (
         <DesafioDetalhe key={abertoId}
+          friends={friends}
           id={abertoId}
           session={session}
           sessions={sessions}
@@ -16259,6 +16370,7 @@ function App() {
                 resumos={desafioResumos}
                 avisos={desafioAvisos_}
                 falhou={desafiosFalhou}
+                friends={friends}
               />
             )}
             {!session && <div className="gt-empty" style={{ marginTop: 12 }}>Entre com sua conta pra criar ou entrar em desafios.</div>}
