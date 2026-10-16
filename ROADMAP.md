@@ -63,6 +63,14 @@ Lista viva do que queremos discutir e implementar, em ordem de conversa (não de
    - Pré-requisito técnico: mover o cálculo de pontos dos Desafios do aparelho para o servidor (ver item 5).
    - Perguntas abertas para contador e advogado: seção 5 do plano.
 
+9. **Trocar o e-mail da conta (hoje não existe)**
+   - Situação: o login é só por código ou link no e-mail (sem senha) e o cadastro nasce dele. Quem entrar com outro e-mail cria uma conta nova e vazia (sem treinos, desafios, amigos nem Strava). Os dados ficam presos ao `user_id` do Supabase, que não muda; o e-mail é só a forma de entrar.
+   - Desenho: Configurações > Conta > "Trocar e-mail". A pessoa digita o novo e-mail, confirma o código enviado a ele (e, por segurança, também a confirmação no e-mail antigo) e a conta passa a usar o novo, mantendo o mesmo `user_id` (`supabaseClient.auth.updateUser({ email })`, com "Secure email change" ligado em Authentication > Providers > Email).
+   - Pontos que guardam o e-mail e precisam ser migrados ou invalidados na troca: convites de amizade pendentes (`friend_requests.from_email`/`to_email`), compartilhamento de relatórios (`report_shares.owner_email`/`viewer_email`), vínculos e convites de treinador, `user_consents` se tiver e-mail, e o e-mail admin (`ardurso@gmail.com`, função `is_movo_admin`).
+   - Segurança: exigir sessão recente, confirmar nos dois e-mails, registrar o evento (`app_events`), avisar o e-mail antigo e rate limit contra abuso. Atualizar a exportação LGPD (`export_my_data`) se algo novo for guardado.
+   - Casos de borda: e-mail novo já existe em outra conta (recusar e orientar), pessoa perdeu acesso ao e-mail antigo (suporte manual por enquanto, com verificação de identidade), troca durante desafio ou vínculo ativo.
+   - Prioridade: a definir. Não entra junto com a migração de domínio.
+
 ## Em planejamento: agenda e pacotes do treinador
 
 Plano completo em `docs/PLANO_AGENDA_TREINADOR.md`: aba nova "Agenda" (compromissos dia a dia, horário livre derivado da janela de trabalho, aula particular, coletiva, treino próprio), alunos da agenda só com nome (vínculo com perfil real quando o aluno aceita o convite, confirmado pelo treinador) e pacote de aulas com saldo automático. Cobrança fica para depois.
