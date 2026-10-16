@@ -58,3 +58,4 @@ challenge_acertos_saida.sql
 challenge_formatos.sql
 indicacoes.sql
 challenge_convites.sql
+challenge_convites_email.sql

@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v181";
+const APP_BUILD = "v182";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -8230,8 +8230,32 @@ function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent }
     if (error) { showToast("Não consegui convidar agora"); return; }
     if (logEvent) logEvent("desafio_convite_amigo", { n: sel.length });
     showToast(`${data || sel.length} convite${(data || sel.length) === 1 ? "" : "s"} enviado${(data || sel.length) === 1 ? "" : "s"}`);
+    // aviso por e-mail ao amigo (se o envio estiver ativo); falha em silêncio, o convite já vale dentro do app
+    try { supabaseClient.functions.invoke("convidar-email", { body: { challenge_id: chId, user_ids: sel } }).catch(() => {}); } catch (e) {}
     setSel([]);
     carregar();
+  }
+  const [emailNovo, setEmailNovo] = useState("");
+  const [enviandoEmail, setEnviandoEmail] = useState(false);
+  async function convidarPorEmail() {
+    const em = emailNovo.trim();
+    if (!em) return;
+    setEnviandoEmail(true);
+    try {
+      const { data, error } = await supabaseClient.functions.invoke("convidar-email", { body: { challenge_id: chId, email: em } });
+      if (error) {
+        let msg = "Não consegui enviar agora";
+        try { const j = await error.context.json(); if (j && j.erro && j.erro.length < 90) msg = j.erro; } catch (e) {}
+        showToast(msg);
+      } else if (data && data.enviado) {
+        showToast("Convite enviado por e-mail");
+        if (logEvent) logEvent("desafio_convite_email");
+        setEmailNovo("");
+      } else {
+        showToast("Envio por e-mail ainda não está ativo. Mande o código ou o link pelo WhatsApp.");
+      }
+    } catch (e) { showToast("Não consegui enviar agora"); }
+    setEnviandoEmail(false);
   }
   return (
     <div className="gt-card">
@@ -8262,6 +8286,12 @@ function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent }
           <button className="gt-btn small" style={{ marginTop: 8 }} disabled={!sel.length || enviando} onClick={enviar}>{enviando ? "Enviando…" : `Convidar${sel.length ? ` (${sel.length})` : ""}`}</button>
         </>
       )}
+      <div className="gt-field-label" style={{ marginTop: 14 }}>OU POR E-MAIL (QUEM AINDA NÃO TEM O MOVO)</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input className="gt-input" type="email" inputMode="email" placeholder="email@exemplo.com" value={emailNovo} maxLength={120} onChange={(e) => setEmailNovo(e.target.value)} />
+        <button className="gt-btn small secondary" disabled={!emailNovo.trim() || enviandoEmail} onClick={convidarPorEmail}>{enviandoEmail ? "…" : "Enviar"}</button>
+      </div>
+      <div className="gt-dsf-hint">Mandamos um único e-mail com o link do desafio, dizendo que foi você. Limite de 15 por dia.</div>
     </div>
   );
 }
