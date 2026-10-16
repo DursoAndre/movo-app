@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v175";
+const APP_BUILD = "v176";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -12256,6 +12256,13 @@ function App() {
   const [freqAvgUnit, setFreqAvgUnit] = useState("semana"); // "semana" | "mes"
   const [freqSelectedType, setFreqSelectedType] = useState("");
   const [session, setSession] = useState(null);
+  // mede quais telas principais as pessoas abrem (uma vez por tela a cada abertura do app)
+  const telasVistasRef = useRef({});
+  useEffect(() => {
+    if (!session || !tab || telasVistasRef.current[tab]) return;
+    telasVistasRef.current[tab] = true;
+    logEventFor(session.user.id, "tela_" + String(tab).slice(0, 24));
+  }, [tab, session]);
   const [authChecked, setAuthChecked] = useState(false);
   const [cloudSynced, setCloudSynced] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -12388,11 +12395,20 @@ function App() {
   useEffect(() => {
     if (!session || appOpenLoggedRef.current) return;
     appOpenLoggedRef.current = true;
-    supabaseClient.from("app_opens").insert({ user_id: session.user.id, versao: APP_BUILD }).then(({ error }) => {
+    // host = endereço de onde o app foi aberto (separa o site antigo do novo); instalado = aberto como app (PWA)
+    let host = null, instalado = null;
+    try {
+      host = String(window.location.hostname || "").slice(0, 80) || null;
+      instalado = !!((window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone);
+    } catch (e) {}
+    supabaseClient.from("app_opens").insert({ user_id: session.user.id, versao: APP_BUILD, host, instalado }).then(({ error }) => {
       if (!error) return;
-      // coluna "versao" ainda não existe no banco: grava a abertura sem ela
-      supabaseClient.from("app_opens").insert({ user_id: session.user.id }).then((r2) => {
-        if (r2.error) logClientError("app_open_log", r2.error.message);
+      // colunas novas ainda não existem no banco: grava só com a versão, e por último sem nada
+      supabaseClient.from("app_opens").insert({ user_id: session.user.id, versao: APP_BUILD }).then((r2) => {
+        if (!r2.error) return;
+        supabaseClient.from("app_opens").insert({ user_id: session.user.id }).then((r3) => {
+          if (r3.error) logClientError("app_open_log", r3.error.message);
+        });
       });
     });
   }, [session]);

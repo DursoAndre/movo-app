@@ -47,6 +47,7 @@ admin_login_stats.sql
 admin_plan_usage.sql
 admin_shared_races.sql
 admin_versoes.sql
+admin_metricas.sql
 monitoramento.sql
 lp_events.sql
 account_data_rights.sql
