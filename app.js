@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v176";
+const APP_BUILD = "v177";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -24,12 +24,31 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 
 // Evento de uso (só nome + usuário), pra medir adoção/uso no painel de admin.
 // Nunca bloqueia nada se a escrita falhar (ex: tabela ainda não criada).
-function logEventFor(userId, name) {
+// `props` é opcional (objeto pequeno, ex: { tipo: "corrida", origem: "manual" }); se a coluna ainda não existir, grava sem ela.
+function logEventFor(userId, name, props) {
   try {
     if (!userId) return;
-    supabaseClient.from("app_events").insert({ user_id: userId, name }).then(() => {});
+    const row = { user_id: userId, name };
+    if (props && typeof props === "object") row.props = props;
+    supabaseClient.from("app_events").insert(row).then(({ error }) => {
+      if (error && row.props) supabaseClient.from("app_events").insert({ user_id: userId, name }).then(() => {});
+    });
   } catch (e) {}
 }
+
+// Origem do cadastro (primeiro toque): de onde a pessoa chegou, guardada na primeira abertura e gravada uma vez, depois do login.
+// Nada de IP nem dado do aparelho: só o canal informado no link (utm_source/pos) e o tipo de convite.
+const ORIGEM_KEY = "treino-app:origem";
+(function captureOrigem() {
+  try {
+    if (localStorage.getItem(ORIGEM_KEY)) return;
+    const q = new URLSearchParams(window.location.search || "");
+    const clean = (v) => (v ? String(v).replace(/[^A-Za-z0-9_\-]/g, "").slice(0, 40) : null);
+    let convite = null;
+    if (q.get("desafio")) convite = "desafio"; else if (q.get("treinador")) convite = "treinador"; else if (q.get("prof")) convite = "prof";
+    localStorage.setItem(ORIGEM_KEY, JSON.stringify({ src: clean(q.get("utm_source")), pos: clean(q.get("pos")), convite, ts: Date.now() }));
+  } catch (e) {}
+})();
 
 // Único e-mail que enxerga a tela de "Uso" (admin) em Configurações. As
 // funções admin_usage_stats/admin_client_errors no banco também conferem
@@ -12413,6 +12432,23 @@ function App() {
     });
   }, [session]);
 
+  // --- Origem do cadastro: grava uma vez (só pra contas recém-criadas) de onde a pessoa veio. Falha em silêncio. ---
+  const origemGravadaRef = useRef(false);
+  useEffect(() => {
+    if (!session || origemGravadaRef.current) return;
+    origemGravadaRef.current = true;
+    try {
+      const criada = session.user.created_at ? Date.parse(session.user.created_at) : 0;
+      if (!criada || Date.now() - criada > 2 * 24 * 3600 * 1000) return;
+      if (localStorage.getItem(`treino-app:origemGravada:${session.user.id}`)) return;
+      const o = JSON.parse(localStorage.getItem(ORIGEM_KEY) || "null") || {};
+      let host = null; try { host = String(window.location.hostname || "").slice(0, 80) || null; } catch (e) {}
+      supabaseClient.from("user_origem").upsert({ user_id: session.user.id, src: o.src || null, pos: o.pos || null, convite: o.convite || null, host }, { onConflict: "user_id", ignoreDuplicates: true }).then(({ error }) => {
+        if (!error) { try { localStorage.setItem(`treino-app:origemGravada:${session.user.id}`, "1"); } catch (e) {} }
+      });
+    } catch (e) {}
+  }, [session]);
+
   // --- Sincronização com a nuvem (o motor puro fica no topo do arquivo) ---
   const [syncPend, setSyncPend] = useState(0);
   const [syncUltima, setSyncUltima] = useState(null);
@@ -12793,6 +12829,7 @@ function App() {
       } else {
         await refreshFromCloud();
         const n = data.imported || 0;
+        if (n > 0) logEvent("strava_importado", { n });
         showToast(n > 0 ? `${n} atividade${n === 1 ? "" : "s"} importada${n === 1 ? "" : "s"}` : "Nada novo pra importar");
       }
     } catch (e) {
@@ -13309,9 +13346,11 @@ function App() {
     } catch (e) {}
   }
 
-  function logEvent(name) {
-    logEventFor(sessionRef.current ? sessionRef.current.user.id : null, name);
+  function logEvent(name, props) {
+    logEventFor(sessionRef.current ? sessionRef.current.user.id : null, name, props);
   }
+  // Evento único de "treinou" (qualquer modalidade), com propriedades: tipo (academia | corrida | atividade) e origem (app | manual | plano).
+  function logTreino(tipo, origem) { logEvent("treino_registrado", { tipo, origem }); }
 
   // --- Provas: base de races.json (carga semanal) + provas da comunidade (nuvem) + o que a
   // pessoa marcou. Marcações vão pra tabela race_entries; localStorage é o espelho/fallback. ---
@@ -13602,6 +13641,7 @@ function App() {
       return;
     }
     setSessaoPlanoStatus(plano.id, idx, "feito");
+    logTreino("corrida", "plano");
     abrirEsforcoCorrida(plano, sessao, idx);
   }
   function abrirEsforcoCorrida(plano, sessao, idx) {
@@ -14492,6 +14532,7 @@ function App() {
     // Descanso não tem duração/esforço pra registrar — marca "fui" direto,
     // sem abrir o modal de RPE (não faz sentido pedir isso de um dia de folga).
     if (status === "fui" && prev.status !== "fui" && !(atividade && atividade.descanso)) {
+      logTreino("atividade", "app");
       setRpeModal({ item, date: selectedDate, label: atividade ? atividade.nome : "atividade", duracaoMin: "", rpe: "", dor: null });
     }
   }
@@ -14515,6 +14556,7 @@ function App() {
     // ou mudado o número de séries.
     const temAjuste = changes.some((c) => c.kind !== "skipped");
     logEvent("treino_concluido");
+    logTreino("academia", "app");
     if (temAjuste) logEvent("treino_concluido_com_ajuste");
     setPendingFichaPrompt(temAjuste ? { item, date: selectedDate, treinoNome: baseTreino.nome, changes } : null);
     const celeb = { ...computeCelebracao(sessions, selectedDate, itemKey(item), baseTreino || treino), streak: Math.max(streakInfo.streak, 1), diasSemana: Math.max(streakInfo.activeDaysThisWeek, 1), nome: (displayName || "").split(" ")[0] };
@@ -14542,6 +14584,7 @@ function App() {
       salvarAvulso({ ...atual, sessoes: [...(atual.sessoes || []), sessao] });
       saveCarga(rpeModal.date, { tipo: "corrida", id: `${atual.id}:${cid}` }, dur, rpe, rpeModal.dor, km);
       logEvent("corrida_registrada_manual");
+      logTreino("corrida", "manual");
       showToast("Corrida registrada");
     } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "")) {
       saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0);

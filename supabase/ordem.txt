@@ -49,6 +49,7 @@ admin_shared_races.sql
 admin_versoes.sql
 admin_metricas.sql
 admin_metricas_v2.sql
+admin_metricas_v3.sql
 monitoramento.sql
 lp_events.sql
 account_data_rights.sql
