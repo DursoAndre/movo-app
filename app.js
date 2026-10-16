@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v174";
+const APP_BUILD = "v175";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -7012,6 +7012,17 @@ function conviteLinkBase() {
     return `${window.location.origin}${window.location.pathname}`;
   } catch (e) { return ""; }
 }
+// Texto do convite de desafio pelo WhatsApp: tom de incentivo (o combinado de cada grupo é decidido por eles).
+function desafioConviteTexto(nome, link, code) {
+  const frases = [
+    `Bora treinar junto? 💪 Te chamei pro desafio *${nome}* no Movo. Vamos lá!`,
+    `Bora fazer essa constância acontecer? 🔥 Entra no desafio *${nome}* comigo no Movo!`,
+    `Tem vaga pra você no desafio *${nome}*! 💪 Vamos nos puxar e ver quem aparece mais no Movo.`,
+    `Hoje é dia de treino! 🏃 Te chamei pro desafio *${nome}* no Movo. Bora?`,
+  ];
+  const f = frases[Math.floor(Math.random() * frases.length)];
+  return `${f} Entra aqui: ${link} (código ${code})`;
+}
 function desafioConviteLink(code) {
   try { return `${conviteLinkBase()}?desafio=${encodeURIComponent(code)}`; } catch (e) { return `?desafio=${code}`; }
 }
@@ -7985,7 +7996,7 @@ function DesafioCriarModal({ onClose, onCreated, showToast, logEvent }) {
   }
   function convidarWhatsApp() {
     const link = desafioConviteLink(criado.invite_code);
-    window.open(`https://wa.me/?text=${encodeURIComponent(`Te desafiei no Movo! 💪 *${criado.nome}*. Quem treinar menos paga o combinado 😄 Entra aqui: ${link} (código ${criado.invite_code})`)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(desafioConviteTexto(criado.nome, link, criado.invite_code))}`, "_blank");
     if (logEvent) logEvent("convite_whatsapp");
   }
   async function compartilharConvite() {
@@ -8313,7 +8324,7 @@ function DesafioDetalhe({ id, session, sessions, atividadeById, onClose, onChang
   }
   function convidarWhatsApp() {
     const link = desafioConviteLink(ch.invite_code);
-    window.open(`https://wa.me/?text=${encodeURIComponent(`Te desafiei no Movo! 💪 *${ch.nome}*. Quem treinar menos paga o combinado 😄 Entra aqui: ${link} (código ${ch.invite_code})`)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(desafioConviteTexto(ch.nome, link, ch.invite_code))}`, "_blank");
   }
   async function compartilharConvite() {
     const link = desafioConviteLink(ch.invite_code);
