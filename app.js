@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v183";
+const APP_BUILD = "v184";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2740,6 +2740,24 @@ const APP_CSS = `
   .gt-dsf-sem-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
   .gt-dsf-sem-head .gt-dsf-link { margin-left:auto; }
   .gt-dsf-sem-lines { display:flex; flex-direction:column; gap:2px; }
+  .gt-pre-hero { padding:22px 8px 14px; text-align:center; }
+  .gt-pre-hero-num { font-family:'Oswald',sans-serif; font-size:88px; line-height:.95; color:var(--accent); text-shadow:0 0 32px rgba(198,241,53,.25); }
+  .gt-pre-hero-num.hoje { font-size:60px; }
+  .gt-pre-hero-unit { font-family:'JetBrains Mono','Roboto Mono',monospace; font-size:12px; letter-spacing:.14em; color:var(--text-muted); margin-top:6px; }
+  .gt-pre-hero-sub { font-size:13px; color:var(--text-muted); margin-top:10px; line-height:1.45; }
+  .gt-pre-people { display:flex; gap:14px; overflow-x:auto; padding:4px 2px 18px; scrollbar-width:none; }
+  .gt-pre-person { display:flex; flex-direction:column; align-items:center; gap:5px; flex:0 0 auto; }
+  .gt-pre-person .gt-dsf-avatar { width:44px; height:44px; font-size:16px; }
+  .gt-pre-person.pend .gt-dsf-avatar { background:transparent !important; border:1.5px dashed var(--text-muted); color:var(--text-muted); }
+  .gt-pre-person-nome { font-size:11px; color:var(--text-muted); max-width:58px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gt-pre-add { width:44px; height:44px; border-radius:50%; border:1.5px dashed var(--accent); background:none; color:var(--accent); font-size:22px; cursor:pointer; flex:0 0 auto; }
+  .gt-pre-convite { border-color:rgba(198,241,53,.35); background:linear-gradient(180deg,var(--surface-2),var(--surface)); margin-bottom:16px; }
+  .gt-pre-list { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .gt-pre-sec + .gt-pre-sec { border-top:1px solid var(--border); }
+  .gt-pre-sec-head { display:flex; align-items:center; gap:8px; width:100%; min-height:52px; padding:0 14px; background:none; border:0; color:var(--text); font-family:'Oswald',sans-serif; font-size:15px; text-align:left; cursor:pointer; }
+  .gt-pre-sec-res { margin-left:auto; font-size:12px; color:var(--text-muted); font-family:'Inter',sans-serif; max-width:55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gt-pre-sec-body { padding:0 14px 16px; }
+  .gt-pre-sec-body .gt-card { border:0; background:none; padding:0; margin:0; }
   .gt-dsf-collapse { width:100%; background:none; border:none; color:var(--text); text-align:left; font-family:'Oswald',sans-serif; font-size:14px; cursor:pointer; padding:0; }
   .gt-dsf-regras-txt { margin-top:10px; display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-muted); line-height:1.5; }
   .gt-dsf-regras-txt b { color:var(--text); }
@@ -8210,7 +8228,7 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
 
 // Tela do desafio: minha semana, pista, placar, semanas, regras e gestão.
 // Convidar amigos da lista (sem link): escolhe e envia; o amigo vê um cartão em Desafios.
-function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent }) {
+function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent, semCard, onConvidou }) {
   const [convidados, setConvidados] = useState([]);
   const [sel, setSel] = useState([]);
   const [busca, setBusca] = useState("");
@@ -8234,6 +8252,7 @@ function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent }
     try { supabaseClient.functions.invoke("convidar-email", { body: { challenge_id: chId, user_ids: sel } }).catch(() => {}); } catch (e) {}
     setSel([]);
     carregar();
+    if (onConvidou) onConvidou();
   }
   const [emailNovo, setEmailNovo] = useState("");
   const [enviandoEmail, setEnviandoEmail] = useState(false);
@@ -8258,7 +8277,7 @@ function DesafioConvidarAmigos({ chId, friends, membroIds, showToast, logEvent }
     setEnviandoEmail(false);
   }
   return (
-    <div className="gt-card">
+    <div className={semCard ? "" : "gt-card"}>
       <div className="gt-field-label">CONVIDAR AMIGOS</div>
       {candidatos.length === 0 ? (
         <div className="gt-dsf-hint" style={{ marginTop: 0 }}>
@@ -8510,7 +8529,7 @@ function DesafioPremioForm({ stakes, setStakes, semanas }) {
     </div>
   );
 }
-function DesafioAcertos({ id, meId, showToast, logEvent, nMembros, nSemanas }) {
+function DesafioAcertos({ id, meId, showToast, logEvent, nMembros, nSemanas, semCard }) {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState(false);
   const [aberto, setAberto] = useState(false);
@@ -8535,7 +8554,7 @@ function DesafioAcertos({ id, meId, showToast, logEvent, nMembros, nSemanas }) {
   const quitados = dados.entries.length - abertos.length;
   const nomeSemana = (e) => (e.kind === "final" ? "Prêmio final" : `Semana ${e.week_idx + 1}`);
   return (
-    <div className="gt-card">
+    <div className={semCard ? "" : "gt-card"}>
       <div className="gt-field-label">ACERTOS · R$</div>
       {(() => { const cb = desafioCombinadoLinhas(dados.stakes, nMembros || 3, nSemanas || 1); return <div className="gt-dsf-hint" style={{ marginTop: 0 }}>{cb.linhas.join(" · ")}</div>; })()}
       {dados.entries.length === 0 ? (
@@ -8597,6 +8616,10 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
   const [formNome, setFormNome] = useState("");
   const [formStakes, setFormStakes] = useState({ semana: "", final: "" });
   const [regrasAbertas, setRegrasAbertas] = useState(false);
+  const [preAberta, setPreAberta] = useState(null);
+  const [pendIds, setPendIds] = useState([]);
+  const recarregaPend = () => { supabaseClient.rpc("challenge_invited_ids", { p_id: id }).then(({ data, error }) => { if (!error && Array.isArray(data)) setPendIds(data); }); };
+  useEffect(() => { recarregaPend(); /* eslint-disable-next-line */ }, [id]);
   const [verTodos, setVerTodos] = useState(false);
   const hoje = todayISO();
 
@@ -8722,6 +8745,42 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
     if (onChanged) onChanged();
     onClose();
   }
+  const regrasTxt = (
+    <div className="gt-dsf-regras-txt">
+              <div><b>Conta:</b> {desafioContamTexto(rules)}.</div>
+              <div><b>Limites:</b> {desafioLimitesTexto(rules)}.</div>
+              <div><b>Meta:</b> {rules.meta} treino{rules.meta === 1 ? "" : "s"} por semana ({DESAFIO_SEMANA_NOMES[ch.week_start]} a {DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>
+              <div><b>Pontos:</b> {desafioRegrasResumo(rules)}</div>
+              <div><b>Treinar junto:</b> {rules.bonusJuntos > 0 ? `${desafioFmtPts(rules.bonusJuntos)} pt por vez, pra cada um, com confirmação` : "sem bônus"}</div>
+              <div><b>Semana:</b> {stakes.semana ? `quem perde ${stakes.semana}` : "sem aposta definida"}</div>
+              <div><b>Final:</b> {stakes.final || "sem prêmio definido"}</div>
+              {(valoresRS.semana > 0 || valoresRS.final > 0) && (() => { const cb = desafioCombinadoLinhas(stakes, ov.members.length, ch.weeks); return <div><b>Combinado em R$:</b> {cb.linhas.join(" · ")}. Pior caso pra cada um: {desafioBRL(Math.round(cb.pior * 100))}. {DESAFIO_TERMO}</div>; })()}
+              <div className="gt-dsf-hint">Duração: {desafioDataCurta(ch.start_date)} a {desafioDataCurta(desafioEnd(ch))}. As regras ficam travadas depois que o desafio começa.</div>
+            </div>
+  );
+  const gerenciarJSX = (
+    <>
+          {!editando && souDono && (
+            <button className="gt-dsf-link" style={{ marginTop: 12 }} onClick={() => { setFormNome(ch.nome); setFormStakes({ semana: stakes.semana || "", final: stakes.final || "" }); setEditando(true); }}>✎ Editar nome e apostas</button>
+          )}
+          {editando && (
+            <div className="gt-provas-form" style={{ marginTop: 12 }}>
+              <input className="gt-input" value={formNome} maxLength={50} onChange={(e) => setFormNome(e.target.value)} placeholder="Nome do desafio" />
+              <input className="gt-input" value={formStakes.semana} maxLength={80} onChange={(e) => setFormStakes({ ...formStakes, semana: e.target.value })} placeholder="Quem perde a semana…" />
+              <input className="gt-input" value={formStakes.final} maxLength={80} onChange={(e) => setFormStakes({ ...formStakes, final: e.target.value })} placeholder="Prêmio final" />
+              <div className="gt-provas-form-row">
+                <button className="gt-btn small" onClick={salvarEdicao}>Salvar</button>
+                <button className="gt-btn secondary small" onClick={() => setEditando(false)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+          <div style={{ marginTop: 14 }}>
+            {souDono
+              ? <button className="gt-dsf-link danger" onClick={excluir}>Excluir desafio</button>
+              : <button className="gt-dsf-link danger" onClick={sair}>Sair do desafio</button>}
+          </div>
+    </>
+  );
   function convidarWhatsApp() {
     const link = desafioConviteLink(ch.invite_code);
     window.open(`https://wa.me/?text=${encodeURIComponent(desafioConviteTexto(ch.nome, link, ch.invite_code))}`, "_blank");
@@ -8803,19 +8862,71 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
             </div>
           </div>
         )}
-        {status.fase === "antes" && (
-          <div className="gt-card">
-            <div className="gt-field-label">QUEM JÁ ENTROU · {ov.members.length}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0 10px" }}>
-              {ov.members.map((m) => (
-                <span key={m.user_id} className="gt-dsf-hint" style={{ margin: 0, padding: "6px 12px", borderRadius: 999, border: "1px solid var(--border, #2a2a2a)", color: "var(--text)" }}>
-                  {m.is_me ? "Você" : m.nome}{m.user_id === ch.owner_id ? " · criou" : ""}
-                </span>
-              ))}
+        {status.fase === "antes" && (() => {
+          const dias = status.diasParaComecar;
+          const resumoRegras = `${rules.meta}x/sem${stakes.semana ? ` · ${stakes.semana}` : ""}`;
+          const nPend = pendIds.length;
+          const candidatos = (friends || []).filter((f) => ov.members.every((m) => m.user_id !== f.id)).length;
+          const secao = (key, titulo, resumo, corpo) => (
+            <div className="gt-pre-sec" key={key}>
+              <button type="button" className="gt-pre-sec-head" aria-expanded={preAberta === key} onClick={() => setPreAberta(preAberta === key ? null : key)}>
+                <span>{titulo}</span>
+                <span className="gt-pre-sec-res">{resumo}</span>
+                <span aria-hidden="true">{preAberta === key ? "▴" : "▾"}</span>
+              </button>
+              {preAberta === key && <div className="gt-pre-sec-body">{corpo}</div>}
             </div>
-            <div className="gt-dsf-hint" style={{ margin: 0 }}>Os treinos que você registrar a partir de {desafioDataCurta(ch.start_date)} contam automaticamente. Chama a galera enquanto isso.</div>
-          </div>
-        )}
+          );
+          const copiarCodigo = async () => { try { await navigator.clipboard.writeText(ch.invite_code); showToast("Código copiado"); } catch (e) { showToast("Código: " + ch.invite_code); } };
+          return (
+            <>
+              <div className="gt-pre-hero">
+                <div className={`gt-pre-hero-num${dias === 0 ? " hoje" : ""}`}>{dias === 0 ? "HOJE" : dias}</div>
+                <div className="gt-pre-hero-unit">{dias === 0 ? "COMEÇA HOJE" : `${dias === 1 ? "DIA" : "DIAS"} PRA COMEÇAR`}</div>
+                <div className="gt-pre-hero-sub">
+                  {ov.members.length === 1 ? "Você é o primeiro. Chame a galera. " : (souDono ? "" : "Você está dentro. ")}Os treinos a partir de {desafioDataCurta(ch.start_date)} contam sozinhos.
+                </div>
+              </div>
+
+              <div className="gt-pre-people" aria-label="Quem está no desafio">
+                {ov.members.map((m) => (
+                  <div className="gt-pre-person" key={m.user_id}>
+                    <span className="gt-dsf-avatar" style={{ background: desafioCorDe(ov.members, m.user_id) }} aria-hidden="true">{desafioIniciais(m.nome)}</span>
+                    <span className="gt-pre-person-nome">{m.is_me ? "Você" : String(m.nome || "").split(" ")[0]}</span>
+                  </div>
+                ))}
+                {pendIds.filter((uid) => ov.members.every((m) => m.user_id !== uid)).map((uid) => {
+                  const f = (friends || []).find((x) => x.id === uid);
+                  const nome = f ? (f.nome || f.email || "Amigo") : "Convidado";
+                  return (
+                    <div className="gt-pre-person pend" key={`p${uid}`} title="Convite enviado, aguardando">
+                      <span className="gt-dsf-avatar" aria-hidden="true">{desafioIniciais(nome)}</span>
+                      <span className="gt-pre-person-nome">aguardando</span>
+                    </div>
+                  );
+                })}
+                <button type="button" className="gt-pre-add" aria-label="Convidar amigos" onClick={() => setPreAberta("convidar")}>+</button>
+              </div>
+
+              <div className="gt-card gt-pre-convite">
+                <div className="gt-field-label">CHAMAR A GALERA</div>
+                <div className="gt-dsf-convite">
+                  <button type="button" className="gt-dsf-code sm" style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }} onClick={copiarCodigo} aria-label="Copiar código">{ch.invite_code}</button>
+                  <button className="gt-btn small" onClick={convidarWhatsApp}>WhatsApp</button>
+                  <button className="gt-btn small secondary" onClick={compartilharConvite}>Outros</button>
+                </div>
+              </div>
+
+              <div className="gt-pre-list">
+                {secao("regras", "Regras e apostas", resumoRegras, regrasTxt)}
+                {secao("convidar", "Convidar amigos", nPend ? `${nPend} pendente${nPend === 1 ? "" : "s"}` : `${candidatos} disponíve${candidatos === 1 ? "l" : "is"}`,
+                  <DesafioConvidarAmigos semCard chId={id} friends={friends} membroIds={ov.members.map((m) => m.user_id)} showToast={showToast} logEvent={logEvent} onConvidou={recarregaPend} />)}
+                {(valoresRS.semana > 0 || valoresRS.final > 0) && secao("acertos", "Acertos em R$", "como fica", <DesafioAcertos semCard id={id} meId={meId} showToast={showToast} logEvent={logEvent} nMembros={ov.members.length} nSemanas={ch.weeks} />)}
+                {secao("gerenciar", "Mais opções", souDono ? "editar · excluir" : "sair", gerenciarJSX)}
+              </div>
+            </>
+          );
+        })()}
 
         {status.fase !== "antes" && (
           <div className="gt-card">
@@ -8864,22 +8975,14 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
           </div>
         )}
 
+        {status.fase !== "antes" && (
+          <>
         {(valoresRS.semana > 0 || valoresRS.final > 0) && <DesafioAcertos id={id} meId={meId} showToast={showToast} logEvent={logEvent} nMembros={ov.members.length} nSemanas={ch.weeks} />}
 
         <div className="gt-card">
           <button className="gt-dsf-collapse" onClick={() => setRegrasAbertas(!regrasAbertas)}>Regras e apostas {regrasAbertas ? "▴" : "▾"}</button>
           {regrasAbertas && (
-            <div className="gt-dsf-regras-txt">
-              <div><b>Conta:</b> {desafioContamTexto(rules)}.</div>
-              <div><b>Limites:</b> {desafioLimitesTexto(rules)}.</div>
-              <div><b>Meta:</b> {rules.meta} treino{rules.meta === 1 ? "" : "s"} por semana ({DESAFIO_SEMANA_NOMES[ch.week_start]} a {DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>
-              <div><b>Pontos:</b> {desafioRegrasResumo(rules)}</div>
-              <div><b>Treinar junto:</b> {rules.bonusJuntos > 0 ? `${desafioFmtPts(rules.bonusJuntos)} pt por vez, pra cada um, com confirmação` : "sem bônus"}</div>
-              <div><b>Semana:</b> {stakes.semana ? `quem perde ${stakes.semana}` : "sem aposta definida"}</div>
-              <div><b>Final:</b> {stakes.final || "sem prêmio definido"}</div>
-              {(valoresRS.semana > 0 || valoresRS.final > 0) && (() => { const cb = desafioCombinadoLinhas(stakes, ov.members.length, ch.weeks); return <div><b>Combinado em R$:</b> {cb.linhas.join(" · ")}. Pior caso pra cada um: {desafioBRL(Math.round(cb.pior * 100))}. {DESAFIO_TERMO}</div>; })()}
-              <div className="gt-dsf-hint">Duração: {desafioDataCurta(ch.start_date)} a {desafioDataCurta(desafioEnd(ch))}. As regras ficam travadas depois que o desafio começa.</div>
-            </div>
+            {regrasTxt}
           )}
         </div>
 
@@ -8892,26 +8995,10 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
             <button className="gt-btn small" onClick={convidarWhatsApp}>WhatsApp</button>
             <button className="gt-btn small secondary" onClick={compartilharConvite}>Outros</button>
           </div>
-          {!editando && souDono && (
-            <button className="gt-dsf-link" style={{ marginTop: 12 }} onClick={() => { setFormNome(ch.nome); setFormStakes({ semana: stakes.semana || "", final: stakes.final || "" }); setEditando(true); }}>✎ Editar nome e apostas</button>
-          )}
-          {editando && (
-            <div className="gt-provas-form" style={{ marginTop: 12 }}>
-              <input className="gt-input" value={formNome} maxLength={50} onChange={(e) => setFormNome(e.target.value)} placeholder="Nome do desafio" />
-              <input className="gt-input" value={formStakes.semana} maxLength={80} onChange={(e) => setFormStakes({ ...formStakes, semana: e.target.value })} placeholder="Quem perde a semana…" />
-              <input className="gt-input" value={formStakes.final} maxLength={80} onChange={(e) => setFormStakes({ ...formStakes, final: e.target.value })} placeholder="Prêmio final" />
-              <div className="gt-provas-form-row">
-                <button className="gt-btn small" onClick={salvarEdicao}>Salvar</button>
-                <button className="gt-btn secondary small" onClick={() => setEditando(false)}>Cancelar</button>
-              </div>
-            </div>
-          )}
-          <div style={{ marginTop: 14 }}>
-            {souDono
-              ? <button className="gt-dsf-link danger" onClick={excluir}>Excluir desafio</button>
-              : <button className="gt-dsf-link danger" onClick={sair}>Sair do desafio</button>}
-          </div>
+          {gerenciarJSX}
         </div>
+          </>
+        )}
       </div>
 
       {juntoOpen && (
