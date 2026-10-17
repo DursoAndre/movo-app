@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v195";
+const APP_BUILD = "v196";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2408,6 +2408,10 @@ const APP_CSS = `
   .gt-onb-prog span.on { background:var(--accent); }
   .gt-onb-q { font-family:'Oswald',sans-serif; font-size:20px; line-height:1.2; margin:4px 0 4px; }
   .gt-onb-q.small { font-size:20px; margin-top:18px; }
+  .gt-strava-convite { display:flex; flex-direction:column; gap:10px; margin:0 0 12px; padding:12px 14px; background:var(--surface); border:1px solid var(--border); border-radius:14px; }
+  .gt-strava-convite .tx { display:flex; flex-direction:column; gap:2px; }
+  .gt-strava-convite .tx span { font-size:13px; color:var(--text-muted); }
+  .gt-strava-convite .ac { display:flex; align-items:center; gap:14px; }
   .gt-onb-origem { display:flex; flex-direction:column; gap:8px; margin:6px 0 16px; }
   .gt-onb-origem-op { display:flex; flex-direction:column; gap:2px; text-align:left; width:100%; min-height:56px; padding:10px 14px; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; color:var(--text); cursor:pointer; }
   .gt-onb-origem-op b { font-size:15px; }
@@ -13301,6 +13305,10 @@ function App() {
   const [pendingFichaPrompt, setPendingFichaPrompt] = useState(null); // { item, date, treinoNome, changes }
   const pullStartYRef = useRef(null);
   const [stravaConnected, setStravaConnected] = useState(false);
+  // Convite do Strava: aparece uma vez na aba Hoje, só depois de concluir a configuração inicial (e de qualquer ficha aberta por ela).
+  const [stravaConvite, setStravaConvite] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + "strava_convite") === "1"; } catch (e) { return false; } });
+  useEffect(() => { if (stravaConnected && stravaConvite) { setStravaConvite(false); try { localStorage.removeItem(STORAGE_PREFIX + "strava_convite"); } catch (e) {} } }, [stravaConnected, stravaConvite]);
+  function fecharStravaConvite() { setStravaConvite(false); try { localStorage.removeItem(STORAGE_PREFIX + "strava_convite"); } catch (e) {} }
   const [stravaConnecting, setStravaConnecting] = useState(false);
   const [stravaSyncing, setStravaSyncing] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -14763,6 +14771,7 @@ function App() {
     persist("atividades", data.atividades);
     persist("schedule", data.schedule);
     setNeedsOnboarding(false);
+    if (!onboardingIsRedo) { try { localStorage.setItem(STORAGE_PREFIX + "strava_convite", "1"); } catch (e) {} setStravaConvite(true); }
     setOnboardingIsRedo(false);
     showToast("Configuração inicial salva");
     if (abrirPlano) setTimeout(() => openMeta(), 0);
@@ -16205,6 +16214,15 @@ function App() {
               <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
             {coachLinks[0] && <CoachNotaHoje notas={coachNotas} linkId={coachLinks[0].link_id} nomeCoach={coachLinks[0].coach_nome} onEnviar={coachResponder} />}
+            {stravaConvite && !stravaConnected && !templatesOpen && !treinoIAOpen && (
+              <div className="gt-strava-convite" role="region" aria-label="Conectar o Strava">
+                <div className="tx"><b>Já usa o Strava?</b><span>Conecte para trazer suas corridas e atividades pra agenda.</span></div>
+                <div className="ac">
+                  <button type="button" className="gt-btn small" onClick={handleStravaConnect}><StravaIcon size={13} /> Conectar</button>
+                  <button type="button" className="gt-link-btn" onClick={fecharStravaConvite}>Agora não</button>
+                </div>
+              </div>
+            )}
             {desafioHoje && (
               <button type="button" className={`gt-desafio-chip ${desafioHojeAviso && desafioHojeAviso.lembrete ? "alerta" : ""}`} onClick={() => setTab("desafios")}>
                 <span className="row">
@@ -18589,11 +18607,6 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
               <button className="gt-btn gt-onb-cta" disabled={connectingStrava || !telValido(telefone)} onClick={() => { ev(isRedo ? "onboarding_refeito" : "onboarding_concluido"); finishOnboarding(onComplete); }}>Concluir e começar</button>
               {temCorrida && !isRedo && (
                 <button className="gt-btn secondary" disabled={connectingStrava || !telValido(telefone)} onClick={() => { ev("onb_plano_ia_clicado"); ev("onboarding_concluido"); finishOnboarding(onComplete, { abrirPlanoCorrida: true }); }}>✨ Concluir e montar plano de corrida com IA</button>
-              )}
-              {!isRedo && onCompleteWithStrava && (
-                <button type="button" className="gt-link-btn" style={{ alignSelf: "center", marginTop: 6 }} disabled={connectingStrava || !telValido(telefone)} onClick={() => { ev("onb_strava_clicado"); ev("onboarding_concluido"); setConnectingStrava(true); finishOnboarding(onCompleteWithStrava); }}>
-                  <StravaIcon size={13} /> {connectingStrava ? "Conectando…" : "Já usa o Strava? Concluir e conectar"}
-                </button>
               )}
             </div>
           </div>
