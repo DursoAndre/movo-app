@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v189";
+const APP_BUILD = "v190";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2349,6 +2349,17 @@ const APP_CSS = `
   .gt-admin-screen .gt-admin-list { max-height:none; overflow:visible; }
   .gt-admin-refresh { background:none; border:1px solid var(--border); color:var(--text); width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; flex-shrink:0; }
   .gt-admin-list { display:flex; flex-direction:column; gap:8px; max-height:32vh; overflow-y:auto; margin-bottom:8px; }
+  .gt-admin-contas { display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+  .gt-admin-contas-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .gt-admin-contas-sort { display:flex; gap:4px; flex-wrap:wrap; }
+  .gt-admin-contas-sort button { min-height:36px; padding:0 10px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted); font-size:12px; font-family:inherit; cursor:pointer; }
+  .gt-admin-contas-sort button.on { background:var(--accent); color:var(--on-accent, #fff); border-color:var(--accent); }
+  .gt-admin-contas-lista { max-height:52vh; overflow-y:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface); overscroll-behavior:contain; }
+  .gt-admin-conta { border-bottom:1px solid var(--border); } .gt-admin-conta:last-child { border-bottom:0; }
+  .gt-admin-conta-linha { width:100%; display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; min-height:48px; background:none; border:0; color:var(--text); text-align:left; font-family:inherit; cursor:pointer; }
+  .gt-admin-conta-linha .nm { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; } .gt-admin-conta-linha .nm small { color:var(--text-muted); font-size:12px; }
+  .gt-admin-conta-linha .dt { flex-shrink:0; text-align:right; display:flex; flex-direction:column; font-size:13px; } .gt-admin-conta-linha .dt small { color:var(--text-muted); font-size:11px; }
+  .gt-admin-conta-det { padding:0 12px 10px; }
   .gt-admin-user-card, .gt-admin-error-item { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
   .gt-admin-user-email { font-family:'Oswald',sans-serif; font-size:14px; margin-bottom:4px; }
   .gt-admin-user-row { font-size:12px; color:var(--text-muted); line-height:1.5; }
@@ -12968,6 +12979,79 @@ function AdminCatalogo({ showToast }) {
 }
 
 // --- Admin > Usuários: versão do app em uso (última abertura de cada pessoa, 7 dias) ---
+// Lista compacta de contas (admin): rola dentro de uma caixa, ordena por cadastro ou por último acesso e busca por nome/e-mail.
+function adminTempoRel(iso) {
+  if (!iso) return "nunca";
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (min < 2) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.round(h / 24);
+  return d < 60 ? `há ${d} dia${d === 1 ? "" : "s"}` : `há ${Math.round(d / 30)} meses`;
+}
+function adminContasOrdenar(lista, ordem, dir, busca) {
+  const q = normalizeSearch(busca || "");
+  const chave = (u) => {
+    const v = ordem === "acesso" ? (u.ultimo_acesso || u.ultimo_login) : u.cadastrou_em;
+    return v ? new Date(v).getTime() : null;
+  };
+  const f = (lista || []).filter((u) => !q || normalizeSearch(`${u.nome || ""} ${u.email || ""}`).includes(q));
+  const sinal = dir === "asc" ? 1 : -1;
+  return f.slice().sort((a, b) => {
+    const ka = chave(a), kb = chave(b);
+    if (ka === null && kb === null) return 0;
+    if (ka === null) return 1; // sem data vai sempre pro fim
+    if (kb === null) return -1;
+    return (ka - kb) * sinal;
+  });
+}
+function AdminContas({ usuarios }) {
+  const [ordem, setOrdem] = useState("cadastro");
+  const [dir, setDir] = useState("desc");
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(null);
+  const lista = adminContasOrdenar(usuarios, ordem, dir, busca);
+  const dt = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "—");
+  return (
+    <div className="gt-admin-contas">
+      <div className="gt-admin-contas-head">
+        <div className="gt-admin-summary" style={{ margin: 0 }}>{lista.length === (usuarios || []).length ? `${lista.length} conta${lista.length === 1 ? "" : "s"}` : `${lista.length} de ${(usuarios || []).length} contas`}</div>
+        <div className="gt-admin-contas-sort" role="group" aria-label="Ordenar contas">
+          <button type="button" aria-pressed={ordem === "cadastro"} className={ordem === "cadastro" ? "on" : ""} onClick={() => setOrdem("cadastro")}>Cadastro</button>
+          <button type="button" aria-pressed={ordem === "acesso"} className={ordem === "acesso" ? "on" : ""} onClick={() => setOrdem("acesso")}>Último acesso</button>
+          <button type="button" aria-label={dir === "desc" ? "Mais recentes primeiro. Tocar para inverter" : "Mais antigos primeiro. Tocar para inverter"} onClick={() => setDir(dir === "desc" ? "asc" : "desc")}>{dir === "desc" ? "↓ recentes" : "↑ antigos"}</button>
+        </div>
+      </div>
+      <input className="gt-input" placeholder="Buscar por nome ou e-mail" aria-label="Buscar conta" value={busca} onChange={(e) => setBusca(e.target.value)} />
+      <div className="gt-admin-contas-lista" role="list">
+        {lista.map((u) => {
+          const ab = aberto === u.user_id;
+          const ultimo = u.ultimo_acesso || u.ultimo_login;
+          return (
+            <div role="listitem" key={u.user_id} className={`gt-admin-conta ${ab ? "aberta" : ""}`}>
+              <button type="button" className="gt-admin-conta-linha" aria-expanded={ab} onClick={() => setAberto(ab ? null : u.user_id)}>
+                <span className="nm">{u.nome || u.email}{u.nome ? <small> {u.email}</small> : null}</span>
+                <span className="dt"><b>{ordem === "acesso" ? adminTempoRel(ultimo) : dt(u.cadastrou_em)}</b><small>{ordem === "acesso" ? `cadastro ${dt(u.cadastrou_em)}` : `acesso ${adminTempoRel(ultimo)}`}</small></span>
+              </button>
+              {ab && (
+                <div className="gt-admin-conta-det">
+                  <div className="gt-admin-user-row">Cadastrou: {u.cadastrou_em ? new Date(u.cadastrou_em).toLocaleString("pt-BR") : "—"} · Último login: {dt(u.ultimo_login)}</div>
+                  <div className="gt-admin-user-row">Último acesso real: {u.ultimo_acesso ? new Date(u.ultimo_acesso).toLocaleString("pt-BR") : "—"}</div>
+                  <div className="gt-admin-user-row">Onboarding: {u.fez_onboarding ? "sim" : "não"} · Strava: {u.conectou_strava ? "conectado" : "não"}</div>
+                  <div className="gt-admin-user-row">Acessos: {u.acessos_7d ?? 0} (7d) · {u.acessos_30d ?? 0} (30d) · {u.dias_com_acesso_7d ?? 0} dias diferentes (7d)</div>
+                  <div className="gt-admin-user-row">Dias com treino logado*: {u.dias_ativos_7d ?? 0} (7d) · {u.dias_ativos_30d ?? 0} (30d)</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {lista.length === 0 && <div className="gt-empty">{(usuarios || []).length === 0 ? "Nenhuma conta ainda." : "Ninguém com esse nome ou e-mail."}</div>}
+      </div>
+    </div>
+  );
+}
+
 function AdminVersoes() {
   const [linhas, setLinhas] = useState(null);
   useEffect(() => {
@@ -18033,20 +18117,7 @@ function App() {
             {!adminLoading && adminUsers && (
               <>
                 {adminTab === "usuarios" && (<>
-                <div className="gt-admin-summary">{adminUsers.length} usuário{adminUsers.length === 1 ? "" : "s"}</div>
-                <div className="gt-admin-list">
-                  {adminUsers.map((u) => (
-                    <div className="gt-admin-user-card" key={u.user_id}>
-                      <div className="gt-admin-user-email">{u.nome ? `${u.nome} (${u.email})` : u.email}</div>
-                      <div className="gt-admin-user-row">Cadastrou: {u.cadastrou_em ? new Date(u.cadastrou_em).toLocaleDateString("pt-BR") : "—"} · Último login: {u.ultimo_login ? new Date(u.ultimo_login).toLocaleDateString("pt-BR") : "—"}</div>
-                      <div className="gt-admin-user-row">Último acesso real: {u.ultimo_acesso ? new Date(u.ultimo_acesso).toLocaleString("pt-BR") : "—"}</div>
-                      <div className="gt-admin-user-row">Onboarding: {u.fez_onboarding ? "sim" : "não"} · Strava: {u.conectou_strava ? "conectado" : "não"}</div>
-                      <div className="gt-admin-user-row">Acessos ao app: {u.acessos_7d ?? 0} (7d) · {u.acessos_30d ?? 0} (30d) · {u.dias_com_acesso_7d ?? 0} dias diferentes (7d)</div>
-                      <div className="gt-admin-user-row">Dias com treino logado*: {u.dias_ativos_7d ?? 0} (7d) · {u.dias_ativos_30d ?? 0} (30d)</div>
-                    </div>
-                  ))}
-                  {adminUsers.length === 0 && <div className="gt-empty">Nenhum usuário ainda.</div>}
-                </div>
+                <AdminContas usuarios={adminUsers} />
                 <div className="gt-settings-hint" style={{ marginTop: -2 }}>* Dias com treino logado conta a data do treino, não quando ele foi salvo — sincronizar o Strava pela primeira vez importa até 30 dias pra trás de uma vez, então esse número pode subir bastante sem a pessoa ter aberto o app naqueles dias. "Último login" é só quando a sessão expira e a pessoa precisa logar de novo (pode ficar parado por semanas mesmo com uso diário) — "último acesso real" e "acessos ao app" é que mostram se a pessoa tá de fato abrindo o app.</div>
                 </>)}
                 {adminTab === "suporte" && (<>

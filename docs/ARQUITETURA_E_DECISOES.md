@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 16/10/2026 (v189).
+Última atualização: 16/10/2026 (v190).
 
 ---
 
@@ -129,6 +129,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **16/10/2026 (v190):** admin › aba Usuários ganhou lista compacta de contas (`AdminContas`): caixa com rolagem, ordena por **cadastro** ou **último acesso** (recentes/antigos), busca por nome ou e-mail, toque expande os detalhes. Usa os dados que o admin já carregava; sem SQL novo.
 - **16/10/2026 (v189):** bolinha de Desafios conta só avisos não vistos.
 - **16/10/2026 (v188):** avisos por e-mail (pedido de treinador, relatório compartilhado) via `avisar-email`; só para quem já tem conta; 15/dia; sem repetir em 7 dias.
 - **16/10/2026 (v187):** parâmetros de convite saem da URL depois de guardados (corrige puxar para atualizar reabrindo o desafio).
