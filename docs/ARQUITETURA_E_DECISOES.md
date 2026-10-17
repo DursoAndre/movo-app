@@ -37,10 +37,11 @@ PWA de treino em português do Brasil. Tudo num lugar só: musculação (fichas,
 
 ### 2.2 E-mail (Resend)
 - Funções que mandam e-mail: `notificar-feedback`, `alerta-saude`, `convidar-email` (convite de desafio), `avisar-email` (pedido de treinador e relatório compartilhado).
-- Secrets (só nomes; valores ficam no Supabase › Edge Functions › Secrets): `RESEND_API_KEY` (já existe, usada por feedback/alerta), `FEEDBACK_FROM`, `FEEDBACK_TO`, `CONVITE_FROM` (opcional; cai em `FEEDBACK_FROM` e depois em `onboarding@resend.dev`).
+- Secrets (só nomes; valores ficam no Supabase › Edge Functions › Secrets): `RESEND_API_KEY`, `FEEDBACK_FROM`, `FEEDBACK_TO` (opcional), `CONVITE_FROM` (opcional; cai em `FEEDBACK_FROM` e depois em `onboarding@resend.dev`).
+- **Estado em 16/10/2026 (print do Andre):** domínio movoapp.com.br **verificado** no Resend desde 15/10 (região São Paulo, sa-east-1). No Supabase só existiam `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` e `ANTHROPIC_API_KEY`: **`RESEND_API_KEY` não estava criada**, então nenhum e-mail das funções saía (nem feedback nem alerta de saúde). Andre vai criar `RESEND_API_KEY`, `FEEDBACK_FROM` = `Movo <aviso@movoapp.com.br>` e `CONVITE_FROM` = `Movo <convite@movoapp.com.br>`. A chave nunca é colada no chat.
 - Sem `RESEND_API_KEY` as funções respondem `enviado:false` e **não consomem o limite**.
 - Remetente `onboarding@resend.dev` só entrega para o dono da conta Resend. Para enviar a qualquer pessoa o domínio movoapp.com.br precisa estar **verificado** no Resend e o remetente usar esse domínio.
-- **A confirmar com Andre:** status da verificação do domínio no Resend e se `FEEDBACK_FROM`/`CONVITE_FROM` já apontam para movoapp.com.br. (A conta e a chave já existem; não pedir para criar de novo.)
+- **A confirmar:** que os 3 secrets acima foram criados e que um e-mail de teste chegou (Resend › Logs mostra o motivo se falhar).
 - Também planejado: e-mails de login do Supabase Auth pelo domínio (SMTP próprio) em vez do Gmail pessoal.
 
 ### 2.3 Edge functions (`supabase/functions/`)
@@ -114,7 +115,7 @@ Marcos recentes:
 
 ### Do Andre
 1. Rodar `challenge_acertos_saida.sql` (sair/excluir desafio com livro-caixa). Em 16/10 ainda não estava aplicado.
-2. E-mail: confirmar verificação do domínio no Resend e `CONVITE_FROM`/`FEEDBACK_FROM` com movoapp.com.br.
+2. E-mail: criar no Supabase os secrets `RESEND_API_KEY`, `FEEDBACK_FROM`, `CONVITE_FROM` (domínio já verificado no Resend) e testar.
 3. Migração de domínio: 26 pessoas nunca abriram o domínio novo, 21 sem banner; decidir `dominio_novo.redirecionar=true`; URL de retorno do Strava; Site URL do Supabase; templates de e-mail do Supabase; tirar a lista de e-mails da tela Domínio no admin; congelar `meu-treino`.
 4. Jurídico/contábil: perguntas da seção 5 de `PLANO_NEGOCIO_E_PREMIOS.md` ao contador e ao advogado; revisão legal antes de abrir recursos com dinheiro; teste de validação de venda.
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
