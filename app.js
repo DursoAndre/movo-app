@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v184";
+const APP_BUILD = "v185";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2889,6 +2889,14 @@ const APP_CSS = `
   .gt-tc-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-top:8px; }
   .gt-tc-item .ti { font-family:'Oswald',sans-serif; font-size:16px; }
   .gt-tc-item .mt { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-cc-ed { display:flex; flex-direction:column; gap:8px; }
+  .gt-cc-passo { background:var(--surface-2); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:6px; }
+  .gt-cc-bloco { border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:8px; }
+  .gt-cc-bloco .gt-cc-passo { background:var(--surface); }
+  .gt-cc-linha { display:flex; gap:6px; flex-wrap:nowrap; min-width:0; } .gt-cc-linha .gt-input { min-width:0; flex:1; }
+  .gt-cc-qtd { max-width:74px; flex:none !important; } .gt-cc-un { max-width:84px; flex:none !important; }
+  .gt-cc-acoes { display:flex; justify-content:flex-end; gap:2px; }
+  .gt-cc-aluno { margin-bottom:8px; }
   .gt-tc-resumo { font-size:12px; margin-top:6px; line-height:1.45; }
   .gt-plano-ou { text-align:center; font-size:12px; color:var(--text-muted); margin:6px 0 2px; }
   .gt-plano-prompt { min-height:120px; max-height:220px; font-family:'Roboto Mono',monospace; font-size:12px; line-height:1.4; resize:vertical; }
@@ -9291,6 +9299,75 @@ function coachSemanaVazia() {
   return { dias: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }, fichas: {} };
 }
 function coachClonar(x) { return JSON.parse(JSON.stringify(x)); }
+// ---------- Treino de corrida estruturado do treinador ----------
+// item da semana: { tipo:"atividade", id:"corrida", nome, detalhe (texto curto p/ apps antigos), corrida:{modelo,titulo,distanciaKm,duracaoMin,pace,esforco,detalhes,etapas} }
+const COACH_RE_PACE = /^\d{1,2}:\d{2}(\s*[-–]\s*\d{1,2}:\d{2})?$/;
+function coachPassoDraft(p) {
+  const base = { tipo: p.tipo, pace: p.pace || "", descricao: p.descricao || "", esforco: p.esforco || "" };
+  if (p.distanciaM) return p.distanciaM >= 1000 && p.distanciaM % 100 === 0 ? { ...base, qtd: String(p.distanciaM / 1000).replace(".", ","), un: "km" } : { ...base, qtd: String(p.distanciaM), un: "m" };
+  const s = p.duracaoSeg || 0;
+  return s % 60 === 0 ? { ...base, qtd: String(s / 60), un: "min" } : { ...base, qtd: String(s), un: "s" };
+}
+function coachEtapasDraft(etapas) {
+  return (etapas || []).map((e) => (e.passos ? { rep: String(e.repeticoes), passos: e.passos.map(coachPassoDraft) } : coachPassoDraft(e)));
+}
+function coachDraftPasso(d) {
+  const q = parseFloat(String(d.qtd).replace(",", ".")) || 0;
+  const base = { tipo: d.tipo, esforco: d.esforco || "", pace: String(d.pace || "").trim(), descricao: String(d.descricao || "").trim() };
+  if (d.un === "km") return { ...base, distanciaM: Math.round(q * 1000), duracaoSeg: 0 };
+  if (d.un === "m") return { ...base, distanciaM: Math.round(q), duracaoSeg: 0 };
+  return { ...base, distanciaM: 0, duracaoSeg: Math.round(d.un === "min" ? q * 60 : q) };
+}
+// Devolve { ok, etapas } ou { ok:false, erro }. Valida quantidade e pace antes de normalizar.
+function coachDraftEtapas(ds) {
+  const passos = [];
+  (ds || []).forEach((e) => (e.passos ? e.passos : [e]).forEach((p) => passos.push(p)));
+  if (!passos.length) return { ok: false, erro: "Adicione ao menos uma etapa." };
+  for (const p of passos) {
+    const q = parseFloat(String(p.qtd).replace(",", ".")) || 0;
+    if (!(q > 0)) return { ok: false, erro: "Toda etapa precisa de distância ou tempo." };
+    if (String(p.pace || "").trim() && !COACH_RE_PACE.test(String(p.pace).trim())) return { ok: false, erro: "O pace precisa estar no formato 5:30 ou 5:30-5:45." };
+  }
+  for (const e of ds) if (e.passos && !(parseInt(e.rep, 10) >= 1)) return { ok: false, erro: "Informe quantas repetições tem o bloco." };
+  const raw = ds.map((e) => (e.passos ? { repeticoes: parseInt(e.rep, 10), passos: e.passos.map(coachDraftPasso) } : coachDraftPasso(e)));
+  const etapas = planoEtapasNorm(raw);
+  return etapas.length ? { ok: true, etapas } : { ok: false, erro: "Confira as etapas." };
+}
+function coachCorridaNorm(c) {
+  if (!c || typeof c !== "object") return null;
+  const etapas = planoEtapasNorm(c.etapas);
+  if (!etapas.length) return null;
+  const km = Math.round((+c.distanciaKm || 0) * 10) / 10;
+  const dur = Math.round(+c.duracaoMin || 0);
+  return {
+    modelo: typeof c.modelo === "string" && TREINOS_CORRIDA[c.modelo] ? c.modelo : "",
+    titulo: String(c.titulo || "Treino de corrida").trim().slice(0, 60) || "Treino de corrida",
+    distanciaKm: km > 0 && km <= 100 ? km : 0,
+    duracaoMin: dur > 0 && dur <= 600 ? dur : 0,
+    pace: typeof c.pace === "string" && COACH_RE_PACE.test(c.pace.trim()) ? c.pace.trim() : "",
+    esforco: String(c.esforco || "").trim().slice(0, 80),
+    detalhes: String(c.detalhes || "").trim().slice(0, 300),
+    etapas,
+  };
+}
+// Soma das distâncias das etapas (km); 0 se alguma etapa for por tempo.
+function coachEtapasKm(etapas) {
+  let m = 0, tempo = false;
+  (etapas || []).forEach((e) => (e.passos ? Array.from({ length: e.repeticoes }, () => e.passos).reduce((a, b) => a.concat(b), []) : [e]).forEach((p) => { if (p.distanciaM) m += p.distanciaM; else tempo = true; }));
+  return tempo ? 0 : Math.round(m / 100) / 10;
+}
+function coachCorridaMeta(c) {
+  return [c.distanciaKm ? `${String(c.distanciaKm).replace(".", ",")} km` : "", c.duracaoMin ? `≈ ${c.duracaoMin} min` : "", c.pace ? `pace ${c.pace}` : ""].filter(Boolean).join(" · ");
+}
+function coachCorridaDetalhe(c) { return String(c.titulo || "Treino de corrida").slice(0, 80); }
+// Linhas de texto (PDF): meta, observação e cada etapa.
+function coachCorridaLinhas(c) {
+  const out = [];
+  const m = coachCorridaMeta(c); if (m) out.push(m);
+  (c.etapas || []).forEach((e) => out.push(e.passos ? `${e.repeticoes}× (${e.passos.map(planoPassoTexto).join(" + ")})` : planoPassoTexto(e)));
+  if (c.detalhes) out.push(c.detalhes);
+  return out;
+}
 function coachTxtEx(n) { return n + (n === 1 ? " exercício" : " exercícios"); }
 function coachContaExercicios(ficha) {
   return ((ficha && ficha.blocos) || []).reduce((n, b) => n + ((b.exercicios || []).length), 0);
@@ -9609,7 +9686,9 @@ function coachFichaConteudo(sem, aluno, coachNome, rodape) {
         }));
         itens.push({ titulo: f.nome || "Treino", detalhe: f.duracaoMin ? `${f.duracaoMin} min` : "", exs: f.notas ? [{ linha: f.notas, obs: "" }, ...exs] : exs });
       } else {
-        itens.push({ titulo: it.nome || "Atividade", detalhe: "", exs: it.detalhe ? [{ linha: it.detalhe, obs: "" }] : [] });
+        const cn = coachCorridaNorm(it.corrida);
+        if (cn) itens.push({ titulo: cn.titulo, detalhe: "Corrida", exs: coachCorridaLinhas(cn).map((l) => ({ linha: l, obs: "" })) });
+        else itens.push({ titulo: it.nome || "Atividade", detalhe: "", exs: it.detalhe ? [{ linha: it.detalhe, obs: "" }] : [] });
       }
     });
     if (itens.length) dias.push({ nome: COACH_DIAS[d], itens });
@@ -9807,6 +9886,8 @@ function coachDiffSemana(payload, treinos, schedule, linkId, atividades) {
         const difs = coachDiffFicha(atualT, payload.fichas[it.ref]);
         if (!difs.length) linhas.push({ sinal: "=", texto: `${nome} (sem mudança)` });
         difs.forEach((d) => { linhas.push({ sinal: d.sinal, texto: `${nome} · ${d.texto}` }); if (d.sinal === "~" && /kg/.test(d.texto)) cargas++; if (d.sinal === "+") novos++; if (d.sinal === "-") removidos++; });
+      } else if (JSON.stringify(coachCorridaNorm(it.corrida)) !== JSON.stringify(coachCorridaNorm(existente.corrida))) {
+        linhas.push({ sinal: "~", texto: `${nome} · treino de corrida ${coachCorridaNorm(it.corrida) ? "alterado" : "removido"}` });
       } else {
         linhas.push({ sinal: "=", texto: `${nome} (sem mudança)` });
       }
@@ -9847,7 +9928,7 @@ function coachAplicarSemana(payload, meta, estado, dowsAceitos) {
         entradas.push({ tipo: "treino", id });
       } else if (it.tipo === "atividade") {
         if (!atividades.some((a) => a.id === it.id)) atividades.push({ id: it.id, nome: it.nome || it.id });
-        entradas.push({ tipo: "atividade", id: it.id, origem: tag, ...(it.detalhe ? { nota: it.detalhe } : {}) });
+        entradas.push({ tipo: "atividade", id: it.id, origem: tag, ...(it.detalhe ? { nota: it.detalhe } : {}), ...(coachCorridaNorm(it.corrida) ? { corrida: coachCorridaNorm(it.corrida) } : {}) });
       }
     });
     schedule[dow] = [...resto, ...entradas];
@@ -10692,6 +10773,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   const [ultimo, setUltimo] = useState(null); // último payload enviado (pra duplicar e comparar)
   const [detalhe, setDetalhe] = useState(null);
   const [diaAberto, setDiaAberto] = useState(null);
+  const [corridaModal, setCorridaModal] = useState(null); // { dow, idx|null }
   const [fichaEdit, setFichaEdit] = useState(null); // { ref, ficha, dow }
   const [menu, setMenu] = useState(false);
   const [modelos, setModelos] = useState(null);
@@ -10748,6 +10830,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   const igualUltimo = ultimo && coachSemanaIgual(ultimo, sem);
   const primeiroNome = aluno.nome.split(" ")[0];
 
+  function trocarItem(dow, idx, item) { setSem((p) => ({ ...p, dias: { ...p.dias, [dow]: (p.dias[dow] || []).map((x, i) => (i === idx ? item : x)) } })); }
   function addItem(dow, item) { setSem((p) => ({ ...p, dias: { ...p.dias, [dow]: [...(p.dias[dow] || []), item] } })); }
   function removerItem(dow, idx) {
     setSem((p) => {
@@ -10888,10 +10971,11 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
                 return (
                   <div key={idx} className="gt-co-item">
                     <div className="tx">
-                      <div className="t">{ficha ? ficha.nome : (it.nome || nomeAtividade(it.id))}</div>
-                      <div className="d">{ficha ? coachTxtEx(coachContaExercicios(ficha)) : (it.detalhe || "Atividade")}</div>
+                      <div className="t">{ficha ? ficha.nome : it.corrida ? it.corrida.titulo : (it.nome || nomeAtividade(it.id))}</div>
+                      <div className="d">{ficha ? coachTxtEx(coachContaExercicios(ficha)) : it.corrida ? (coachCorridaMeta(it.corrida) || "Treino de corrida") : (it.detalhe || "Atividade")}</div>
                     </div>
                     {ficha && <button type="button" className="gt-co-mini" onClick={() => setFichaEdit({ ref: it.ref, ficha })}>Editar</button>}
+                    {it.corrida && <button type="button" className="gt-co-mini" onClick={() => setCorridaModal({ dow, idx })}>Editar</button>}
                     <button type="button" className="gt-co-mini" onClick={() => setCopiarDe({ dow, idx })}>Copiar</button>
                     <button type="button" className="gt-co-mini perigo" aria-label={`Remover ${ficha ? ficha.nome : "item"}`} onClick={() => setRemoverQ({ dow, idx, nome: ficha ? ficha.nome : (it.nome || nomeAtividade(it.id)) })}>✕</button>
                   </div>
@@ -10917,6 +11001,18 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
           onAtividade={(it) => { addItem(diaAberto, it); setDiaAberto(null); }}
           onNova={() => { const ref = coachNovoId(); setFichaEdit({ ref, dow: diaAberto, nova: true, ficha: { id: ref, nome: "", duracaoMin: 60, notas: "", blocos: [] } }); setDiaAberto(null); }}
           onImportar={() => { setImportar({ dow: diaAberto }); setDiaAberto(null); }}
+          onCorrida={() => { setCorridaModal({ dow: diaAberto, idx: null }); setDiaAberto(null); }}
+        />
+      )}
+      {corridaModal && (
+        <CoachCorridaModal
+          inicial={corridaModal.idx != null ? coachCorridaNorm(((sem.dias[corridaModal.dow] || [])[corridaModal.idx] || {}).corrida) : null}
+          onClose={() => setCorridaModal(null)}
+          onSalvar={(c) => {
+            const item = { tipo: "atividade", id: "corrida", nome: "Corrida", detalhe: coachCorridaDetalhe(c), corrida: c };
+            if (corridaModal.idx != null) trocarItem(corridaModal.dow, corridaModal.idx, item); else addItem(corridaModal.dow, item);
+            setCorridaModal(null);
+          }}
         />
       )}
       {fichaEdit && (
@@ -11212,7 +11308,159 @@ function CoachCopiarPara({ de, onCopiar, onClose }) {
     </>
   );
 }
-function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha, onReusar, onAtividade, onNova, onImportar }) {
+const COACH_UNIDADES = [["m", "m"], ["km", "km"], ["min", "min"], ["s", "s"]];
+function CoachPassoRow({ p, onChange, onRemove, onUp, onDown }) {
+  return (
+    <div className="gt-cc-passo">
+      <div className="gt-cc-linha">
+        <select className="gt-input" aria-label="Tipo da etapa" value={p.tipo} onChange={(e) => onChange({ ...p, tipo: e.target.value })}>
+          {Object.keys(PLANO_ETAPA_TIPOS).map((k) => <option key={k} value={k}>{PLANO_ETAPA_TIPOS[k].nome}</option>)}
+        </select>
+        <input className="gt-input gt-cc-qtd" inputMode="decimal" aria-label="Quantidade" value={p.qtd} onChange={(e) => onChange({ ...p, qtd: e.target.value })} />
+        <select className="gt-input gt-cc-un" aria-label="Unidade" value={p.un} onChange={(e) => onChange({ ...p, un: e.target.value })}>
+          {COACH_UNIDADES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
+      <div className="gt-cc-linha">
+        <input className="gt-input" aria-label="Pace alvo" placeholder="Pace (ex.: 4:30)" value={p.pace} onChange={(e) => onChange({ ...p, pace: e.target.value })} />
+        <input className="gt-input" aria-label="Observação da etapa" placeholder="Obs. (opcional)" maxLength={80} value={p.descricao} onChange={(e) => onChange({ ...p, descricao: e.target.value })} />
+      </div>
+      <div className="gt-cc-acoes">
+        {onUp && <button type="button" className="gt-co-mini" aria-label="Subir" onClick={onUp}>↑</button>}
+        {onDown && <button type="button" className="gt-co-mini" aria-label="Descer" onClick={onDown}>↓</button>}
+        <button type="button" className="gt-co-mini perigo" aria-label="Remover etapa" onClick={onRemove}>✕</button>
+      </div>
+    </div>
+  );
+}
+function CoachEtapasEditor({ itens, onChange }) {
+  const novoPasso = (tipo, qtd, un) => ({ tipo, qtd, un, pace: "", descricao: "", esforco: "" });
+  const mover = (i, d) => { const j = i + d; if (j < 0 || j >= itens.length) return; const n = itens.slice(); [n[i], n[j]] = [n[j], n[i]]; onChange(n); };
+  const set = (i, v) => onChange(itens.map((x, k) => (k === i ? v : x)));
+  return (
+    <div className="gt-cc-ed">
+      {itens.map((e, i) => e.passos ? (
+        <div className="gt-cc-bloco" key={i}>
+          <div className="gt-cc-linha" style={{ alignItems: "center" }}>
+            <span className="gt-plano-lbl" style={{ margin: 0 }}>Repetir</span>
+            <input className="gt-input gt-cc-qtd" inputMode="numeric" aria-label="Repetições" value={e.rep} onChange={(ev) => set(i, { ...e, rep: ev.target.value.replace(/\D/g, "").slice(0, 2) })} />
+            <span className="gt-plano-lbl" style={{ margin: 0 }}>vezes</span>
+            <span style={{ flex: 1 }}></span>
+            <button type="button" className="gt-co-mini" aria-label="Subir bloco" onClick={() => mover(i, -1)}>↑</button>
+            <button type="button" className="gt-co-mini" aria-label="Descer bloco" onClick={() => mover(i, 1)}>↓</button>
+            <button type="button" className="gt-co-mini perigo" aria-label="Remover bloco" onClick={() => onChange(itens.filter((_, k) => k !== i))}>✕</button>
+          </div>
+          {e.passos.map((p, j) => (
+            <CoachPassoRow key={j} p={p}
+              onChange={(v) => set(i, { ...e, passos: e.passos.map((x, k) => (k === j ? v : x)) })}
+              onRemove={() => (e.passos.length > 1 ? set(i, { ...e, passos: e.passos.filter((_, k) => k !== j) }) : onChange(itens.filter((_, k) => k !== i)))}
+              onUp={j > 0 ? () => { const n = e.passos.slice(); [n[j - 1], n[j]] = [n[j], n[j - 1]]; set(i, { ...e, passos: n }); } : null}
+              onDown={j < e.passos.length - 1 ? () => { const n = e.passos.slice(); [n[j + 1], n[j]] = [n[j], n[j + 1]]; set(i, { ...e, passos: n }); } : null} />
+          ))}
+          {e.passos.length < 6 && <button type="button" className="gt-btn secondary small" onClick={() => set(i, { ...e, passos: [...e.passos, novoPasso("recuperacao", "90", "s")] })}>+ passo no bloco</button>}
+        </div>
+      ) : (
+        <CoachPassoRow key={i} p={e} onChange={(v) => set(i, v)} onRemove={() => onChange(itens.filter((_, k) => k !== i))}
+          onUp={i > 0 ? () => mover(i, -1) : null} onDown={i < itens.length - 1 ? () => mover(i, 1) : null} />
+      ))}
+      <div className="gt-modal-actions" style={{ marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" className="gt-btn secondary small" onClick={() => onChange([...itens, novoPasso("leve", "1", "km")])}>+ Etapa</button>
+        <button type="button" className="gt-btn secondary small" onClick={() => onChange([...itens, { rep: "4", passos: [novoPasso("forte", "400", "m"), novoPasso("recuperacao", "90", "s")] }])}>+ Bloco repetido</button>
+      </div>
+    </div>
+  );
+}
+// Modal do treinador: escolhe um modelo (ou parte de um treino existente) e ajusta etapa por etapa.
+function CoachCorridaModal({ inicial, onSalvar, onClose }) {
+  const [fase, setFase] = useState(inicial ? "editar" : "montar");
+  const [tipo, setTipo] = useState("tiros400");
+  const [kmTxt, setKmTxt] = useState("");
+  const [nivel, setNivel] = useState("intermediario");
+  const [paceTxt, setPaceTxt] = useState(inicial ? inicial.pace || "" : "");
+  const [erro, setErro] = useState("");
+  const [titulo, setTitulo] = useState(inicial ? inicial.titulo : "");
+  const [detalhes, setDetalhes] = useState(inicial ? inicial.detalhes : "");
+  const [modelo, setModelo] = useState(inicial ? inicial.modelo : "");
+  const [esforco, setEsforco] = useState(inicial ? inicial.esforco : "");
+  const [itens, setItens] = useState(inicial ? coachEtapasDraft(inicial.etapas) : []);
+  const km = parseFloat(String(kmTxt).replace(",", ".")) || 0;
+  const cfg = TREINOS_CORRIDA[tipo];
+  function montar() {
+    if (paceTxt.trim() && !planoParsePace(paceTxt)) { setErro("O pace leve precisa estar no formato 6:30 (min/km)."); return; }
+    const r = planoGerarTreinoCorrida(tipo, km, nivel, planoParsePace(paceTxt));
+    if (!r.ok) { setErro(r.erro); return; }
+    setErro(""); setTitulo(r.treino.titulo); setDetalhes(r.treino.detalhes || ""); setModelo(tipo); setEsforco(r.treino.esforco || ""); setItens(coachEtapasDraft(r.treino.etapas)); setFase("editar");
+  }
+  const conv = coachDraftEtapas(itens);
+  function salvar() {
+    if (!conv.ok) { setErro(conv.erro); return; }
+    const paceBase = planoParsePace(paceTxt);
+    const total = planoEtapasSegmentos(conv.etapas, paceBase > 0 ? paceBase : 0).reduce((t, x) => t + x.min, 0);
+    const c = coachCorridaNorm({ modelo, titulo: titulo.trim() || (TREINOS_CORRIDA[modelo] || {}).nome || "Treino de corrida", distanciaKm: coachEtapasKm(conv.etapas), duracaoMin: Math.round(total), pace: "", esforco, detalhes, etapas: conv.etapas });
+    if (!c) { setErro("Confira as etapas."); return; }
+    onSalvar(c);
+  }
+  return (
+    <div className="gt-modal-backdrop" onClick={onClose}>
+      <div className="gt-modal gt-plano-modal" role="dialog" aria-modal="true" aria-label="Treino de corrida" onClick={(e) => e.stopPropagation()}>
+        <div className="gt-provas-head">
+          <h3><Ei e="🏃" /> Treino de corrida</h3>
+          <button type="button" className="gt-provas-close" aria-label="Fechar" onClick={onClose} title="Fechar">✕</button>
+        </div>
+        {fase === "montar" && (
+          <div className="gt-plano-form">
+            <div className="gt-plano-dica">Escolha um modelo, a distância e o nível. O app monta as etapas e você ajusta o que quiser.</div>
+            <label className="gt-plano-lbl">Modelo</label>
+            <div className="gt-provas-filters" style={{ margin: 0 }}>
+              {Object.keys(TREINOS_CORRIDA).map((k) => <button key={k} type="button" className={`gt-provas-pill ${tipo === k ? "on" : ""}`} onClick={() => { setTipo(k); setErro(""); }}>{TREINOS_CORRIDA[k].nome}</button>)}
+            </div>
+            <div className="gt-plano-dica"><Ei e={cfg.emoji} /> {cfg.desc}</div>
+            <label className="gt-plano-lbl">Distância total (km)</label>
+            <div className="gt-provas-filters" style={{ margin: "0 0 6px" }}>
+              {[3, 5, 8, 10, 15].map((d) => <button key={d} type="button" className={`gt-provas-pill ${km === d ? "on" : ""}`} onClick={() => { setKmTxt(String(d)); setErro(""); }}>{d} km</button>)}
+            </div>
+            <input className="gt-input" inputMode="decimal" placeholder="Ou digite, ex.: 7,5" value={kmTxt} onChange={(e) => { setKmTxt(e.target.value); setErro(""); }} />
+            <label className="gt-plano-lbl">Nível do aluno</label>
+            <div className="gt-provas-filters" style={{ margin: 0 }}>
+              {Object.keys(TREINOS_CORRIDA_NIVEIS).map((k) => <button key={k} type="button" className={`gt-provas-pill ${nivel === k ? "on" : ""}`} onClick={() => setNivel(k)}>{TREINOS_CORRIDA_NIVEIS[k]}</button>)}
+            </div>
+            <label className="gt-plano-lbl">Pace de um treino leve do aluno (opcional)</label>
+            <input className="gt-input" placeholder="Ex.: 6:30. Com isso, cada etapa já sai com pace alvo." value={paceTxt} onChange={(e) => { setPaceTxt(e.target.value); setErro(""); }} />
+            {erro && <div className="gt-plano-erro">{erro}</div>}
+            <div className="gt-modal-actions" style={{ marginTop: 10 }}>
+              <button type="button" className="gt-btn" onClick={montar}>Montar e editar</button>
+              <button type="button" className="gt-btn secondary" onClick={onClose}>Cancelar</button>
+            </div>
+          </div>
+        )}
+        {fase === "editar" && (
+          <div className="gt-plano-form">
+            <label className="gt-plano-lbl">Nome do treino</label>
+            <input className="gt-input" maxLength={60} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+            <label className="gt-plano-lbl">Etapas</label>
+            <CoachEtapasEditor itens={itens} onChange={(n) => { setItens(n); setErro(""); }} />
+            <label className="gt-plano-lbl">Recado para o aluno (opcional)</label>
+            <textarea className="gt-input" rows={2} maxLength={300} value={detalhes} onChange={(e) => setDetalhes(e.target.value)} />
+            {conv.ok && (
+              <div style={{ marginTop: 10 }}>
+                <div className="gt-plano-lbl">Como o aluno vai ver</div>
+                <div className="mt" style={{ fontSize: 13, color: "var(--text-muted)" }}>{coachCorridaMeta({ distanciaKm: coachEtapasKm(conv.etapas) })}</div>
+                <PlanoEtapas etapas={conv.etapas} paceBase={planoParsePace(paceTxt)} />
+              </div>
+            )}
+            {erro && <div className="gt-plano-erro">{erro}</div>}
+            <div className="gt-modal-actions" style={{ marginTop: 10 }}>
+              <button type="button" className="gt-btn" onClick={salvar}>{inicial ? "Salvar alterações" : "Adicionar ao dia"}</button>
+              {!inicial && <button type="button" className="gt-btn secondary" onClick={() => setFase("montar")}>Trocar modelo</button>}
+              {inicial && <button type="button" className="gt-btn secondary" onClick={onClose}>Cancelar</button>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha, onReusar, onAtividade, onNova, onImportar, onCorrida }) {
   const [ativ, setAtiv] = useState(null);
   const naSemana = Object.keys(sem.fichas);
   return (
@@ -11232,6 +11480,7 @@ function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha,
           <>
             <button type="button" className="gt-sheet-item" onClick={onNova}><div className="tx"><div className="t">Criar ficha nova</div><div className="d">Monte exercício por exercício</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={onImportar}><div className="tx"><div className="t">Importar ficha</div><div className="d">Foto, PDF, planilha ou texto do WhatsApp</div></div></button>
+            <button type="button" className="gt-sheet-item" onClick={onCorrida}><div className="tx"><div className="t">Treino de corrida</div><div className="d">Tiros, ritmo, longão… com etapas e pace</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={() => setAtiv({ nome: "Corrida", detalhe: "" })}><div className="tx"><div className="t">Corrida ou outra atividade</div><div className="d">Com detalhe: distância, ritmo…</div></div></button>
             {naSemana.length > 0 && <div className="gt-co-sec" style={{ marginTop: 10 }}>JÁ NESTA SEMANA</div>}
             {naSemana.map((ref) => <button key={ref} type="button" className="gt-sheet-item" onClick={() => onReusar(ref)}><div className="tx"><div className="t">{sem.fichas[ref].nome}</div><div className="d">{coachTxtEx(coachContaExercicios(sem.fichas[ref]))}</div></div></button>)}
@@ -16001,7 +16250,8 @@ function App() {
                       <span className="gt-item-tag">{atividade.descanso ? "DESCANSO" : "ATIVIDADE"}</span>
                       {atividade.descanso && <span className="gt-item-tag auto-done" title="Registrado automaticamente">✓ registrado</span>}
                       <div className="gt-item-main">
-                        <div className="gt-item-nm">{atividade.nome}</div>
+                        <div className="gt-item-nm">{item.corrida ? item.corrida.titulo : atividade.nome}{item.corrida && item.origem && <span className="gt-co-prescrito">Do treinador</span>}</div>
+                        {item.corrida && <div className="gt-item-meta">{coachCorridaMeta(item.corrida) || "Treino de corrida"}</div>}
                         {log.comentario && <div className="gt-item-meta">{log.comentario.slice(0, 40)}{log.comentario.length > 40 ? "…" : ""}</div>}
                       </div>
                       <div className="gt-chevron">{isOpen ? "▲" : "▼"}</div>
@@ -16015,6 +16265,13 @@ function App() {
                     </div>
                     {isOpen && (
                       <div className="gt-atividade-body">
+                        {item.corrida && (
+                          <div className="gt-cc-aluno">
+                            {item.corrida.detalhes && <div className="gt-plano-dica">{item.corrida.detalhes}</div>}
+                            <PlanoEtapas etapas={item.corrida.etapas} paceBase={0} />
+                          </div>
+                        )}
+                        {!item.corrida && item.nota && <div className="gt-plano-dica">{item.nota}</div>}
                         {atividade.descanso && (
                           <div className="gt-item-carga-row">
                             <span className="gt-text-muted">Dia de descanso registrado — não conta como dia ativo nem entra na carga.</span>
