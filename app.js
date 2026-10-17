@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v193";
+const APP_BUILD = "v194";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2078,8 +2078,8 @@ const APP_CSS = `
      (podem crescer e rolar a página normalmente se precisar). */
   .gt-shell { height:100vh; height:100dvh; box-sizing:border-box; padding-top:env(safe-area-inset-top, 0px); padding-bottom:0; background:var(--bg); display:flex; flex-direction:column; overflow:hidden; overscroll-behavior:none; }
   .gt-shell > .gt-header { flex-shrink:0; }
-  .gt-shell > .gt-body { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
-  .gt-shell > .gt-tabbar { position:static; flex-shrink:0; margin:0 auto; width:100%; }
+  .gt-shell > .gt-body { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; position:relative; z-index:1; }
+  .gt-shell > .gt-tabbar { position:relative; z-index:0; flex-shrink:0; margin:0 auto; width:100%; }
   .gt-header { padding:10px 18px; border-bottom:1px solid var(--border); }
   .gt-header-row { display:flex; align-items:center; gap:14px; min-height:44px; }
   .gt-header-row .gt-title { flex:1; min-width:0; margin:0; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:20px; }
