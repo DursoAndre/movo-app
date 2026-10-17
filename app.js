@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v191";
+const APP_BUILD = "v192";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2090,8 +2090,8 @@ const APP_CSS = `
   .gt-menu-btn span { display:block; width:18px; height:2px; border-radius:2px; background:var(--text); }
   .gt-menu-dot { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:var(--warn); }
   .gt-menu-dot.inline { position:static; margin-left:auto; flex-shrink:0; }
-  .gt-menu-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:70; animation:gtFadeIn .15s ease; }
-  .gt-menu { position:absolute; top:0; bottom:0; left:0; width:min(300px,84vw); background:var(--bg); border-right:1px solid var(--border); padding:18px 12px 24px; overflow-y:auto; animation:gtSlideIn .2s ease; display:flex; flex-direction:column; }
+  .gt-menu-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:70; animation:gtFadeIn .15s ease; overscroll-behavior:none; touch-action:none; }
+  .gt-menu { position:absolute; top:0; bottom:0; left:0; width:min(300px,84vw); background:var(--bg); border-right:1px solid var(--border); padding:18px 12px calc(24px + env(safe-area-inset-bottom, 0px)); overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch; max-height:100dvh; animation:gtSlideIn .2s ease; display:flex; flex-direction:column; }
   @keyframes gtSlideIn { from { transform:translateX(-100%); } to { transform:none; } }
   @keyframes gtFadeIn { from { opacity:0; } to { opacity:1; } }
   .gt-menu-user { padding:4px 8px 14px; border-bottom:1px solid var(--border); margin-bottom:6px; }
