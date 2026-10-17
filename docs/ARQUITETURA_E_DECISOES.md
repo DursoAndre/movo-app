@@ -27,6 +27,14 @@ PWA de treino em português do Brasil. Tudo num lugar só: musculação (fichas,
 | E-mail transacional | Resend (conta criada; domínio movoapp.com.br; ver 2.2) |
 | Build | `npm run build` (esbuild, `build.mjs`) no GitHub Actions; publica `dist/` |
 
+### 2.0 Vocabulário: dois "admins" diferentes (não confundir)
+| Como o Andre chama | O que é | Onde fica | Dados |
+|---|---|---|---|
+| **Painel de métricas** (ou "Movo Admin") | PWA separado só de métricas e gestão: visão geral, retenção, funil, ativação, canais, convites, domínio | `movoapp.com.br/admin/`, repositório **movo-site** (pasta `admin/`) | RPCs `admin_m_*` (`admin_metricas*.sql`), só para quem passa em `is_movo_admin()` |
+| **Aba Admin do app** | Tela dentro do app normal (menu), com abas Geral, Usuários, IA, Planos, Treinadores, Suporte, Catálogo | `app.js` (repositório **movo-app**), `adminTab` | RPCs `admin_*` (usage_stats, coach_list, feedback...) |
+
+Regra: se o Andre disser só "admin", **perguntar qual** antes de mexer. A lista de contas (ordem de cadastro/último acesso) está na **aba Admin do app › Usuários** (v190). Ainda não está no painel de métricas.
+
 ### 2.1 Regras de entrega (sempre)
 - Todo commit que muda o app: subir `APP_BUILD` no `app.js` (ex.: "v189") **e** `CACHE` no `sw.js` (ex.: "treino-app-v189"). Sem isso o cache do service worker segura a versão antiga.
 - Commit termina com:

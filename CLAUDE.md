@@ -5,3 +5,4 @@
 3. Antes de afirmar que algo não existe, busque no código (`grep`) e consulte a memória.
 4. Regras de entrega, SQL e testes: seção 2.1 e seção 3 do arquivo acima.
 5. Respostas em pt-BR e concisas.
+6. Existem **dois admins**: o "painel de métricas" (`movo-site/admin`, movoapp.com.br/admin) e a "aba Admin do app" (dentro do `app.js`). Se o Andre disser só "admin", pergunte qual. Ver seção 2.0 do arquivo acima.
