@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v188";
+const APP_BUILD = "v189";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -7489,6 +7489,25 @@ function desafioAvisosDispensadosLer() {
     return o;
   } catch (e) { return {}; }
 }
+const DESAFIO_AVISO_VISTOS_KEY = "treino-app:desafioAvisosVistos";
+function desafioAvisosVistosLer() {
+  try {
+    const o = JSON.parse(localStorage.getItem(DESAFIO_AVISO_VISTOS_KEY) || "{}");
+    if (!o || typeof o !== "object") return {};
+    const corte = addDays(todayISO(), -14);
+    Object.keys(o).forEach((k) => { if (String(o[k]) < corte) delete o[k]; });
+    return o;
+  } catch (e) { return {}; }
+}
+// Marca as chaves como vistas; devolve o novo mapa (ou null se nada mudou).
+function desafioAvisosVistosMarcar(chaves) {
+  const o = desafioAvisosVistosLer();
+  let mudou = false;
+  chaves.forEach((k) => { if (!o[k]) { o[k] = todayISO(); mudou = true; } });
+  if (!mudou) return null;
+  try { localStorage.setItem(DESAFIO_AVISO_VISTOS_KEY, JSON.stringify(o)); } catch (e) {}
+  return o;
+}
 function desafioAvisoPrioridade(a) {
   const id = String(a.id || "");
   if (id === "fim") return 0;
@@ -14887,7 +14906,11 @@ function App() {
     const lista = desafioAvisos_[desafioHoje.ch.id] || [];
     return lista.find((a) => !a.lembrete) || lista[0] || null;
   })();
-  const desafioTemAviso = Object.keys(desafioAvisos_).some((id) => (desafioAvisos_[id] || []).length > 0);
+  // Bolinha do menu: só avisos que a pessoa ainda não viu (os que ela já viu na aba Desafios ou dispensou não contam).
+  const [avisosVistos, setAvisosVistos] = useState(desafioAvisosVistosLer);
+  const desafioChavesAviso = () => { const ks = []; Object.keys(desafioAvisos_).forEach((id) => (desafioAvisos_[id] || []).forEach((x) => ks.push(`${id}|${x.id}|${x.texto}`))); return ks; };
+  const desafioDisp = desafioAvisosDispensadosLer();
+  const desafioTemAviso = desafioChavesAviso().some((k) => !avisosVistos[k] && !desafioDisp[k]);
   useEffect(() => { desafioUserIdAtual = session ? session.user.id : null; }, [session]);
 
   const loadDesafios = useCallback(async (isRetry) => {
@@ -14954,9 +14977,11 @@ function App() {
       const snaps = desafioSnapLerTodos();
       ids.forEach((id) => { snaps[id] = desafioSnapDe(desafioResumos[id].st); });
       desafioSnapSalvarTodos(snaps);
+      const novo = desafioAvisosVistosMarcar(desafioChavesAviso());
+      if (novo) setAvisosVistos(novo);
     }, 3500);
     return () => clearTimeout(t);
-  }, [tab, desafioResumos]);
+  }, [tab, desafioResumos, desafioAvisos_]);
   function clearPendingInvite() {
     try { localStorage.removeItem("treino-app:desafioInvite"); } catch (e) {}
     setPendingInvite(null);
