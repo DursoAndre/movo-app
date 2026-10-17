@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v190";
+const APP_BUILD = "v191";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2122,6 +2122,7 @@ const APP_CSS = `
   .gt-menu-item.ativo { background:var(--surface-2, rgba(127,127,127,0.14)); color:var(--accent); }
   .gt-menu-item.ativo .ic { color:var(--accent); }
   .gt-menu-item.sair { margin-top:auto; color:var(--text-muted); border-top:1px solid var(--border); border-radius:0; padding-top:14px; }
+  .gt-menu-versao { text-align:center; font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); opacity:.8; padding:12px 0 2px; }
   .gt-provas-tabs { display:flex; gap:4px; padding:3px; margin:0 0 10px; background:var(--surface-2, rgba(127,127,127,0.14)); border-radius:14px; }
   .gt-provas-tabs button { flex:1; background:none; border:0; border-radius:9px; padding:9px 2px; font-size:12px; white-space:nowrap; font-weight:600; color:var(--text-muted); cursor:pointer; }
   .gt-provas-tabs button.on { background:var(--bg); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,0.25); }
@@ -17050,6 +17051,7 @@ function App() {
               <button type="button" className="gt-menu-item sair" onClick={ir(handleLogout)} title={session.user.email}>
                 <span className="ic"><Icon name="sair" weight="duotone" size={22} /></span><span className="tx">Sair</span>
               </button>
+              <div className="gt-menu-versao">Movo · versão {APP_BUILD}</div>
             </nav>
           </div>
         );
