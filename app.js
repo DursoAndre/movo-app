@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v185";
+const APP_BUILD = "v186";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2889,6 +2889,9 @@ const APP_CSS = `
   .gt-tc-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-top:8px; }
   .gt-tc-item .ti { font-family:'Oswald',sans-serif; font-size:16px; }
   .gt-tc-item .mt { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-co-pedido { display:flex; align-items:center; gap:10px; padding:10px; background:var(--surface-2); border-radius:10px; margin-top:8px; }
+  .gt-co-pedido .tx { flex:1; min-width:0; } .gt-co-pedido .t { font-weight:600; } .gt-co-pedido .d { font-size:13px; color:var(--text-muted); }
+  .gt-co-pedidos { background:var(--surface); border:1px solid var(--accent); border-radius:14px; padding:12px; margin-bottom:12px; }
   .gt-cc-ed { display:flex; flex-direction:column; gap:8px; }
   .gt-cc-passo { background:var(--surface-2); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:6px; }
   .gt-cc-bloco { border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:8px; }
@@ -10165,6 +10168,7 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
               <input className="gt-input" placeholder="Código do convite" aria-label="Código do convite" maxLength={12} value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} />
               <button type="button" className="gt-btn small" disabled={codigo.trim().length < 4} onClick={() => onAbrirConvite(codigo.trim())}>Usar</button>
             </div>
+            <CoachAlunoPedir flags={flags} showToast={showToast} />
             <CoachAlunoConvida flags={flags} showToast={showToast} />
           </>
         )}
@@ -10194,6 +10198,82 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------- Aluno: pedir a um treinador que já está no Movo ----------
+function CoachAlunoPedir({ flags, showToast }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState(null); // null = não buscou
+  const [buscando, setBuscando] = useState(false);
+  const [alvo, setAlvo] = useState(null);
+  const [perms, setPerms] = useState({ ...COACH_PERMS_PADRAO });
+  const [maior, setMaior] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const [pedidos, setPedidos] = useState([]);
+  const carregarPedidos = useCallback(async () => { const r = await coachCall("coach_meus_pedidos"); if (r.ok) setPedidos(r.data || []); }, []);
+  useEffect(() => { carregarPedidos(); }, [carregarPedidos]);
+  async function buscar() {
+    if (q.trim().length < 3) { setErro("Digite pelo menos 3 letras do nome ou o e-mail completo."); return; }
+    setBuscando(true); setErro("");
+    const r = await coachCall("coach_buscar", { p_q: q.trim() });
+    setBuscando(false);
+    if (!r.ok) { setErro(r.erro); return; }
+    setRes(r.data || []);
+  }
+  async function pedir() {
+    setBusy(true); setErro("");
+    const r = await coachCall("coach_pedir", { p_coach: alvo.coach_id, p_permissions: perms, p_maior: true });
+    setBusy(false);
+    if (!r.ok) { setErro(r.erro); return; }
+    showToast("Pedido enviado para " + alvo.nome);
+    setAlvo(null); setRes(null); setQ(""); setMaior(false); carregarPedidos();
+  }
+  async function cancelar(p) {
+    const r = await coachCall("coach_pedido_cancelar", { p_code: p.invite_code });
+    if (!r.ok) { showToast(r.erro); return; }
+    carregarPedidos();
+  }
+  return (
+    <div className="gt-co-reverso">
+      <div className="gt-co-sec">SEU TREINADOR JÁ USA O MOVO?</div>
+      {pedidos.map((p) => (
+        <div className="gt-co-pedido" key={p.invite_code}>
+          <div className="tx"><div className="t">{p.coach_nome}</div><div className="d">{p.status === "recusado" ? "Não aceitou o pedido" : "Aguardando resposta (vale 14 dias)"}</div></div>
+          {p.status !== "recusado" && <button type="button" className="gt-co-mini" onClick={() => cancelar(p)}>Cancelar</button>}
+        </div>
+      ))}
+      {!alvo && (
+        <>
+          <div className="gt-co-codigo">
+            <input className="gt-input" placeholder="Nome ou e-mail do treinador" aria-label="Buscar treinador" value={q} onChange={(e) => { setQ(e.target.value); setErro(""); }} onKeyDown={(e) => { if (e.key === "Enter") buscar(); }} />
+            <button type="button" className="gt-btn small" disabled={buscando} onClick={buscar}>{buscando ? "…" : "Buscar"}</button>
+          </div>
+          {erro && <div className="gt-co-erro" role="alert">{erro}</div>}
+          {res && res.length === 0 && <p className="gt-co-aviso">Não achei ninguém com esse nome ou e-mail. Se ele ainda não usa o Movo, convide pelo link logo abaixo.</p>}
+          {(res || []).map((c) => (
+            <div className="gt-co-pedido" key={c.coach_id}>
+              <div className="tx"><div className="t">{c.nome}</div><div className="d">{[c.cref ? "CREF " + c.cref : "", c.bio || ""].filter(Boolean).join(" · ") || "Treinador no Movo"}</div></div>
+              <button type="button" className="gt-btn small" onClick={() => { setAlvo(c); setErro(""); }}>Pedir</button>
+            </div>
+          ))}
+        </>
+      )}
+      {alvo && (
+        <>
+          <p>Você vai pedir a <b>{alvo.nome}</b> para ser seu treinador. Ele só passa a ver seus dados se aceitar.</p>
+          <div className="gt-co-sec">O QUE ELE PODE VER</div>
+          <CoachPermLista perms={perms} onChange={setPerms} flags={flags} />
+          <label className="gt-co-check"><input type="checkbox" checked={maior} onChange={(e) => setMaior(e.target.checked)} /> Tenho 18 anos ou mais e autorizo o compartilhamento acima com {alvo.nome}, se ele aceitar.</label>
+          {erro && <div className="gt-co-erro" role="alert">{erro}</div>}
+          <div className="gt-modal-actions gt-modal-actions-col">
+            <button type="button" className="gt-btn" disabled={!maior || busy} onClick={pedir}>{busy ? "Enviando…" : "Enviar pedido"}</button>
+            <button type="button" className="gt-btn secondary" onClick={() => { setAlvo(null); setErro(""); }}>Voltar</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -10228,7 +10308,7 @@ function CoachAlunoConvida({ flags, showToast }) {
   async function copiar() { try { await navigator.clipboard.writeText(texto); showToast("Convite copiado"); } catch (e) { showToast("Código: " + aberto.invite_code); } }
   return (
     <div className="gt-co-reverso">
-      <div className="gt-co-sec">JÁ TEM UM TREINADOR FORA DO MOVO?</div>
+      <div className="gt-co-sec">TREINADOR QUE AINDA NÃO USA O MOVO?</div>
       {aberto === undefined && <div className="gt-empty">Carregando…</div>}
       {aberto && (
         <>
@@ -10264,7 +10344,7 @@ function CoachAlunoConvida({ flags, showToast }) {
 }
 
 // ---------- Treinador: aceitar o convite de um aluno (?prof=CODE) ----------
-function CoachProfConviteModal({ code, coachInfo, onClose, onPrecisaCadastro, onDone, showToast }) {
+function CoachProfConviteModal({ code, coachInfo, onClose, onPrecisaCadastro, onDone, showToast, onRecusar }) {
   const [prev, setPrev] = useState(undefined);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
@@ -10312,6 +10392,7 @@ function CoachProfConviteModal({ code, coachInfo, onClose, onPrecisaCadastro, on
                 ? <button type="button" className="gt-btn" disabled={busy || meu === "suspenso"} onClick={aceitar}>{busy ? "Aceitando…" : `Aceitar ${prev.aluno_nome}`}</button>
                 : <button type="button" className="gt-btn" onClick={onPrecisaCadastro}>Fazer meu cadastro de treinador</button>}
               <button type="button" className="gt-btn secondary" onClick={() => onClose(false)}>Agora não</button>
+              {onRecusar && <button type="button" className="gt-co-link" disabled={busy} onClick={async () => { setBusy(true); await onRecusar(); setBusy(false); }}>Recusar pedido</button>}
             </div>
           </>
         )}
@@ -12547,9 +12628,12 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   const [refreshKey, setRefreshKey] = useState(0);
   const [convidar, setConvidar] = useState(false);
   const [pendente, setPendente] = useState(null);
+  const [pedidos, setPedidos] = useState([]);
+  const [pedidoAberto, setPedidoAberto] = useState(null);
   const [filaN, setFilaN] = useState(() => coachFilaLer().length);
   const carregar = useCallback(async () => {
     if (!ativo) { setCarregando(false); return; }
+    coachCall("coach_pedidos_recebidos").then((pr) => { if (pr.ok) setPedidos(pr.data || []); });
     const r = await coachCall("coach_list_students");
     setCarregando(false);
     if (!r.ok) { setOffline(true); return; }
@@ -12602,7 +12686,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   const nPend = lista.filter((a) => a.status === "pendente" && !a.expirado).length;
   const nAtivos = lista.filter((a) => a.status === "ativo" || a.status === "pausado").length;
   const ativosParaModelo = lista.filter((a) => a.status === "ativo");
-  useEffect(() => { onNovosPendentes && onNovosPendentes(lista.filter((a) => a.expirado).length + lista.filter((a) => a.nao_lidas > 0).length); }, [lista]);
+  useEffect(() => { onNovosPendentes && onNovosPendentes(lista.filter((a) => a.expirado).length + lista.filter((a) => a.nao_lidas > 0).length + pedidos.length); }, [lista, pedidos]);
   async function cancelarConvite(a) {
     const r = await coachCall("coach_set_status", { p_link: a.link_id, p_status: "encerrado" });
     if (!r.ok) { showToast(r.erro); return; }
@@ -12642,6 +12726,18 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
               <button type="button" className="gt-btn small gt-co-convidar" onClick={abrirConvidar}>+ Convidar</button></div>
             {status === "em_analise" && <div className="gt-co-aviso" role="status"><b>Cadastro em análise.</b> Quando for aprovado, você pode convidar alunos. <button type="button" className="gt-co-link" onClick={() => setAba("perfil")}>Ver meu perfil</button></div>}
             {status === "suspenso" && <div className="gt-co-aviso aviso-forte" role="status"><b>Conta suspensa.</b> Os vínculos estão congelados. <button type="button" className="gt-co-link" onClick={() => setAba("perfil")}>Saber mais</button></div>}
+            {ativo && pedidos.length > 0 && (
+              <div className="gt-co-pedidos" role="region" aria-label="Pedidos de alunos">
+                <div className="gt-co-sec">{pedidos.length === 1 ? "1 PEDIDO DE ALUNO" : `${pedidos.length} PEDIDOS DE ALUNOS`}</div>
+                {pedidos.map((pd) => (
+                  <div className="gt-co-pedido" key={pd.invite_code}>
+                    <Avatar uid={pd.aluno_uid} nome={pd.aluno_nome} cor={coachCor(pd.aluno_nome)} size={40} />
+                    <div className="tx"><div className="t">{pd.aluno_nome}</div><div className="d">quer treinar com você</div></div>
+                    <button type="button" className="gt-btn small" onClick={() => setPedidoAberto(pd.invite_code)}>Ver</button>
+                  </div>
+                ))}
+              </div>
+            )}
             {ativo && (
               <CoachAlunosLista lista={lista} carregando={carregando} offline={offline} atualizadoEm={atualizadoEm} filaN={filaN}
                 onAbrir={(a) => setAberto(a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} />
@@ -12689,6 +12785,13 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
             </div>
           </div>
         </div>
+      )}
+      {pedidoAberto && (
+        <CoachProfConviteModal code={pedidoAberto} coachInfo={{ status: "ativo", liberado: true }} showToast={showToast}
+          onClose={async (limpar) => { if (limpar) { /* aceito ou indisponível */ } setPedidoAberto(null); carregar(); }}
+          onPrecisaCadastro={() => {}}
+          onRecusar={async () => { const r = await coachCall("coach_pedido_recusar", { p_code: pedidoAberto }); if (!r.ok) { showToast(r.erro); return; } showToast("Pedido recusado"); setPedidoAberto(null); carregar(); }}
+          onDone={() => { setPedidoAberto(null); carregar(); }} />
       )}
       {convidar && (
         <CoachConvidarModal coachNome={nome} existente={convidar && convidar.existente} showToast={showToast} onClose={() => { setConvidar(false); carregar(); }} onCriado={carregar} />
