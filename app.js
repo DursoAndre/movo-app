@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v187";
+const APP_BUILD = "v188";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -9271,6 +9271,10 @@ function coachInviteLink(code) {
   } catch (e) {}
 })();
 
+// Aviso por e-mail (best-effort): nunca atrapalha o fluxo; sem Resend configurado a função só responde enviado:false.
+function avisarPorEmail(tipo, ref) {
+  try { supabaseClient.functions.invoke("avisar-email", { body: { tipo, ref: String(ref) } }).catch(() => {}); } catch (e) {}
+}
 function coachErroMsg(raw) {
   const m = String(raw || "");
   if (/ja_tem_treinador/.test(m)) return "Você já tem um treinador. Encerre o vínculo atual antes de aceitar outro.";
@@ -10238,6 +10242,7 @@ function CoachAlunoPedir({ flags, showToast }) {
     const r = await coachCall("coach_pedir", { p_coach: alvo.coach_id, p_permissions: perms, p_maior: true });
     setBusy(false);
     if (!r.ok) { setErro(r.erro); return; }
+    avisarPorEmail("pedido_treinador", r.data && r.data.invite_code);
     showToast("Pedido enviado para " + alvo.nome);
     setAlvo(null); setRes(null); setQ(""); setMaior(false); carregarPedidos();
   }
@@ -13811,7 +13816,7 @@ function App() {
   async function handleAddShare() {
     const email = shareEmailInput.trim().toLowerCase();
     if (!email || !email.includes("@")) { showToast("Digite um e-mail válido"); return; }
-    const { error } = await supabaseClient.from("report_shares").upsert(
+    const { data: shRow, error } = await supabaseClient.from("report_shares").upsert(
       {
         owner_user_id: session.user.id,
         owner_email: session.user.email,
@@ -13823,8 +13828,9 @@ function App() {
         revoked_at: null,
       },
       { onConflict: "owner_user_id,viewer_email" }
-    );
+    ).select("id").maybeSingle();
     if (error) { showToast("Erro ao compartilhar"); logClientError("report_share_add", error.message); return; }
+    if (shRow && shRow.id) avisarPorEmail("relatorio", shRow.id);
     setShareEmailInput("");
     showToast(`Relatórios liberados pra ${email}`);
     loadShares();

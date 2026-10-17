@@ -60,3 +60,4 @@ indicacoes.sql
 challenge_convites.sql
 challenge_convites_email.sql
 coach_pedido_aluno.sql
+avisos_email.sql
