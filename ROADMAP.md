@@ -107,6 +107,7 @@ Itens levantados pelo time de UX/PM em 13/10/2026 e deixados de fora da agenda p
 - **Ajustes no treino de hoje (entregue)**: falta rodar `supabase/sql/app_events_setup.sql` e `supabase/sql/admin_login_stats.sql` no Supabase para o painel admin mostrar as medições (treinos com ajuste, quanto salvam na ficha). Sem isso o app funciona normal, só as seções de medições e de logins por usuário não aparecem.
 - **Onboarding sem "1x por semana"**: só existe 0 e 2 a 7. Adicionar se fizer sentido.
 - **Strava**: limite da API é por aplicativo (~100 req/15 min, ~1.000/dia). Pode virar gargalo se a base crescer.
+- **Strava: pedir aumento de capacidade (Andre, 17/10/2026)**: o nível padrão da API permite só **10 atletas conectados** (3 em 17/10). Antes de passar disso, pedir o aumento ao Strava pelo formulário de capacidade do painel de desenvolvedor (strava.com/settings/api, Client ID 282598); o app já tem Privacidade e Termos públicos e o callback `app.movoapp.com.br`. Junto: mensagem amigável no app quando a conexão falhar por limite. Posso redigir o pedido quando for a hora.
 - **Supabase plano grátis**: 500 MB de banco (já monitorado no painel admin) e pausa do projeto após 1 semana sem nenhuma atividade.
 
 ## Proposta: como importar histórico de treinos
