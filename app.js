@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v194";
+const APP_BUILD = "v195";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2408,6 +2408,12 @@ const APP_CSS = `
   .gt-onb-prog span.on { background:var(--accent); }
   .gt-onb-q { font-family:'Oswald',sans-serif; font-size:20px; line-height:1.2; margin:4px 0 4px; }
   .gt-onb-q.small { font-size:20px; margin-top:18px; }
+  .gt-onb-origem { display:flex; flex-direction:column; gap:8px; margin:6px 0 16px; }
+  .gt-onb-origem-op { display:flex; flex-direction:column; gap:2px; text-align:left; width:100%; min-height:56px; padding:10px 14px; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; color:var(--text); cursor:pointer; }
+  .gt-onb-origem-op b { font-size:15px; }
+  .gt-onb-origem-op span { font-size:13px; color:var(--text-muted); }
+  .gt-onb-origem-op.active { border-color:var(--accent); background:rgba(198,241,53,0.08); }
+  .gt-onb-troca { width:100%; margin-top:6px; min-height:40px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:var(--text-muted); font-size:13px; padding:0 10px; }
   .gt-onb-sub { color:var(--text-muted); font-size:14px; margin:0 0 12px; }
   .gt-onb-tel { margin-top:16px; } .gt-onb-tel .gt-input { margin-top:6px; }
   .gt-co-wa { width:100%; margin-bottom:10px; }
@@ -14760,6 +14766,8 @@ function App() {
     setOnboardingIsRedo(false);
     showToast("Configuração inicial salva");
     if (abrirPlano) setTimeout(() => openMeta(), 0);
+    else if (data.abrirFichasProntas) setTimeout(() => setTemplatesOpen(true), 0);
+    else if (data.abrirTreinoIA) setTimeout(() => { if (fichaLiberada()) setTreinoIAOpen(true); }, 0);
   }
 
   // --- Onboarding + Strava: como o "Conectar" redireciona pro Strava (a
@@ -18330,6 +18338,29 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
 
   const previewTreinos = preview.treinos.map((t) => treinoEdits[t.id] || t);
 
+  // Como montar as fichas (escolha única) e troca de ficha entre os dias.
+  // "sugestao" = usa as fichas mostradas no resumo; "prontas"/"ia" concluem a
+  // configuração e já abrem a biblioteca de fichas prontas ou o "Montar com IA".
+  const [fichaOrigem, setFichaOrigem] = useState("sugestao");
+  const [schedOver, setSchedOver] = useState(null);
+  const schedChave = JSON.stringify(preview.schedule);
+  useEffect(() => { setSchedOver(null); }, [schedChave]);
+  const schedFinal = schedOver || preview.schedule;
+  function trocarFichaDoDia(dia, novoId) {
+    const next = {};
+    for (let d = 0; d < 7; d++) next[d] = (schedFinal[d] || []).map((it) => ({ ...it }));
+    const atual = next[dia].find((it) => it.tipo === "treino");
+    if (!atual || atual.id === novoId) return;
+    for (let d = 0; d < 7; d++) {
+      if (d === dia) continue;
+      const outro = next[d].find((it) => it.tipo === "treino" && it.id === novoId);
+      if (outro) { outro.id = atual.id; break; }
+    }
+    atual.id = novoId;
+    setSchedOver(next);
+    ev("onb_ficha_trocada_dia");
+  }
+
   function openEditTreino(treino) {
     const cloned = JSON.parse(JSON.stringify(treino));
     setEditingTreino(cloned);
@@ -18391,7 +18422,7 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
     });
   }
   function finishOnboarding(fn, extra) {
-    fn({ ...preview, treinos: previewTreinos, ...(extra || {}), ...(!isRedo && telDigitos(telefone) ? { telefone: telDigitos(telefone) } : {}) });
+    fn({ ...preview, treinos: previewTreinos, schedule: schedFinal, ...(fichaOrigem === "prontas" ? { abrirFichasProntas: true } : fichaOrigem === "ia" ? { abrirTreinoIA: true } : {}), ...(extra || {}), ...(!isRedo && telDigitos(telefone) ? { telefone: telDigitos(telefone) } : {}) });
   }
 
   return (
@@ -18498,8 +18529,22 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
             <div className="gt-field-label">PASSO 3 DE 3</div>
             <div className="gt-onb-q">Sua semana começa assim</div>
             <p className="gt-onb-sub">É um ponto de partida. Dá pra trocar exercícios e dias quando quiser.</p>
+            {musEntry && (
+              <div className="gt-onb-origem" role="radiogroup" aria-label="Como montar as fichas">
+                <div className="gt-field-label">COMO MONTAR AS FICHAS</div>
+                {[
+                  ["sugestao", "Sugestão do Movo", "Usa as fichas abaixo. Dá pra editar."],
+                  ["prontas", "Fichas prontas", "Abre a biblioteca assim que você concluir."],
+                  ["ia", "Montar com IA", "Responde umas perguntas e recebe uma proposta."],
+                ].map(([id, tit, desc]) => (
+                  <button key={id} type="button" role="radio" aria-checked={fichaOrigem === id} className={`gt-onb-origem-op ${fichaOrigem === id ? "active" : ""}`} onClick={() => { setFichaOrigem(id); ev(`onb_ficha_${id}`); }}>
+                    <b>{tit}</b><span>{desc}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {DIAS.map((nomeDia, idx) => {
-              const items = preview.schedule[idx] || [];
+              const items = schedFinal[idx] || [];
               return (
                 <div key={idx} className="gt-onb-resumo-dia">
                   <div className="wd">{DIAS_ABREV[idx]}</div>
@@ -18512,10 +18557,17 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
                             if (!treino) return <div key={i}>{it.id}</div>;
                             const n = flattenExercicios(treino).length;
                             return (
-                              <button type="button" key={i} className="gt-onb-resumo-item gt-onb-resumo-item-edit" onClick={() => openEditTreino(treino)}>
-                                {treino.nome}
-                                <span className="gt-onb-resumo-meta"> · {n} exercício{n === 1 ? "" : "s"} · {treino.duracaoMin}min · editar ✎</span>
-                              </button>
+                              <React.Fragment key={i}>
+                                <button type="button" className="gt-onb-resumo-item gt-onb-resumo-item-edit" onClick={() => openEditTreino(treino)}>
+                                  {treino.nome}
+                                  <span className="gt-onb-resumo-meta"> · {n} exercício{n === 1 ? "" : "s"} · {treino.duracaoMin}min · editar ✎</span>
+                                </button>
+                                {previewTreinos.length > 1 && (
+                                  <select className="gt-onb-troca" aria-label={`Ficha de ${nomeDia}`} value={treino.id} onChange={(e) => trocarFichaDoDia(idx, e.target.value)}>
+                                    {previewTreinos.map((t) => <option key={t.id} value={t.id}>Trocar: {t.nome}</option>)}
+                                  </select>
+                                )}
+                              </React.Fragment>
                             );
                           }
                           const ativ = preview.atividades.find((a) => a.id === it.id);
