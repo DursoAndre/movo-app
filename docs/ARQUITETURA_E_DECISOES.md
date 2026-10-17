@@ -33,7 +33,7 @@ PWA de treino em português do Brasil. Tudo num lugar só: musculação (fichas,
 | **Painel de métricas** (ou "Movo Admin") | PWA separado só de métricas e gestão: visão geral, retenção, funil, ativação, canais, convites, domínio | `movoapp.com.br/admin/`, repositório **movo-site** (pasta `admin/`) | RPCs `admin_m_*` (`admin_metricas*.sql`), só para quem passa em `is_movo_admin()` |
 | **Aba Admin do app** | Tela dentro do app normal (menu), com abas Geral, Usuários, IA, Planos, Treinadores, Suporte, Catálogo | `app.js` (repositório **movo-app**), `adminTab` | RPCs `admin_*` (usage_stats, coach_list, feedback...) |
 
-Regra: se o Andre disser só "admin", **perguntar qual** antes de mexer. A lista de contas (ordem de cadastro/último acesso) está na **aba Admin do app › Usuários** (v190). Ainda não está no painel de métricas.
+Regra: se o Andre disser só "admin", **perguntar qual** antes de mexer. A lista de contas (ordem de cadastro/último acesso) está na **aba Admin do app › Usuários** (v190). Também está no **painel de métricas** (aba Contas, v. 16/10), com a mesma ordenação e busca.
 
 ### 2.1 Regras de entrega (sempre)
 - Todo commit que muda o app: subir `APP_BUILD` no `app.js` (ex.: "v189") **e** `CACHE` no `sw.js` (ex.: "treino-app-v189"). Sem isso o cache do service worker segura a versão antiga.
@@ -77,7 +77,7 @@ Deploy: pelo MCP do Supabase (`deploy_edge_function`) ou CLI. Funções novas us
 
 ## 5. Banco de dados (`supabase/sql/`, ordem em `supabase/ordem.txt`)
 
-Total: 61 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
+Total: 62 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
 
 Marcos recentes:
 - `challenge_acertos.sql`, `challenge_formatos.sql`, `challenge_acertos_saida.sql` (prêmios; ver 6.1)
@@ -86,6 +86,7 @@ Marcos recentes:
 - `coach_setup.sql`, `coach_setup_v2.sql`, `coach_agenda_*.sql`, `coach_admin.sql`, `coach_contato.sql` (modo treinador)
 - `coach_pedido_aluno.sql` (aluno pede a treinador que já está no Movo)
 - `avisos_email.sql` (log e regras dos avisos por e-mail)
+- `admin_m_contas.sql` (lista de contas do painel de métricas)
 
 ## 6. Decisões por área
 
@@ -137,6 +138,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **16/10/2026:** painel de métricas (movo-site/admin) ganhou a aba **Contas** (RPC `admin_m_contas`, arquivo `admin_m_contas.sql`): lista rolável de todas as contas, ordem por cadastro ou último acesso (recentes/antigos), busca por nome/e-mail, selos "treinou" e "você/teste", origem do cadastro. A aba Usuários da aba Admin do app continua como está (decisão do Andre: não tirar).
 - **16/10/2026 (v190):** admin › aba Usuários ganhou lista compacta de contas (`AdminContas`): caixa com rolagem, ordena por **cadastro** ou **último acesso** (recentes/antigos), busca por nome ou e-mail, toque expande os detalhes. Usa os dados que o admin já carregava; sem SQL novo.
 - **16/10/2026 (v189):** bolinha de Desafios conta só avisos não vistos.
 - **16/10/2026 (v188):** avisos por e-mail (pedido de treinador, relatório compartilhado) via `avisar-email`; só para quem já tem conta; 15/dia; sem repetir em 7 dias.
