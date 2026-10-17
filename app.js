@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v192";
+const APP_BUILD = "v193";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2076,7 +2076,7 @@ const APP_CSS = `
      abas ficam fixos, e um dia com pouca coisa não sobra espaço rolável à
      toa. Só afeta essa tela: login, onboarding e boot continuam soltos
      (podem crescer e rolar a página normalmente se precisar). */
-  .gt-shell { height:100vh; height:100dvh; padding-bottom:0; display:flex; flex-direction:column; overflow:hidden; overscroll-behavior:none; }
+  .gt-shell { height:100vh; height:100dvh; box-sizing:border-box; padding-top:env(safe-area-inset-top, 0px); padding-bottom:0; background:var(--bg); display:flex; flex-direction:column; overflow:hidden; overscroll-behavior:none; }
   .gt-shell > .gt-header { flex-shrink:0; }
   .gt-shell > .gt-body { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
   .gt-shell > .gt-tabbar { position:static; flex-shrink:0; margin:0 auto; width:100%; }
@@ -2091,7 +2091,7 @@ const APP_CSS = `
   .gt-menu-dot { position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:var(--warn); }
   .gt-menu-dot.inline { position:static; margin-left:auto; flex-shrink:0; }
   .gt-menu-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:70; animation:gtFadeIn .15s ease; overscroll-behavior:none; touch-action:none; }
-  .gt-menu { position:absolute; top:0; bottom:0; left:0; width:min(300px,84vw); background:var(--bg); border-right:1px solid var(--border); padding:18px 12px calc(24px + env(safe-area-inset-bottom, 0px)); overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch; max-height:100dvh; animation:gtSlideIn .2s ease; display:flex; flex-direction:column; }
+  .gt-menu { position:absolute; top:0; bottom:0; left:0; width:min(300px,84vw); background:var(--bg); border-right:1px solid var(--border); padding:calc(18px + env(safe-area-inset-top, 0px)) 12px calc(24px + env(safe-area-inset-bottom, 0px)); overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch; max-height:100dvh; animation:gtSlideIn .2s ease; display:flex; flex-direction:column; }
   @keyframes gtSlideIn { from { transform:translateX(-100%); } to { transform:none; } }
   @keyframes gtFadeIn { from { opacity:0; } to { opacity:1; } }
   .gt-menu-user { padding:4px 8px 14px; border-bottom:1px solid var(--border); margin-bottom:6px; }
@@ -2272,7 +2272,7 @@ const APP_CSS = `
   .gt-note-item { display:flex; gap:8px; font-size:12px; padding:6px 0; border-bottom:1px solid var(--border); }
   .gt-note-item:last-child { border-bottom:none; }
   .gt-note-item .d { color:var(--text-muted); font-family:'Roboto Mono',monospace; white-space:nowrap; }
-  .gt-tabbar { position:fixed; bottom:0; left:0; right:0; max-width:480px; margin:0 auto; background:var(--surface); border-top:1px solid var(--border); display:flex; }
+  .gt-tabbar { position:fixed; bottom:0; left:0; right:0; max-width:480px; margin:0 auto; background:var(--surface); border-top:1px solid var(--border); display:flex; padding-bottom:env(safe-area-inset-bottom, 0px); }
   .gt-tab { flex:1; padding:12px 0 10px; background:none; border:none; color:var(--text-muted); font-family:'Oswald',sans-serif; font-size:14px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; }
   .gt-tab.active { color:var(--accent); }
   .gt-tab .ic { display:flex; height:22px; align-items:center; }
@@ -2561,7 +2561,7 @@ const APP_CSS = `
      sobrepor visualmente a tela de trás, com a barra de abas ainda aparecendo
      por cima. Largura segue o mesmo frame de 480px do resto do app. */
   .gt-focus { position:fixed; inset:0; z-index:40; display:flex; flex-direction:column; height:100vh; height:100dvh; width:100%; max-width:480px; margin:0 auto; background:var(--bg); }
-  .gt-focus-header { display:flex; align-items:center; gap:12px; padding:16px 14px 10px; flex-shrink:0; }
+  .gt-focus-header { display:flex; align-items:center; gap:12px; padding:calc(16px + env(safe-area-inset-top, 0px)) 14px 10px; flex-shrink:0; }
   .gt-focus-close { background:var(--surface); border:1px solid var(--border); color:var(--text); width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; flex-shrink:0; }
   .gt-focus-title-wrap { flex:1; min-width:0; }
   .gt-focus-title { font-family:'Oswald',sans-serif; font-size:20px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
