@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v186";
+const APP_BUILD = "v187";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -9258,6 +9258,16 @@ function coachInviteLink(code) {
   try {
     const m = /[?&]treinador=([A-Za-z0-9]{4,12})/.exec(window.location.search || "");
     if (m) localStorage.setItem("treino-app:coachInvite", m[1].toUpperCase());
+  } catch (e) {}
+})();
+// Os parâmetros de convite já foram guardados acima. Tira da barra de endereço pra que um recarregamento
+// (puxar pra atualizar) não reabra o convite e jogue a pessoa de volta na aba Desafios.
+(function limparParamsDeConvite() {
+  try {
+    const u = new URL(window.location.href);
+    let mudou = false;
+    ["desafio", "treinador", "prof", "amigo"].forEach((k) => { if (u.searchParams.has(k)) { u.searchParams.delete(k); mudou = true; } });
+    if (mudou) window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
   } catch (e) {}
 })();
 
