@@ -1,0 +1,140 @@
+# Movo: arquitetura, decisões e estado (fonte de verdade)
+
+Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
+
+Última atualização: 16/10/2026 (v189).
+
+---
+
+## 1. O que é o Movo
+
+PWA de treino em português do Brasil. Tudo num lugar só: musculação (fichas, cargas), atividades fora da academia, corrida (treinos estruturados, plano para prova, Strava), provas, desafios entre amigos e modo treinador. Foco em quem corre e tem ficha de musculação e em quem faz muitas atividades.
+
+- Tom de texto: simples, sem intimidar; "musculação" (não "academia"); "histórico de treinos, exercícios e cargas" (não "evolução"); detalhes de interface não entram no pitch.
+- Cobrança: ainda não. O app é preparado para "virar a chave" depois (30 dias completos, depois grátis limitado ou Pro mensal/anual). Segue PWA, sem app de loja por enquanto.
+- Dono/decisor: Andre (ardurso@gmail.com). Testa no Android.
+
+## 2. Infraestrutura
+
+| Item | Valor |
+|---|---|
+| Repositório do app | github.com/DursoAndre/movo-app (branch `main`) |
+| App em produção | https://app.movoapp.com.br (GitHub Pages via Actions) |
+| Site/landing | repositório `movo-site` → https://movoapp.com.br (`_src/build.py` gera; `/convite/` redireciona convites; `/admin/`) |
+| Repositório antigo | `meu-treino`: **congelado**, não mexer |
+| Domínio | movoapp.com.br (Registro.br) |
+| Backend | Supabase, projeto `wgdhjkebfvcmgokxscvb` (Postgres + Auth + Edge Functions) |
+| E-mail transacional | Resend (conta criada; domínio movoapp.com.br; ver 2.2) |
+| Build | `npm run build` (esbuild, `build.mjs`) no GitHub Actions; publica `dist/` |
+
+### 2.1 Regras de entrega (sempre)
+- Todo commit que muda o app: subir `APP_BUILD` no `app.js` (ex.: "v189") **e** `CACHE` no `sw.js` (ex.: "treino-app-v189"). Sem isso o cache do service worker segura a versão antiga.
+- Commit termina com:
+  `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` e `Claude-Session: https://claude.ai/code/session_015cVe1JQ2CUkwbA3tfmAsiv`.
+- Conferir o build no Actions depois do push (`gh api repos/DursoAndre/movo-app/actions/runs`).
+- Novo arquivo SQL: criar em `supabase/sql/`, **acrescentar em `supabase/ordem.txt`**, rodar `python3 supabase/build_setup.py` (regenera `setup_completo.sql`).
+- Não publicar no site o que não precisa estar lá (ROADMAP, docs). `build.mjs` copia só uma lista de arquivos.
+
+### 2.2 E-mail (Resend)
+- Funções que mandam e-mail: `notificar-feedback`, `alerta-saude`, `convidar-email` (convite de desafio), `avisar-email` (pedido de treinador e relatório compartilhado).
+- Secrets (só nomes; valores ficam no Supabase › Edge Functions › Secrets): `RESEND_API_KEY` (já existe, usada por feedback/alerta), `FEEDBACK_FROM`, `FEEDBACK_TO`, `CONVITE_FROM` (opcional; cai em `FEEDBACK_FROM` e depois em `onboarding@resend.dev`).
+- Sem `RESEND_API_KEY` as funções respondem `enviado:false` e **não consomem o limite**.
+- Remetente `onboarding@resend.dev` só entrega para o dono da conta Resend. Para enviar a qualquer pessoa o domínio movoapp.com.br precisa estar **verificado** no Resend e o remetente usar esse domínio.
+- **A confirmar com Andre:** status da verificação do domínio no Resend e se `FEEDBACK_FROM`/`CONVITE_FROM` já apontam para movoapp.com.br. (A conta e a chave já existem; não pedir para criar de novo.)
+- Também planejado: e-mails de login do Supabase Auth pelo domínio (SMTP próprio) em vez do Gmail pessoal.
+
+### 2.3 Edge functions (`supabase/functions/`)
+`ajustar-semana`, `alerta-saude` (pg_cron a cada 15 min), `avisar-email`, `convidar-email`, `gerar-plano` (IA, 3 gerações/mês/pessoa), `gerar-treinos`, `importar-ficha`, `importar-historico`, `notificar-feedback`, `revisar-catalogo` (diário 23h Brasília), `strava-connect`, `strava-sync`.
+Deploy: pelo MCP do Supabase (`deploy_edge_function`) ou CLI. Funções novas usam `verify_jwt: true` e chamam RPCs com o JWT do usuário.
+
+## 3. Como trabalhar com o Andre
+
+- Respostas em pt-BR, **concisas**. Sem recapitular os passos; dizer o resultado e o próximo passo real.
+- **SQL:** se o Claude roda no Supabase, só diz que rodou e deixa o arquivo no repo. Se o **Andre** precisa rodar, colar o SQL **completo** no chat.
+- O MCP do Supabase cancela `apply_migration` com SQL de aparência destrutiva (`drop ...`, `delete` dentro de funções). Não contornar: usar `create or replace`/`create or replace trigger`, ou separar em arquivo e entregar ao Andre.
+- Testar RPCs sem deixar rastro: `do $$ ... raise exception 'RESULT: %', out; end $$;` (a exceção desfaz tudo), trocando o usuário com `set_config('request.jwt.claims', json_build_object('sub',<uuid>,'role','authenticated')::text, true)`.
+- Ambiente do Claude: sem `npm` (rede bloqueada), então **não há build local**. Checar sintaxe com `esbuild.transformSync(src,{loader:'jsx'})` (esbuild do `tsx` global em `/home/claude/.npm-global/lib/node_modules/tsx/node_modules/esbuild`). Funções puras são extraídas para scripts de node e testadas.
+- Telas **não** são testadas visualmente pelo Claude: avisar isso e pedir print se algo ficar estranho.
+- **Antes de dizer que algo "não existe", buscar no código** (`grep`) e na memória. Já houve erro: afirmei que o convite do aluno ao treinador não existia, e existia (`?prof=`).
+- Diretores de produto/UX/design são consultados via subagentes quando o Andre pede ("chama o diretor de...").
+
+## 4. Arquitetura do app
+
+- `app.js` único (React 18, JSX compilado pelo esbuild), `index.html`, `sw.js` (cache/offline), `manifest.json`, `races.json`, `runner.json`.
+- Dados do usuário: `localStorage` como cache + tabela `app_data` no Supabase (sessões, treinos, agenda, `display_name`...). Sincronização em nuvem após login.
+- Auth: Supabase (link por e-mail). Parâmetros de convite na URL (`?desafio=`, `?treinador=`, `?prof=`, `?amigo=`) são **guardados no localStorage na abertura e removidos da URL** (v187). Sem isso, puxar para atualizar reabria o convite.
+- Puxar para atualizar na Hoje = `window.location.reload()`.
+- Segurança: RLS firme; regras que viram diferencial vivem em RPC/função `security definer`, não no cliente. O treinador **nunca** lê `app_data` direto, só pelas funções `coach_*` que checam vínculo e permissão.
+
+## 5. Banco de dados (`supabase/sql/`, ordem em `supabase/ordem.txt`)
+
+Total: 61 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
+
+Marcos recentes:
+- `challenge_acertos.sql`, `challenge_formatos.sql`, `challenge_acertos_saida.sql` (prêmios; ver 6.1)
+- `indicacoes.sql` (link "traga seu amigo")
+- `challenge_convites.sql`, `challenge_convites_email.sql` (convite de amigo para desafio, aviso por e-mail)
+- `coach_setup.sql`, `coach_setup_v2.sql`, `coach_agenda_*.sql`, `coach_admin.sql`, `coach_contato.sql` (modo treinador)
+- `coach_pedido_aluno.sql` (aluno pede a treinador que já está no Movo)
+- `avisos_email.sql` (log e regras dos avisos por e-mail)
+
+## 6. Decisões por área
+
+### 6.1 Desafios e prêmios (P1: controle de acertos, **o Movo não toca no dinheiro**)
+- Tabelas: `challenges`, `challenge_members`, `challenge_checkins`, `challenge_together`, `challenge_invites`, `challenge_ledger` (livro-caixa **imutável**), `challenge_acerto_status`.
+- `stakes` (jsonb): `semana`, `final` (texto), `semana_valor`, `final_valor` (R$), `semana_modo`/`final_modo` (`ultimo` = só o último paga; `pote` = todos pagam e os melhores dividem), `semana_divisao`/`final_divisao` (array de int que soma 100, 1 a 3 posições), `termos` ("true").
+- Valores travam quando o desafio começa (trigger `_challenge_stakes_check`). **Sem teto de pessoas e de valores** (decisão do Andre: "não estamos lidando com o dinheiro"); só um teto técnico de R$ 100.000 por segurança de dados.
+- Fechamento no servidor: semana fecha 1 dia depois do fim (fuso de São Paulo). `_challenge_close`, `_challenge_settle` (soma zero, empate divide a fatia).
+- Divisão em mais de 1 prêmio exige `n0 >= len(div)+2` participantes na data de início; senão cai no modo simples. **Fallback = `[100]` (tudo para o 1º) e quem perde paga.** Interpretação ainda **não confirmada** pelo Andre.
+- Tela "Acertos": paguei / recebi / perdoar / contestar (48h). Termos 18+.
+- Sair do desafio fecha o que já passou antes (quem sai paga o que deve); excluir é bloqueado com acerto em aberto (`challenge_acertos_saida.sql`).
+- Futuro (custódia do dinheiro): só após validação jurídica/contábil. Ver `docs/PLANO_NEGOCIO_E_PREMIOS.md`.
+- Tela pré-início redesenhada (v184): contagem regressiva, avatares de quem entrou, um cartão de convite, acordeões.
+- Bolinha do menu Desafios (v189): só acende para avisos **não vistos** (`treino-app:desafioAvisosVistos`, 14 dias); avisos vistos na aba ou dispensados (`desafioAvisosDispensados`) não contam.
+
+### 6.2 Convites e indicações
+- Link global "traga seu amigo pro Movo": `https://movoapp.com.br/convite/?amigo=CODE`. Tabelas `user_referral`, `user_origem.ref_code`; RPC `my_referral()`. Mostra quantos entraram e quantos treinaram. Pode servir de base para recompensas depois.
+- Convite para desafio: link `?desafio=CODE`, ou pela lista de amigos (`challenge_invites`, cartão de convite recebido), ou por e-mail (`convidar-email`, quem não tem conta recebe e-mail).
+
+### 6.3 Modo treinador
+- Gate: treinador se cadastra, fica `em_analise` e é aprovado (`coach_profiles.status`: `em_analise`/`ativo`/`suspenso`). Suspender congela vínculos.
+- Vínculos em `coach_links` (`pendente`, `ativo`, `pausado`, `encerrado`, `recusado`, `congelado`); 1 treinador ativo por aluno. Permissões do aluno: `ver_treinos`, `ver_cargas`, `ver_esforco_dor`, `ver_corrida`.
+- Três caminhos de vínculo: (a) treinador convida (`?treinador=`); (b) aluno gera link para treinador fora do Movo (`?prof=`, `coach_student_invites`); (c) **aluno busca treinador ativo e faz pedido direto** (`coach_buscar`, `coach_pedir`, `coach_pedidos_recebidos`, `coach_pedido_recusar`; validade 14 dias, até 3 pedidos abertos, 1 por treinador, recusado bloqueia novo pedido por 7 dias). Pedido direto só é visível ao treinador escolhido e ao aluno.
+- Treinador envia a semana como **proposta**; o aluno revisa o diff antes de entrar na agenda. Payload: `{dias:{0..6:[itens]}, fichas:{ref:ficha}}`; item `{tipo:"treino",ref}` ou `{tipo:"atividade",id,nome,detalhe,corrida?}`.
+- **Treino de corrida estruturado do treinador (v185):** item `atividade` com `id:"corrida"` e `corrida:{modelo,titulo,distanciaKm,duracaoMin,pace,esforco,detalhes,etapas}`. Modelos prontos (`TREINOS_CORRIDA`) + edição etapa por etapa (`CoachCorridaModal`, `CoachEtapasEditor`). Aluno vê gráfico e etapas (`PlanoEtapas`); `detalhe` em texto mantém apps antigos funcionando; entra no diff e no PDF. Falta: salvar como modelo reutilizável.
+- Aviso por e-mail ao treinador quando recebe pedido (v188, depende do Resend).
+
+### 6.4 Relatórios compartilhados
+- `report_shares`: aluno libera por **e-mail** com categorias (frequência, carga, peso e notas, treinos completos). Filtragem no banco (`get_shared_report`). Quem recebe vê em Configurações › "Ver relatórios". Aviso por e-mail só se a pessoa já tem conta (v188).
+
+### 6.5 Corrida
+- Treinos estruturados com etapas (`planoGerarTreinoCorrida`, `planoEtapasNorm`, `PLANO_ETAPA_TIPOS`), plano para prova (IA em `gerar-plano`), replanejar, provas colaborativas (`race_entries`, `shared_races`), favoritas, Strava.
+
+## 7. Pendências
+
+### Do Andre
+1. Rodar `challenge_acertos_saida.sql` (sair/excluir desafio com livro-caixa). Em 16/10 ainda não estava aplicado.
+2. E-mail: confirmar verificação do domínio no Resend e `CONVITE_FROM`/`FEEDBACK_FROM` com movoapp.com.br.
+3. Migração de domínio: 26 pessoas nunca abriram o domínio novo, 21 sem banner; decidir `dominio_novo.redirecionar=true`; URL de retorno do Strava; Site URL do Supabase; templates de e-mail do Supabase; tirar a lista de e-mails da tela Domínio no admin; congelar `meu-treino`.
+4. Jurídico/contábil: perguntas da seção 5 de `PLANO_NEGOCIO_E_PREMIOS.md` ao contador e ao advogado; revisão legal antes de abrir recursos com dinheiro; teste de validação de venda.
+5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
+
+### Do Claude / backlog
+- Salvar treino de corrida do treinador como modelo reutilizável.
+- Exportar `race_favorites` no pedido de dados (LGPD).
+- Roadmap item 9: trocar o e-mail da conta.
+- Aviso em tela (não só e-mail) quando alguém libera relatório para você.
+- Compartilhar relatório escolhendo da lista de amigos (hoje só por e-mail).
+
+## 8. Registro de decisões (mais recentes primeiro)
+
+- **16/10/2026 (v189):** bolinha de Desafios conta só avisos não vistos.
+- **16/10/2026 (v188):** avisos por e-mail (pedido de treinador, relatório compartilhado) via `avisar-email`; só para quem já tem conta; 15/dia; sem repetir em 7 dias.
+- **16/10/2026 (v187):** parâmetros de convite saem da URL depois de guardados (corrige puxar para atualizar reabrindo o desafio).
+- **16/10/2026 (v186):** aluno pode pedir a treinador que já usa o Movo (busca por nome ou e-mail exato; só treinadores ativos; mostra nome, CREF e bio).
+- **16/10/2026 (v185):** treinador monta treino de corrida estruturado: "os dois": modelos prontos e edição etapa por etapa.
+- **16/10/2026 (v182):** e-mail para amigo convidado e convite por e-mail para quem não tem conta.
+- **16/10/2026 (v180):** desafios sem limite de pessoas e valores; fallback para grupo pequeno.
+- **16/10/2026 (v179):** formatos de prêmio (semanal + final ou só final; o que cada colocação paga) seguindo a proposta do UX; link global de indicação.
+- **16/10/2026 (v178):** prêmios P1 (controle de acertos, Movo não toca no dinheiro).
+- **Antes:** app migrado para `app.movoapp.com.br` em repositório novo; licença proprietária; build com esbuild; domínio comprado no Registro.br; marca "Movo" sem registro conflitante nas classes 9, 41 e 45 (Cabify na 42).
