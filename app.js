@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v196";
+const APP_BUILD = "v197";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -6052,6 +6052,13 @@ function desafioKmDe(carga, log) {
 function desafioFmtKm(n) { return `${String(Math.round(n * 10) / 10).replace(".", ",")} km`; }
 
 function desafioNomeNorm(t) { return String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(); }
+// Corrida = a atividade "corrida" do app ou qualquer atividade cujo nome indique corrida. A distância
+// mínima do desafio só vale pra ela (vôlei, CrossFit, academia etc. contam só por duração).
+function desafioEhCorrida(a) {
+  if (!a) return false;
+  if (a.id === "corrida") return true;
+  return /(^|[^a-z])(corrida|correr|corro|running|run|rodagem|trote|maratona|meia maratona|longao)([^a-z]|$)/.test(desafioNomeNorm(a.nome));
+}
 function desafioNomeConta(rules, nome) {
   const lista = rules.atividades.nomes || [];
   if (lista.length === 0) return true;
@@ -6772,10 +6779,11 @@ function desafioContamTexto(rules) {
   }
   if (r.atividades.on) {
     const quais = r.atividades.nomes.length ? r.atividades.nomes.join(", ") : "qualquer atividade marcada como \"fui\"";
-    const req = [r.atividades.minMin > 0 && `${r.atividades.minMin}+ min`, r.atividades.minKm > 0 && `${desafioFmtKm(r.atividades.minKm).replace(" km", "")}+ km`].filter(Boolean).join(", ");
+    const req = r.atividades.minMin > 0 ? `${r.atividades.minMin}+ min` : "";
     partes.push(req ? `${quais} (${req})` : quais);
   }
-  return partes.length ? partes.join(" e ") : "nada (ative ao menos um tipo)";
+  const base = partes.length ? partes.join(" e ") : "nada (ative ao menos um tipo)";
+  return r.atividades.on && r.atividades.minKm > 0 ? `${base}. Corrida precisa de ${desafioFmtKm(r.atividades.minKm)} ou mais` : base;
 }
 
 // Texto das condições extras (dias, limite por dia, duração obrigatória).
@@ -6785,7 +6793,7 @@ function desafioLimitesTexto(rules) {
   t.push(r.maxPorDia === 0 ? "até 1 por tipo por dia" : r.maxPorDia === 1 ? "só 1 treino por dia (conta dia ativo)" : `até ${r.maxPorDia} treinos por dia`);
   if (r.dias.length < 7) t.push(`vale só ${r.dias.map((d) => DESAFIO_SEMANA_NOMES[d]).join(", ")}`);
   if (r.exigirDuracao && (r.academia.minMin > 0 || r.atividades.minMin > 0)) t.push("exige duração registrada");
-  if (r.exigirKm && r.atividades.minKm > 0) t.push("exige distância registrada");
+  if (r.exigirKm && r.atividades.minKm > 0) t.push("corrida exige distância registrada");
   return t.join(" · ");
 }
 
@@ -6848,7 +6856,8 @@ function desafioCheckinsFromSessions(sessions, atividadeById, rules, startIso, e
         const min = Number(cargas[k] && cargas[k].duracaoMin) || 0;
         if (r.atividades.minMin > 0 && min < r.atividades.minMin && (min > 0 || r.exigirDuracao)) return;
         const km = desafioKmDe(cargas[k], v);
-        if (r.atividades.minKm > 0 && km < r.atividades.minKm && (km > 0 || r.exigirKm)) return;
+        // Distância mínima só pra corrida; as outras atividades seguem só a regra de duração.
+        if (r.atividades.minKm > 0 && desafioEhCorrida(a) && km < r.atividades.minKm && (km > 0 || r.exigirKm)) return;
         out.push({ date, tipo: k, label: (a ? a.nome : "Atividade") + (km > 0 ? ` · ${desafioFmtKm(km)}` : ""), minutos: min || null });
       }
     });
@@ -8193,7 +8202,7 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
                 <div>
                   <DesafioStepper value={rules.atividades.minMin} min={0} max={120} step={5} onChange={(v) => editarRegras({ ...rules, atividades: { ...rules.atividades, minMin: v } })} fmt={(v) => (v === 0 ? "qualquer duração" : `${v} min ou mais`)} />
                   <div style={{ height: 6 }} />
-                  <DesafioStepper value={rules.atividades.minKm} min={0} max={100} step={0.5} onChange={(v) => editarRegras({ ...rules, atividades: { ...rules.atividades, minKm: v } })} fmt={(v) => (v === 0 ? "sem distância mínima" : `${desafioFmtKm(v)} ou mais`)} />
+                  <DesafioStepper value={rules.atividades.minKm} min={0} max={100} step={0.5} onChange={(v) => editarRegras({ ...rules, atividades: { ...rules.atividades, minKm: v } })} fmt={(v) => (v === 0 ? "corrida: sem distância mínima" : `corrida: ${desafioFmtKm(v)} ou mais`)} />
                   <div className="gt-dsf-hint" style={{ margin: "10px 0 6px" }}>Quais atividades? Sem escolher nenhuma, todas contam. A comparação é pelo nome da atividade no app de cada pessoa.</div>
                   <DesafioNomesAtividades nomes={rules.atividades.nomes} onChange={(nomes) => editarRegras({ ...rules, atividades: { ...rules.atividades, nomes } })} />
                 </div>
@@ -8226,7 +8235,7 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
               </div>
               <label className="gt-dsf-check" style={{ marginTop: 12 }}><input type="checkbox" checked={rules.exigirDuracao} onChange={(e) => editarRegras({ ...rules, exigirDuracao: e.target.checked })} /> Exigir duração registrada (sem tempo, não conta)</label>
               <label className="gt-dsf-check" style={{ marginTop: 8 }}><input type="checkbox" checked={rules.exigirKm} onChange={(e) => editarRegras({ ...rules, exigirKm: e.target.checked })} /> Exigir distância registrada (sem km, não conta)</label>
-              <div className="gt-dsf-hint">Só faz diferença se você definiu um mínimo de minutos ou de km acima. A distância vem do Strava; atividades sem distância seguem só a regra de minutos.</div>
+              <div className="gt-dsf-hint">Só faz diferença se você definiu um mínimo de minutos ou de km acima. A distância mínima vale só pra corrida (vem do Strava ou do registro); vôlei, CrossFit e as demais atividades seguem só a regra de minutos.</div>
             </div>
 
             <div className="gt-field-label" style={{ marginTop: 18 }}>META POR SEMANA</div>
