@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v200";
+const APP_BUILD = "v201";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -3083,9 +3083,6 @@ const APP_CSS = `
   .gt-fb-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:8px; }
   .gt-fb-item.novo { border-left:3px solid var(--accent); }
   .gt-fb-msg { white-space:pre-wrap; font-size:14px; margin:4px 0 8px; }
-  .gt-fb-ctx { font-size:12px; color:var(--text-muted); margin:0 0 8px; }
-  .gt-fb-ctx pre { white-space:pre-wrap; word-break:break-word; font-size:11px; max-height:220px; overflow:auto; background:var(--surface-2); border-radius:8px; padding:8px; margin:6px 0 0; }
-  .gt-fb-revisao { font-size:13px; white-space:pre-wrap; border-left:3px solid var(--accent-dim); padding:4px 8px; margin:0 0 8px; color:var(--text); }
   .gt-erro-aviso { position:fixed; left:12px; right:12px; bottom:calc(84px + env(safe-area-inset-bottom)); z-index:70; display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px solid var(--warn); color:var(--text); border-radius:14px; padding:10px 12px; font-size:14px; box-shadow:0 6px 20px rgba(0,0,0,.35); }
   .gt-erro-aviso span { flex:1; }
   .gt-root.gt-erro-root { min-height:0; padding:0; margin:0; max-width:none; background:none; position:static; }
@@ -14306,17 +14303,8 @@ function App() {
     ]);
     try {
       const fbRes = await supabaseClient.rpc("admin_feedback_list", { limit_n: 100 });
-      let lista = fbRes.error ? null : fbRes.data || [];
-      // contexto técnico e revisão do agente (user_feedback_relatos.sql); sem a função, segue sem eles
-      const ids = (lista || []).filter((f) => f.tipo === "problema").map((f) => f.id);
-      if (ids.length) {
-        const cx = await supabaseClient.rpc("admin_feedback_contexto", { p_ids: ids });
-        if (!cx.error && cx.data) {
-          const porId = new Map(cx.data.map((c) => [c.id, c]));
-          lista = lista.map((f) => (porId.has(f.id) ? { ...f, ...porId.get(f.id) } : f));
-        }
-      }
-      setAdminFeedback(lista);
+      // relatos de problema ficam só no painel de métricas (movoapp.com.br/admin › Relatos), decisão do Andre
+      setAdminFeedback(fbRes.error ? null : (fbRes.data || []).filter((f) => f.tipo !== "problema"));
     } catch (e) { setAdminFeedback(null); }
     setAdminPlanUsage(planUsageRes.error ? null : planUsageRes.data || []);
     try {
@@ -18342,13 +18330,6 @@ function App() {
                         <div className={`gt-fb-item ${f.lido ? "" : "novo"}`} key={f.id}>
                           <div className="gt-admin-user-row">{new Date(f.created_at).toLocaleString("pt-BR")} · {f.email || "—"} · <b>{f.tipo}</b> · {f.versao || "?"}{f.contato ? "" : " · não quer resposta"}</div>
                           <div className="gt-fb-msg">{f.mensagem}</div>
-                          {f.revisao && <div className="gt-fb-revisao"><b>Revisão do Claude</b>{f.revisado_em ? ` · ${new Date(f.revisado_em).toLocaleString("pt-BR")}` : ""}{"\n"}{f.revisao}</div>}
-                          {f.contexto && (
-                            <details className="gt-fb-ctx">
-                              <summary>{f.origem === "tela_quebrou" ? "Tela quebrou" : f.origem === "erro" ? "Erro no app" : "Relato"}{f.contexto.aba ? ` · ${f.contexto.aba}` : ""}{f.contexto.instalado ? " · instalado" : ""} · detalhes técnicos</summary>
-                              <pre>{JSON.stringify(f.contexto, null, 1)}</pre>
-                            </details>
-                          )}
                           <div className="gt-modal-actions" style={{ marginTop: 0 }}>
                             {f.email && f.contato && <a className="gt-btn secondary small" href={`mailto:${f.email}?subject=${encodeURIComponent("Sobre seu feedback no Movo")}`}>Responder</a>}
                             <button className="gt-btn secondary small" onClick={() => adminMarcarFeedback(f, !f.lido)}>{f.lido ? "Marcar como novo" : "Marcar como lido"}</button>
@@ -18357,6 +18338,7 @@ function App() {
                       ))}
                       {adminFeedback.length === 0 && <div className="gt-empty">Nenhum feedback ainda.</div>}
                     </div>
+                    <div className="gt-settings-hint">Relatos de problema (com detalhes técnicos e revisão do Claude) ficam no painel de métricas, aba Relatos.</div>
                   </>
                 )}
                 <div className="gt-settings-label" style={{ marginTop: 16 }}>Erros recentes</div>

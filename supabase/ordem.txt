@@ -63,3 +63,4 @@ coach_pedido_aluno.sql
 avisos_email.sql
 admin_m_contas.sql
 user_feedback_relatos.sql
+admin_m_relatos.sql
