@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 19/10/2026 (v202).
+Última atualização: 19/10/2026 (v203).
 
 ---
 
@@ -91,7 +91,7 @@ Marcos recentes:
 - `avisos_email.sql` (log e regras dos avisos por e-mail)
 - `admin_m_contas.sql` (lista de contas do painel de métricas)
 - `user_feedback_relatos.sql` (relatos de problema com contexto técnico e revisão do agente; v200)
-- `admin_m_relatos.sql` (aba Relatos do painel de métricas: relatos + erros mais frequentes; v201)
+- `admin_m_relatos.sql` (aba Mensagens do painel de métricas: todas as mensagens do "Fale com a gente" + erros mais frequentes; v201, v203)
 - `admin_identidade.sql` (1º da ordem: `movo_admins`, `is_movo_admin()`, `movo_admin_uid()`; v202). Os 21 arquivos que comparavam o e-mail do admin foram reescritos para usar essas funções.
 - `painel_gestao.sql` (último da ordem, v202): `admin_log` + gatilhos (Registro), `admin_m_pendencias`, `admin_m_conta` (ficha: só contagens e vínculos), `admin_m_conta_exportar`/`admin_m_conta_apagar` (a pedido, ficam no Registro; apagar exige digitar o e-mail e recusa conta de admin), `admin_m_desafios`/`admin_m_desafio` (só leitura), `admin_m_integracoes` (Strava 10 atletas, e-mails 7 dias), recados (`admin_recados`, `recado_vistos`, `meus_recados()`, `recado_marcar()`, `admin_m_recado_*`).
 - `relatos_prints.sql` (bucket privado `relatos` e coluna `user_feedback.prints`; v203)
@@ -146,6 +146,8 @@ Marcos recentes:
 - Compartilhar relatório escolhendo da lista de amigos (hoje só por e-mail).
 
 ## 8. Registro de decisões (mais recentes primeiro)
+
+- **19/10/2026 (v203, decisão do Andre após debate de produto e UX):** feedback e relato de problema viram **um canal só: "Fale com a gente"** (um item no menu do aluno e do treinador; sai o "Reportar problema"). Título "Fale com a gente", subtítulo "Problema, ideia ou elogio: a gente lê tudo." Categorias 🐞 Problema · 💡 Ideia · 👍 Elogio · 💬 Outro, **opcionais** (tocar de novo desmarca; sem escolha grava `tipo='outro'`), com texto de ajuda e confirmação próprios por categoria (ex.: Problema "Recebemos! Vamos investigar e corrigir."). **Prints em todos os casos** ("📎 Anexar print (opcional)", até 3, aviso "Confira o que aparece no print antes de enviar"). O contexto técnico vai sempre (`origem='manual'`, `contexto`), nunca aparece para a pessoa. Barra de erro: "Algo deu errado aqui · Avisar a gente" abre o mesmo formulário já em Problema (`origem='erro'`); tela de erro: botão "Avisar a gente". Prints: bucket **privado** `relatos` (`<user_id>/<aleatório>.jpg`, 1 MB, só JPEG, reduzidos no aparelho a 1280px), caminhos em `user_feedback.prints` (máx. 3); dono grava/lê/apaga a própria pasta, admin lê tudo; excluir a conta apaga a pasta. Painel: aba **Relatos vira Mensagens** com todas as categorias, filtro por categoria, marcador "veio de erro", miniaturas (URL assinada 1 h) e revisão do Claude só para Problema; a aba Suporte e as Pendências deixam de listar feedback à parte (contador = relatos + feedback). `admin_m_relatos` devolve `tipo` e `prints` de todos os tipos; `admin_m_relato_lido` marca qualquer tipo. Custo: só armazenamento, dentro do plano do Supabase.
 
 - **19/10/2026 (v202, decisão do Andre):** **toda a gestão sai do app e vai para o painel** (movo-site/admin, área **Operação**); no app fica só o atalho "Abrir painel" para ele. Substitui a decisão de 16/10 de manter Usuários no app. Plano por fases no Claude Doc https://claude.ai/code/artifact/f8c70169-0230-43b6-803c-e2806aeea318 (executadas as 4 fases). Novidades: aba Pendências (padrão, contador nas abas e no ícone do PWA), ficha da conta com exportar/apagar a pedido (LGPD), Registro imutável de mudanças de admin, Desafios só leitura, Integrações (Strava/e-mails), **Recados** (cartão no topo da aba Hoje para um público: todos, inativos há N dias, treinadores, quem está em desafio com prêmio, e-mails escolhidos; só no app, sem custo). Admin passou a ser `movo_admins` por `user_id`. Fora por custo ou risco: e-mail em massa, e-mail de teste, encerrar desafio.
 
