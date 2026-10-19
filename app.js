@@ -4358,7 +4358,7 @@ function treinoIAExpandir(raw) {
 // --- Feedback dos usuários: grava em user_feedback (aparece no painel admin) e,
 // se a função notificar-feedback estiver publicada com RESEND_API_KEY, manda e-mail. ---
 // "Fale com a gente" (v203): um canal só para problema, ideia, elogio ou outro. A categoria é
-// opcional (sem escolha vai como "outro"); o contexto técnico vai sempre e nunca aparece pra pessoa.
+// obrigatória (tem "Outro" para o que não se encaixa); o contexto técnico vai sempre e nunca aparece pra pessoa.
 const FEEDBACK_TIPOS = [
   { id: "problema", e: "🐞", rotulo: "Problema", dica: "O que aconteceu? O que você estava fazendo na hora?", ok: "Recebemos! Vamos investigar e corrigir." },
   { id: "ideia", e: "💡", rotulo: "Ideia", dica: "O que deixaria o Movo melhor pra você?", ok: "Valeu pela ideia! Ela vai pra nossa lista." },
@@ -4417,11 +4417,11 @@ function FeedbackModal({ onEnviar, onClose, tipoInicial }) {
   const [contato, setContato] = useState(true);
   const [estado, setEstado] = useState("form"); // form | enviando | ok
   const [erro, setErro] = useState("");
-  const ok = msg.trim().length >= 3;
+  const ok = !!tipo && msg.trim().length >= 3;
   async function enviar() {
     if (!ok || estado === "enviando") return;
     setEstado("enviando"); setErro("");
-    const r = await onEnviar({ tipo: tipo || "outro", mensagem: msg.trim(), contato, prints: prints.map((p) => p.blob) });
+    const r = await onEnviar({ tipo, mensagem: msg.trim(), contato, prints: prints.map((p) => p.blob) });
     if (r && r.ok) setEstado("ok");
     else { setEstado("form"); setErro(r && r.limite ? "Você já enviou vários hoje. Tente de novo amanhã." : "Não consegui enviar. Tente de novo."); }
   }
@@ -4439,12 +4439,12 @@ function FeedbackModal({ onEnviar, onClose, tipoInicial }) {
           <>
             <h3>Fale com a gente</h3>
             <div className="gt-fb-hint">Problema, ideia ou elogio: a gente lê tudo.</div>
-            <div className="gt-fb-tipos" role="group" aria-label="Sobre o quê? (opcional)">
+            <div className="gt-fb-tipos" role="group" aria-label="Sobre o quê?">
               {FEEDBACK_TIPOS.map((x) => (
-                <button key={x.id} type="button" aria-pressed={tipo === x.id} className={`gt-fb-tipo ${tipo === x.id ? "on" : ""}`} onClick={() => setTipo(tipo === x.id ? null : x.id)}><Ei e={x.e} /> {x.rotulo}</button>
+                <button key={x.id} type="button" aria-pressed={tipo === x.id} className={`gt-fb-tipo ${tipo === x.id ? "on" : ""}`} onClick={() => setTipo(x.id)}><Ei e={x.e} /> {x.rotulo}</button>
               ))}
             </div>
-            <textarea className="gt-input" rows={5} maxLength={2000} autoFocus placeholder={t ? t.dica : "Escreve aqui, do seu jeito."} value={msg} onChange={(e) => setMsg(e.target.value)} />
+            <textarea className="gt-input" rows={5} maxLength={2000} autoFocus placeholder={t ? t.dica : "Escolha acima sobre o que é e escreva aqui."} value={msg} onChange={(e) => setMsg(e.target.value)} />
             <div className="gt-fb-prints">
               {prints.map((p, i) => (
                 <div className="gt-fb-print" key={p.url}>
