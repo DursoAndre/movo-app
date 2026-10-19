@@ -1829,7 +1829,7 @@ try {
 // Grava um relato de problema em user_feedback (tipo "problema") com o contexto e avisa por e-mail.
 // Fica fora do App para funcionar também na tela de erro (quando o App já quebrou).
 // Sem login, o RLS não deixa gravar em user_feedback: cai em client_errors, que aceita anônimo.
-async function enviarRelatoProblema({ mensagem, contato, origem, contexto }) {
+async function enviarRelatoProblema({ mensagem, contato, origem, contexto, prints }) {
   let sess = null;
   try { const r = await supabaseClient.auth.getSession(); sess = r && r.data && r.data.session; } catch (e) {}
   const msg = String(mensagem || "").trim() || "(sem descrição: relato pela tela de erro)";
@@ -1837,9 +1837,10 @@ async function enviarRelatoProblema({ mensagem, contato, origem, contexto }) {
     logErroModulo("relato_sem_login", JSON.stringify({ mensagem: msg, contexto }).slice(0, 2000));
     return { ok: true };
   }
+  const caminhos = prints && prints.length ? await feedbackSubirPrints(sess.user.id, prints) : [];
   const { data, error } = await supabaseClient
     .from("user_feedback")
-    .insert({ user_id: sess.user.id, tipo: "problema", mensagem: msg.slice(0, 2000), contato: contato !== false, versao: APP_BUILD, origem: origem || "manual", contexto: contexto || null })
+    .insert({ user_id: sess.user.id, tipo: "problema", mensagem: msg.slice(0, 2000), contato: contato !== false, versao: APP_BUILD, origem: origem || "manual", contexto: contexto || null, ...(caminhos.length ? { prints: caminhos } : {}) })
     .select("id")
     .single();
   if (error) {
@@ -3080,6 +3081,12 @@ const APP_CSS = `
   .gt-fb-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:8px; }
   .gt-fb-item.novo { border-left:3px solid var(--accent); }
   .gt-fb-msg { white-space:pre-wrap; font-size:14px; margin:4px 0 8px; }
+  .gt-fb-prints { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+  .gt-fb-print { position:relative; width:64px; height:64px; border-radius:8px; overflow:hidden; border:1px solid var(--border); }
+  .gt-fb-print img { width:100%; height:100%; object-fit:cover; display:block; }
+  .gt-fb-print button { position:absolute; top:2px; right:2px; width:22px; height:22px; border-radius:50%; border:0; background:rgba(0,0,0,.65); color:#fff; font-size:15px; line-height:22px; padding:0; cursor:pointer; }
+  .gt-fb-anexar { display:inline-flex; align-items:center; gap:6px; min-height:40px; padding:0 12px; border:1px dashed var(--border); border-radius:10px; color:var(--text-muted); font-size:14px; cursor:pointer; }
+  .gt-fb-anexar input { display:none; }
   .gt-erro-aviso { position:fixed; left:12px; right:12px; bottom:calc(84px + env(safe-area-inset-bottom)); z-index:70; display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px solid var(--warn); color:var(--text); border-radius:14px; padding:10px 12px; font-size:14px; box-shadow:0 6px 20px rgba(0,0,0,.35); }
   .gt-erro-aviso span { flex:1; }
   .gt-root.gt-erro-root { min-height:0; padding:0; margin:0; max-width:none; background:none; position:static; }
@@ -4356,9 +4363,55 @@ const FEEDBACK_TIPOS = [
   { id: "elogio", e: "👍", rotulo: "Elogio" },
   { id: "outro", e: "💬", rotulo: "Outro" },
 ];
+// Prints do feedback: até 3, reduzidos no aparelho (lado maior 1280px, JPEG) antes de subir.
+const FEEDBACK_MAX_PRINTS = 3;
+function feedbackPrintReduzir(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const k = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        cv.toBlob((b) => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error("blob")); }, "image/jpeg", 0.78);
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("imagem inválida")); };
+    im.src = url;
+  });
+}
+// Sobe os prints no bucket privado "relatos" (<user_id>/<aleatório>.jpg) e devolve os caminhos.
+// Falha de um print não impede o envio do texto.
+async function feedbackSubirPrints(uid, blobs) {
+  const caminhos = [];
+  for (const b of (blobs || []).slice(0, FEEDBACK_MAX_PRINTS)) {
+    try {
+      const nome = `${uid}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error } = await supabaseClient.storage.from("relatos").upload(nome, b, { contentType: "image/jpeg" });
+      if (error) logErroModulo("relato_print", error.message);
+      else caminhos.push(nome);
+    } catch (e) { logErroModulo("relato_print", e && e.message); }
+  }
+  return caminhos;
+}
 function FeedbackModal({ onEnviar, onClose, tipoInicial, titulo, intro }) {
   const [tipo, setTipo] = useState(tipoInicial || "ideia");
   const [msg, setMsg] = useState("");
+  const [prints, setPrints] = useState([]); // [{ blob, url }]
+  useEffect(() => () => { prints.forEach((p) => URL.revokeObjectURL(p.url)); }, []); // eslint-disable-line
+  async function anexar(files) {
+    const livres = FEEDBACK_MAX_PRINTS - prints.length;
+    const novos = [];
+    for (const f of Array.from(files || []).slice(0, livres)) {
+      try { const blob = await feedbackPrintReduzir(f); novos.push({ blob, url: URL.createObjectURL(blob) }); } catch (e) { setErro("Não consegui abrir essa imagem."); }
+    }
+    if (novos.length) setPrints((l) => [...l, ...novos].slice(0, FEEDBACK_MAX_PRINTS));
+  }
+  function tirarPrint(i) {
+    setPrints((l) => { URL.revokeObjectURL(l[i].url); return l.filter((_, j) => j !== i); });
+  }
   const [contato, setContato] = useState(true);
   const [estado, setEstado] = useState("form"); // form | enviando | ok
   const [erro, setErro] = useState("");
@@ -4366,7 +4419,7 @@ function FeedbackModal({ onEnviar, onClose, tipoInicial, titulo, intro }) {
   async function enviar() {
     if (!ok || estado === "enviando") return;
     setEstado("enviando"); setErro("");
-    const r = await onEnviar({ tipo, mensagem: msg.trim(), contato });
+    const r = await onEnviar({ tipo, mensagem: msg.trim(), contato, prints: tipo === "problema" ? prints.map((p) => p.blob) : [] });
     if (r && r.ok) setEstado("ok");
     else { setEstado("form"); setErro(r && r.limite ? "Você já enviou vários hoje. Tente de novo amanhã." : "Não consegui enviar. Tente de novo."); }
   }
@@ -4376,7 +4429,7 @@ function FeedbackModal({ onEnviar, onClose, tipoInicial, titulo, intro }) {
         {estado === "ok" ? (
           <>
             <h3>Valeu! <Ei e="🙌" size={22} /></h3>
-            <div className="gt-fb-hint">{tipo === "problema" ? "Recebi o relato, com os detalhes técnicos do aparelho. Vou olhar." : "Recebi seu feedback. Eu leio tudo."}</div>
+            <div className="gt-fb-hint">{tipo === "problema" ? "Tudo certo, recebemos seu relato e vamos trabalhar nisso." : "Recebemos seu feedback. A gente lê tudo."}</div>
             <div className="gt-modal-actions"><button className="gt-btn" onClick={onClose}>Fechar</button></div>
           </>
         ) : (
@@ -4389,6 +4442,20 @@ function FeedbackModal({ onEnviar, onClose, tipoInicial, titulo, intro }) {
               ))}
             </div>}
             <textarea className="gt-input" rows={5} maxLength={2000} autoFocus placeholder={tipo === "problema" ? "O que aconteceu? Em que tela?" : "Conta pra gente…"} value={msg} onChange={(e) => setMsg(e.target.value)} />
+            {tipo === "problema" && <div className="gt-fb-prints">
+              {prints.map((p, i) => (
+                <div className="gt-fb-print" key={p.url}>
+                  <img src={p.url} alt={`Print ${i + 1}`} />
+                  <button type="button" aria-label="Tirar print" onClick={() => tirarPrint(i)}>×</button>
+                </div>
+              ))}
+              {prints.length < FEEDBACK_MAX_PRINTS && (
+                <label className="gt-fb-anexar">
+                  <input type="file" accept="image/*" multiple onChange={(e) => { anexar(e.target.files); e.target.value = ""; }} />
+                  <Ei e="📎" /> {prints.length ? "Mais um print" : "Anexar print"}
+                </label>
+              )}
+            </div>}
             <label className="gt-fb-check"><input type="checkbox" checked={contato} onChange={(e) => setContato(e.target.checked)} /> Pode me responder por e-mail</label>
             {erro && <div className="gt-fb-erro">{erro}</div>}
             <div className="gt-modal-actions">
@@ -14075,6 +14142,11 @@ function App() {
     try {
       if (stravaConnected) { try { await supabaseClient.functions.invoke("strava-connect", { body: { action: "disconnect" } }); } catch (e) {} }
       try { if (session && session.user) await supabaseClient.storage.from("avatars").remove([`${session.user.id}/a.jpg`]); } catch (e) {} // foto de perfil sai do storage junto
+      try { // prints enviados em feedbacks também
+        const uidP = session && session.user && session.user.id;
+        const ls = uidP ? await supabaseClient.storage.from("relatos").list(uidP, { limit: 1000 }) : null;
+        if (ls && ls.data && ls.data.length) await supabaseClient.storage.from("relatos").remove(ls.data.map((o) => `${uidP}/${o.name}`));
+      } catch (e) {}
       const { error } = await supabaseClient.rpc("delete_my_account");
       if (error) { logClientError("delete_my_account", error.message); return { ok: false }; }
     } catch (e) { return { ok: false }; }
@@ -14087,11 +14159,12 @@ function App() {
     return { ok: true };
   }
 
-  async function enviarFeedback({ tipo, mensagem, contato }) {
+  async function enviarFeedback({ tipo, mensagem, contato, prints }) {
     if (!session) return { ok: false };
+    const caminhos = prints && prints.length ? await feedbackSubirPrints(session.user.id, prints) : [];
     const { data, error } = await supabaseClient
       .from("user_feedback")
-      .insert({ user_id: session.user.id, tipo, mensagem, contato, versao: APP_BUILD, ...(tipo === "problema" ? { origem: "manual", contexto: diagContexto({ aba: tab }) } : {}) })
+      .insert({ user_id: session.user.id, tipo, mensagem, contato, versao: APP_BUILD, ...(tipo === "problema" ? { origem: "manual", contexto: diagContexto({ aba: tab }) } : {}), ...(caminhos.length ? { prints: caminhos } : {}) })
       .select("id")
       .single();
     if (error) {
@@ -17235,7 +17308,7 @@ function App() {
       {aceiteFalta && <AceiteModal onAceitar={registrarAceite} onSair={handleLogout} />}
       {excluirOpen && <ExcluirContaModal onConfirmar={excluirMinhaConta} onClose={() => setExcluirOpen(false)} />}
 
-      {feedbackOpen && <FeedbackModal onEnviar={enviarFeedback} onClose={() => setFeedbackOpen(false)} {...(feedbackOpen === "problema" ? { tipoInicial: "problema", titulo: "Reportar problema", intro: "Conta o que aconteceu. Os detalhes técnicos do aparelho vão junto, para dar pra arrumar mais rápido." } : {})} />}
+      {feedbackOpen && <FeedbackModal onEnviar={enviarFeedback} onClose={() => setFeedbackOpen(false)} {...(feedbackOpen === "problema" ? { tipoInicial: "problema", titulo: "Reportar problema", intro: "Conta o que aconteceu e, se puder, anexe um print da tela." } : {})} />}
 
       {helpOpen && (
         <div className="gt-modal-backdrop" onClick={() => setHelpOpen(false)}>
@@ -18747,7 +18820,7 @@ function ErroAviso() {
         <FeedbackModal
           tipoInicial="problema"
           titulo="Reportar problema"
-          intro="Conta o que você estava fazendo. Os detalhes técnicos do erro vão junto."
+          intro="Conta o que você estava fazendo. Se puder, anexe um print."
           onEnviar={(d) => enviarRelatoProblema({ ...d, origem: "erro", contexto: relato })}
           onClose={() => setRelato(null)}
         />
@@ -18797,10 +18870,10 @@ class ErrorBoundary extends React.Component {
         <div className="gt-crash">
           <h3>Ops, algo quebrou nesta tela <Ei e="🐞" /></h3>
           {estado === "ok" ? (
-            <div className="gt-fb-hint">Recebi o relato com os detalhes do erro. Valeu! Recarregue o app para continuar.</div>
+            <div className="gt-fb-hint">Tudo certo, recebemos seu relato e vamos trabalhar nisso. Recarregue o app para continuar.</div>
           ) : (
             <>
-              <div className="gt-fb-hint">Seus dados estão salvos. Se puder, conte o que você estava fazendo e toque em Reportar: o erro técnico vai junto.</div>
+              <div className="gt-fb-hint">Seus dados estão salvos. Se puder, conte o que você estava fazendo e toque em Reportar.</div>
               <textarea className="gt-input" rows={4} maxLength={2000} placeholder="O que você estava fazendo? (opcional)" value={msg} onChange={(ev) => this.setState({ msg: ev.target.value })} />
               {estado === "falhou" && <div className="gt-fb-erro">Não consegui enviar. Confira a internet e tente de novo.</div>}
               {estado === "limite" && <div className="gt-fb-erro">Você já enviou vários hoje. O erro ficou registrado mesmo assim.</div>}

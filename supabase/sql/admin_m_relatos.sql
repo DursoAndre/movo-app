@@ -1,6 +1,6 @@
 -- Painel de métricas (movoapp.com.br/admin), aba "Relatos" (v201): relatos de problema
 -- (user_feedback tipo 'problema', com contexto e revisão do agente; ver user_feedback_relatos.sql)
--- e os erros mais frequentes de client_errors. Só passa quem é admin (is_movo_admin).
+-- e os erros mais frequentes de client_errors. Desde v202 devolve também `prints` (relatos_prints.sql; rodar antes). Só passa quem é admin (is_movo_admin).
 -- Decisão do Andre (19/10): relatos ficam só no painel de métricas, não na aba Admin do app.
 create or replace function public.admin_m_relatos(p_dias int default 30) returns jsonb
 language plpgsql stable security definer set search_path to 'public', 'auth' as $$
@@ -11,7 +11,7 @@ begin
     'relatos', coalesce((
       select jsonb_agg(x order by x.lido, x.criado desc) from (
         select f.id, f.created_at as criado, u.email, nullif(trim(a.display_name), '') as nome,
-               f.mensagem, f.contato, f.versao, f.origem, f.contexto, f.revisao, f.revisado_em, f.lido
+               f.mensagem, f.contato, f.versao, f.origem, f.contexto, f.revisao, f.revisado_em, f.lido, f.prints
         from public.user_feedback f
         left join auth.users u on u.id = f.user_id
         left join public.app_data a on a.user_id = f.user_id

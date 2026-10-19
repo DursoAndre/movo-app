@@ -80,7 +80,7 @@ Deploy: pelo MCP do Supabase (`deploy_edge_function`) ou CLI. Funções novas us
 
 ## 5. Banco de dados (`supabase/sql/`, ordem em `supabase/ordem.txt`)
 
-Total: 66 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
+Total: 67 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
 
 Marcos recentes:
 - `challenge_acertos.sql`, `challenge_formatos.sql`, `challenge_acertos_saida.sql` (prêmios; ver 6.1)
@@ -94,6 +94,7 @@ Marcos recentes:
 - `admin_m_relatos.sql` (aba Relatos do painel de métricas: relatos + erros mais frequentes; v201)
 - `admin_identidade.sql` (1º da ordem: `movo_admins`, `is_movo_admin()`, `movo_admin_uid()`; v202). Os 21 arquivos que comparavam o e-mail do admin foram reescritos para usar essas funções.
 - `painel_gestao.sql` (último da ordem, v202): `admin_log` + gatilhos (Registro), `admin_m_pendencias`, `admin_m_conta` (ficha: só contagens e vínculos), `admin_m_conta_exportar`/`admin_m_conta_apagar` (a pedido, ficam no Registro; apagar exige digitar o e-mail e recusa conta de admin), `admin_m_desafios`/`admin_m_desafio` (só leitura), `admin_m_integracoes` (Strava 10 atletas, e-mails 7 dias), recados (`admin_recados`, `recado_vistos`, `meus_recados()`, `recado_marcar()`, `admin_m_recado_*`).
+- `relatos_prints.sql` (bucket privado `relatos` e coluna `user_feedback.prints`; v203)
 
 ## 6. Decisões por área
 
