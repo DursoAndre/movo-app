@@ -1,4 +1,4 @@
--- Prints nos relatos de problema (v202): até 3 imagens por relato, reduzidas no aparelho
+-- Prints no "Fale com a gente" (v203, qualquer categoria): até 3 imagens por mensagem, reduzidas no aparelho
 -- (lado maior 1280px, JPEG). Bucket PRIVADO "relatos", pasta = user_id. Só o dono grava/lê/apaga
 -- a própria pasta; o admin (is_movo_admin) lê tudo e vê pelo painel de métricas com URL assinada.
 -- Seguro rodar de novo.
