@@ -38,7 +38,7 @@ security definer
 set search_path = public, auth
 as $$
   select public.saude_resumo()
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+  where public.is_movo_admin();
 $$;
 revoke all on function public.admin_saude() from public, anon;
 grant execute on function public.admin_saude() to authenticated;

@@ -13,7 +13,7 @@ as $$
   select r.id, r.nome, r.data_inicio, r.cidade, r.uf, r.modalidade, r.oculta, u.email::text, r.created_at
   from public.shared_races r
   left join auth.users u on u.id = r.criada_por
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   order by r.created_at desc
   limit 100;
 $$;
@@ -25,7 +25,7 @@ security definer
 set search_path = public, auth
 as $$
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then
+  if not public.is_movo_admin() then
     raise exception 'not allowed';
   end if;
   update public.shared_races set oculta = p_oculta where id = p_id;

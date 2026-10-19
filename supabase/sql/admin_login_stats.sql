@@ -19,7 +19,7 @@ as $$
   join auth.users u on u.id = e.user_id
   where e.name in ('login_codigo', 'login_link', 'logout')
     and e.created_at >= now() - make_interval(days => dias)
-    and (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+    and public.is_movo_admin()
   group by u.email
   order by logins desc;
 $$;

@@ -59,7 +59,7 @@ as $$
     from public.app_opens o
     where o.user_id = u.id
   ) ao on true
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   order by u.created_at desc;
 $$;
 
@@ -79,7 +79,7 @@ as $$
   select ce.created_at, u.email, ce.context, ce.message
   from public.client_errors ce
   left join auth.users u on u.id = ce.user_id
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   order by ce.created_at desc
   limit limit_n;
 $$;

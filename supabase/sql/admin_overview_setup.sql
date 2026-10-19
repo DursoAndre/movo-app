@@ -44,7 +44,7 @@ as $$
     -- tem teto de 500 MB; isso é o que mais cedo vira limite, bem antes do
     -- teto de 50 mil usuários ativos/mês.
     (select round(pg_database_size(current_database()) / 1024.0 / 1024.0, 1))
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+  where public.is_movo_admin();
 $$;
 
 grant execute on function public.admin_overview_stats() to authenticated;
@@ -73,7 +73,7 @@ as $$
     interval '1 day'
   ) as s(d)
   left join public.app_opens o on (o.opened_at at time zone 'America/Sao_Paulo')::date = s.d::date
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   group by s.d
   order by s.d;
 $$;

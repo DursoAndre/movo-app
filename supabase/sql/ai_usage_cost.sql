@@ -47,7 +47,7 @@ as $$
          coalesce(sum(l.output_tokens), 0)::bigint,
          min(l.created_at)
   from public.ai_usage_log l
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+  where public.is_movo_admin();
 $$;
 revoke all on function public.admin_ai_cost() from public, anon;
 grant execute on function public.admin_ai_cost() to authenticated;

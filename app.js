@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v201";
+const APP_BUILD = "v202";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -72,12 +72,6 @@ const PLANOS_CATALOGO = {
     { id: "studio", nome: "Studio", mensal: 149, itens: ["Até 80 alunos", "Tudo do Pro", "Até 30 usos de IA por mês em cada recurso"] },
   ],
 };
-// Painel admin: máximo de alunos por plano de treinador (espelha plano_limites no banco) e plano de um treinador pela lista de assinaturas.
-const COACH_ALUNOS_MAX = { gratis: 3, start: 10, pro: 30, studio: 80 };
-function planoDoTreinador(assin, email) {
-  const a = (assin || []).find((x) => x.linha === "treinador" && x.email === email);
-  return a ? a.plano : "gratis";
-}
 function planoBRL(n) {
   const v = Number(n) || 0;
   return "R$ " + (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ","));
@@ -2508,6 +2502,9 @@ const APP_CSS = `
   .gt-strava-convite .tx { display:flex; flex-direction:column; gap:2px; }
   .gt-strava-convite .tx span { font-size:13px; color:var(--text-muted); }
   .gt-strava-convite .ac { display:flex; align-items:center; gap:14px; }
+  .gt-recado { border-color:var(--accent, #C6F135); }
+  .gt-recado .tx span { white-space:pre-wrap; overflow-wrap:anywhere; }
+  a.gt-menu-item { text-decoration:none; box-sizing:border-box; }
   .gt-onb-origem { display:flex; flex-direction:column; gap:8px; margin:6px 0 16px; }
   .gt-onb-origem-op { display:flex; flex-direction:column; gap:2px; text-align:left; width:100%; min-height:56px; padding:10px 14px; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; color:var(--text); cursor:pointer; }
   .gt-onb-origem-op b { font-size:15px; }
@@ -13046,223 +13043,6 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   );
 }
 
-// --- Admin > Catálogo: fila de exercícios sugeridos por usuários, com a proposta da IA (v162) ---
-function AdminCatalogo({ showToast }) {
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState("");
-  const [rodando, setRodando] = useState(false);
-  const [edit, setEdit] = useState({});
-  const [coment, setComent] = useState({});
-  const [ocupado, setOcupado] = useState(null);
-  async function carregar() {
-    const { data, error } = await supabaseClient.rpc("admin_revisao_lista");
-    if (error) { setErro("Não consegui carregar: " + error.message); return; }
-    setErro("");
-    setDados(data);
-  }
-  useEffect(() => { carregar(); }, []);
-  async function rodarAgora() {
-    setRodando(true);
-    try {
-      const { data: s } = await supabaseClient.auth.getSession();
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/revisar-catalogo`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${s.session.access_token}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ origem: "admin" }),
-      });
-      const j = await resp.json().catch(() => ({}));
-      if (!resp.ok) { showToast(j.error || "A revisão falhou"); }
-      else showToast(j.novas ? `${j.novas} sugest${j.novas === 1 ? "ão nova" : "ões novas"}` : "Nada novo pra revisar");
-    } catch (e) { showToast("A revisão falhou"); }
-    setRodando(false);
-    carregar();
-  }
-  function propDe(r) { return edit[r.id] || { acao: r.acao || "novo", ...(r.proposta || {}) }; }
-  function setProp(r, patch) { setEdit((e) => ({ ...e, [r.id]: { ...propDe(r), ...patch } })); }
-  async function decidir(r, decisao) {
-    setOcupado(r.id);
-    const p = propDe(r);
-    const { data, error } = await supabaseClient.rpc("admin_revisao_decidir", { p_id: r.id, p_decisao: decisao, p_comentario: coment[r.id] || null, p_proposta: decisao === "aprovar" ? p : null });
-    setOcupado(null);
-    if (error || !data || !data.ok) { showToast("Não deu: " + ((error && error.message) || "erro")); return; }
-    showToast(decisao === "aprovar" ? "Aprovado — entra no catálogo" : "Reprovado");
-    if (decisao === "aprovar") atualizarCatalogoRemoto(true);
-    carregar();
-  }
-  async function reavaliar(r) {
-    const { error } = await supabaseClient.rpc("admin_revisao_reavaliar", { p_id: r.id });
-    if (error) { showToast("Não consegui reavaliar"); return; }
-    showToast("Volta pra fila na próxima revisão");
-    carregar();
-  }
-  const grupos = CATALOG_GRUPOS;
-  return (
-    <div>
-      <div className="gt-co-imp-topo" style={{ marginBottom: 10 }}>
-        <div className="gt-field-label" style={{ margin: 0 }}>REVISÃO DO CATÁLOGO · roda todo dia às 23h (Brasília)</div>
-        <button type="button" className="gt-btn secondary small" disabled={rodando} onClick={rodarAgora}>{rodando ? "Revisando…" : "Rodar agora"}</button>
-      </div>
-      {erro && <div className="gt-empty">{erro}</div>}
-      {!dados && !erro && <div className="gt-empty">Carregando…</div>}
-      {dados && dados.pendentes.length === 0 && <div className="gt-empty">Nada pendente. {dados.sem_revisao > 0 ? `${dados.sem_revisao} nome(s) ainda não passaram pela revisão.` : "Tudo revisado."}</div>}
-      {dados && dados.pendentes.map((r) => {
-        const p = propDe(r);
-        return (
-          <div className="gt-co-imp-ficha" key={r.id}>
-            <div style={{ fontWeight: 600 }}>{r.nome} <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 12 }}>· {r.qtd}x · {r.usuarios} pessoa{r.usuarios === 1 ? "" : "s"}</span></div>
-            {r.motivo_ia && <div className="gt-settings-hint" style={{ margin: "4px 0 8px" }}>IA: {r.motivo_ia}</div>}
-            <select className="gt-input" value={p.acao} onChange={(e) => setProp(r, { acao: e.target.value })}>
-              <option value="alias">Já existe — só vira outro nome</option>
-              <option value="novo">Exercício novo no catálogo</option>
-              <option value="ignorar">Não entra (ignorar)</option>
-            </select>
-            {p.acao === "alias" && (
-              <select className="gt-input" style={{ marginTop: 6 }} value={p.exercicio_id || ""} onChange={(e) => setProp(r, { exercicio_id: e.target.value })}>
-                <option value="">Escolha o exercício…</option>
-                {EXERCISE_CATALOG_FLAT.map((ex) => <option key={ex.id} value={ex.id}>{ex.nome} ({ex.grupo})</option>)}
-              </select>
-            )}
-            {p.acao === "novo" && (
-              <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                <input className="gt-input" placeholder="Nome no catálogo" value={p.nome || ""} onChange={(e) => setProp(r, { nome: e.target.value })} />
-                <select className="gt-input" value={p.grupo_novo ? "__novo" : (p.grupo_key || "")} onChange={(e) => (e.target.value === "__novo" ? setProp(r, { grupo_novo: p.grupo_novo || "Novo grupo" }) : setProp(r, { grupo_key: e.target.value, grupo_novo: "" }))}>
-                  <option value="">Grupo…</option>
-                  {grupos.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
-                  <option value="__novo">+ Criar grupo novo</option>
-                </select>
-                {p.grupo_novo ? <input className="gt-input" placeholder="Nome do grupo novo" value={p.grupo_novo} onChange={(e) => setProp(r, { grupo_novo: e.target.value })} /> : null}
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input className="gt-input" type="number" min="1" placeholder="Séries" value={p.series || ""} onChange={(e) => setProp(r, { series: e.target.value })} />
-                  <input className="gt-input" placeholder="Reps (ex: 10-12)" value={p.repeticoes || ""} onChange={(e) => setProp(r, { repeticoes: e.target.value })} />
-                </div>
-                <input className="gt-input" placeholder="Descrição (opcional)" value={p.descricao || ""} onChange={(e) => setProp(r, { descricao: e.target.value })} />
-                <input className="gt-input" placeholder="Link de vídeo (opcional)" value={p.video_url || ""} onChange={(e) => setProp(r, { video_url: e.target.value })} />
-              </div>
-            )}
-            <input className="gt-input" style={{ marginTop: 8 }} placeholder="Comentário (a IA lê na próxima revisão)" value={coment[r.id] || ""} onChange={(e) => setComent((c) => ({ ...c, [r.id]: e.target.value }))} />
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              {p.acao === "ignorar"
-                ? <button type="button" className="gt-btn" disabled={ocupado === r.id} onClick={() => decidir(r, "reprovar")}>Concordo — não entra</button>
-                : <button type="button" className="gt-btn" disabled={ocupado === r.id || (p.acao === "alias" && !p.exercicio_id) || (p.acao === "novo" && (!(p.nome || "").trim() || !(p.grupo_key || p.grupo_novo)))} onClick={() => decidir(r, "aprovar")}>Aprovar</button>}
-              {p.acao !== "ignorar" && <button type="button" className="gt-btn secondary" disabled={ocupado === r.id} onClick={() => decidir(r, "reprovar")}>Reprovar</button>}
-            </div>
-          </div>
-        );
-      })}
-      {dados && dados.decididos.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <div className="gt-field-label" style={{ marginBottom: 6 }}>DECIDIDOS RECENTES</div>
-          {dados.decididos.map((r) => (
-            <div className="gt-admin-login-row" key={r.id}>
-              <div className="gt-admin-login-email">{r.status === "aprovado" ? "✓" : "✗"} {r.nome}{r.comentario_admin ? ` — “${r.comentario_admin}”` : ""}</div>
-              {r.status === "reprovado" ? <button type="button" className="gt-btn secondary small" onClick={() => reavaliar(r)}>Reavaliar</button> : <div className="gt-admin-login-count">{r.proposta && r.proposta.nome ? r.proposta.nome : "alias"}</div>}
-            </div>
-          ))}
-          <div className="gt-settings-hint" style={{ marginTop: 6 }}>Reprovado não volta sozinho: só reaparece se o nome for digitado o dobro de vezes, ou se você tocar em Reavaliar.</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- Admin > Usuários: versão do app em uso (última abertura de cada pessoa, 7 dias) ---
-// Lista compacta de contas (admin): rola dentro de uma caixa, ordena por cadastro ou por último acesso e busca por nome/e-mail.
-function adminTempoRel(iso) {
-  if (!iso) return "nunca";
-  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (min < 2) return "agora";
-  if (min < 60) return `há ${min} min`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `há ${h} h`;
-  const d = Math.round(h / 24);
-  return d < 60 ? `há ${d} dia${d === 1 ? "" : "s"}` : `há ${Math.round(d / 30)} meses`;
-}
-function adminContasOrdenar(lista, ordem, dir, busca) {
-  const q = normalizeSearch(busca || "");
-  const chave = (u) => {
-    const v = ordem === "acesso" ? (u.ultimo_acesso || u.ultimo_login) : u.cadastrou_em;
-    return v ? new Date(v).getTime() : null;
-  };
-  const f = (lista || []).filter((u) => !q || normalizeSearch(`${u.nome || ""} ${u.email || ""}`).includes(q));
-  const sinal = dir === "asc" ? 1 : -1;
-  return f.slice().sort((a, b) => {
-    const ka = chave(a), kb = chave(b);
-    if (ka === null && kb === null) return 0;
-    if (ka === null) return 1; // sem data vai sempre pro fim
-    if (kb === null) return -1;
-    return (ka - kb) * sinal;
-  });
-}
-function AdminContas({ usuarios }) {
-  const [ordem, setOrdem] = useState("cadastro");
-  const [dir, setDir] = useState("desc");
-  const [busca, setBusca] = useState("");
-  const [aberto, setAberto] = useState(null);
-  const lista = adminContasOrdenar(usuarios, ordem, dir, busca);
-  const dt = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "—");
-  return (
-    <div className="gt-admin-contas">
-      <div className="gt-admin-contas-head">
-        <div className="gt-admin-summary" style={{ margin: 0 }}>{lista.length === (usuarios || []).length ? `${lista.length} conta${lista.length === 1 ? "" : "s"}` : `${lista.length} de ${(usuarios || []).length} contas`}</div>
-        <div className="gt-admin-contas-sort" role="group" aria-label="Ordenar contas">
-          <button type="button" aria-pressed={ordem === "cadastro"} className={ordem === "cadastro" ? "on" : ""} onClick={() => setOrdem("cadastro")}>Cadastro</button>
-          <button type="button" aria-pressed={ordem === "acesso"} className={ordem === "acesso" ? "on" : ""} onClick={() => setOrdem("acesso")}>Último acesso</button>
-          <button type="button" aria-label={dir === "desc" ? "Mais recentes primeiro. Tocar para inverter" : "Mais antigos primeiro. Tocar para inverter"} onClick={() => setDir(dir === "desc" ? "asc" : "desc")}>{dir === "desc" ? "↓ recentes" : "↑ antigos"}</button>
-        </div>
-      </div>
-      <input className="gt-input" placeholder="Buscar por nome ou e-mail" aria-label="Buscar conta" value={busca} onChange={(e) => setBusca(e.target.value)} />
-      <div className="gt-admin-contas-lista" role="list">
-        {lista.map((u) => {
-          const ab = aberto === u.user_id;
-          const ultimo = u.ultimo_acesso || u.ultimo_login;
-          return (
-            <div role="listitem" key={u.user_id} className={`gt-admin-conta ${ab ? "aberta" : ""}`}>
-              <button type="button" className="gt-admin-conta-linha" aria-expanded={ab} onClick={() => setAberto(ab ? null : u.user_id)}>
-                <span className="nm">{u.nome || u.email}{u.nome ? <small> {u.email}</small> : null}</span>
-                <span className="dt"><b>{ordem === "acesso" ? adminTempoRel(ultimo) : dt(u.cadastrou_em)}</b><small>{ordem === "acesso" ? `cadastro ${dt(u.cadastrou_em)}` : `acesso ${adminTempoRel(ultimo)}`}</small></span>
-              </button>
-              {ab && (
-                <div className="gt-admin-conta-det">
-                  <div className="gt-admin-user-row">Cadastrou: {u.cadastrou_em ? new Date(u.cadastrou_em).toLocaleString("pt-BR") : "—"} · Último login: {dt(u.ultimo_login)}</div>
-                  <div className="gt-admin-user-row">Último acesso real: {u.ultimo_acesso ? new Date(u.ultimo_acesso).toLocaleString("pt-BR") : "—"}</div>
-                  <div className="gt-admin-user-row">Onboarding: {u.fez_onboarding ? "sim" : "não"} · Strava: {u.conectou_strava ? "conectado" : "não"}</div>
-                  <div className="gt-admin-user-row">Acessos: {u.acessos_7d ?? 0} (7d) · {u.acessos_30d ?? 0} (30d) · {u.dias_com_acesso_7d ?? 0} dias diferentes (7d)</div>
-                  <div className="gt-admin-user-row">Dias com treino logado*: {u.dias_ativos_7d ?? 0} (7d) · {u.dias_ativos_30d ?? 0} (30d)</div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {lista.length === 0 && <div className="gt-empty">{(usuarios || []).length === 0 ? "Nenhuma conta ainda." : "Ninguém com esse nome ou e-mail."}</div>}
-      </div>
-    </div>
-  );
-}
-
-function AdminVersoes() {
-  const [linhas, setLinhas] = useState(null);
-  useEffect(() => {
-    let vivo = true;
-    supabaseClient.rpc("admin_versoes", { p_dias: 7 }).then(({ data, error }) => { if (vivo) setLinhas(error ? [] : data || []); });
-    return () => { vivo = false; };
-  }, []);
-  if (!linhas) return null;
-  const total = linhas.reduce((a, l) => a + l.pessoas, 0);
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div className="gt-field-label" style={{ marginBottom: 8 }}>VERSÃO EM USO · quem abriu nos últimos 7 dias ({total})</div>
-      {linhas.length === 0 && <div className="gt-empty">Sem aberturas registradas.</div>}
-      {linhas.map((l) => (
-        <div className="gt-admin-login-row" key={l.versao}>
-          <div className="gt-admin-login-email">{l.versao}{l.versao === APP_BUILD ? " (atual)" : ""}</div>
-          <div className="gt-admin-login-count">{l.pessoas} pessoa{l.pessoas === 1 ? "" : "s"}</div>
-        </div>
-      ))}
-      <div className="gt-settings-hint" style={{ marginTop: 6 }}>Cada pessoa conta uma vez, na versão da última abertura. "Antes da v164" = abriu e ainda não tinha o registro de versão.</div>
-    </div>
-  );
-}
-
 function App() {
   const [treinos, setTreinos] = useState([]);
   const [atividades, setAtividades] = useState([]);
@@ -13278,7 +13058,6 @@ function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [excluirOpen, setExcluirOpen] = useState(false);
   const [exportando, setExportando] = useState(false);
-  const [adminFeedback, setAdminFeedback] = useState(null);
   const [semanaOpen, setSemanaOpen] = useState(false); // ajustar a semana com IA
   const [resumoDispensa, setResumoDispensa] = useState(() => { try { return localStorage.getItem("treino-app:resumoDispensa") || ""; } catch (e) { return ""; } });
   const [trialAviso, setTrialAviso] = useState(() => { try { return localStorage.getItem("treino-app:trialAviso") || ""; } catch (e) { return ""; } });
@@ -13335,34 +13114,11 @@ function App() {
   const [planoDispensa, setPlanoDispensa] = useState(() => {
     try { const raw = JSON.parse(localStorage.getItem("treino-app:planoReplanDispensa") || "{}"); return raw && typeof raw === "object" ? raw : {}; } catch (e) { return {}; }
   });
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [adminTab, setAdminTab] = useState(() => { try { return localStorage.getItem("movo_admin_tab") || "geral"; } catch (e) { return "geral"; } });
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminUsers, setAdminUsers] = useState(null);
-  const [adminErrors, setAdminErrors] = useState(null);
-  const [adminOverview, setAdminOverview] = useState(null);
-  const [adminDaily, setAdminDaily] = useState(null);
-  const [adminSaude, setAdminSaude] = useState(null);
-  const [adminAiCtl, setAdminAiCtl] = useState(null); // {ativa, teto_usd, hoje_usd}
-  const [adminAiSalvando, setAdminAiSalvando] = useState(false);
   const [features, setFeatures] = useState(() => { try { const v = JSON.parse(localStorage.getItem("treino-app:features") || "null"); return Array.isArray(v) ? v : null; } catch (e) { return null; } }); // experimentos liberados pra esta conta (null = ainda não sei)
-  const [adminFeat, setAdminFeat] = useState(null); // liberados do ajuste da semana (null = SQL não rodado)
-  const [adminFeatEmail, setAdminFeatEmail] = useState("");
-  const [adminFeatTodos, setAdminFeatTodos] = useState(null); // "liberado pra todos" (null = SQL não rodado)
   const [plano, setPlano] = useState(null); // my_plan(): { visivel, limites, aluno, treinador } (null = SQL não rodado ou ainda carregando)
   const [planoOpen, setPlanoOpen] = useState(false);
-  const [adminBilling, setAdminBilling] = useState(null); // { visivel, limites } (null = SQL não rodado)
-  const [adminAssin, setAdminAssin] = useState(null); // assinaturas dadas/ativas (null = SQL não rodado)
-  const [adminPlanoForm, setAdminPlanoForm] = useState({ email: "", linha: "aluno", plano: "pro", modo: "ativa" });
-  const [adminAiCost, setAdminAiCost] = useState(null); // gasto com IA em US$ (null se o SQL ainda não foi rodado)
-  const [adminPlanUsage, setAdminPlanUsage] = useState(null); // [{ email, no_mes, total, ultima }] ou null se a função não existe ainda
-  const [adminCoaches, setAdminCoaches] = useState(null); // treinadores liberados; null se a função não existe ainda
-  const [adminCoachForm, setAdminCoachForm] = useState({ email: "", nome: "" });
-  const [adminCoachMotivo, setAdminCoachMotivo] = useState(null); // { user_id, nome, status, texto }
-  const [adminRaces, setAdminRaces] = useState(null); // provas da comunidade p/ moderar; null se a função não existe ainda
-  const [adminGaps, setAdminGaps] = useState(null); // [{ nome, vezes, usuarios, ultima }] ou null se a função não existe ainda
-  const [adminLogins, setAdminLogins] = useState(null); // [{ email, logins, logouts, ultimo_login }] ou null se a função não existe ainda
-  const [adminEvents, setAdminEvents] = useState(null); // [{ name, total, usuarios }] ou null se a função não existe ainda
+  const [recados, setRecados] = useState([]); // recados do Movo publicados pelo painel (cartão no topo da aba Hoje)
+  const [painelPend, setPainelPend] = useState(0); // só o admin: pendências esperando no painel
   const [myShares, setMyShares] = useState([]);
   const [sharedWithMe, setSharedWithMe] = useState([]);
   const [shareEmailInput, setShareEmailInput] = useState("");
@@ -13921,6 +13677,29 @@ function App() {
     return () => { cancelled = true; };
   }, [session, cloudSynced, planoOpen]);
   PLANO_VISIVEL = !!(plano && plano.visivel);
+  // Recados publicados pelo painel (movoapp.com.br/admin › Recados). Ler já conta como "viu".
+  useEffect(() => {
+    if (!session || !cloudSynced) return;
+    let cancelled = false;
+    supabaseClient.rpc("meus_recados")
+      .then(({ data, error }) => { if (!cancelled && !error && Array.isArray(data)) setRecados(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session, cloudSynced]);
+  function recadoAcao(r, acao) {
+    if (acao === "dispensou") setRecados((l) => l.filter((x) => x.id !== r.id));
+    supabaseClient.rpc("recado_marcar", { p_id: r.id, p_acao: acao }).then(() => {}, () => {});
+    if (acao === "clicou" && r.botao_url) window.open(r.botao_url, "_blank", "noopener");
+  }
+  // A gestão do app fica no painel (decisão do Andre, 19/10/2026). No app, só o atalho com o número de pendências.
+  useEffect(() => {
+    if (!session || session.user.email !== ADMIN_EMAIL) return;
+    let cancelled = false;
+    supabaseClient.rpc("admin_m_pendencias")
+      .then(({ data, error }) => { if (!cancelled && !error && data) setPainelPend(Number(data.total) || 0); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [session, menuOpen]);
   PLANO_ATUAL = plano;
   useEffect(() => {
     const abrir = () => setPlanoOpen(true);
@@ -14265,90 +14044,6 @@ function App() {
     setLeaderboardLoading(false);
   }
 
-  async function adminLiberarTreinador(email, nome, liberado) {
-    const em = String(email || "").trim();
-    if (!em) { showToast("Digite o e-mail"); return; }
-    const { error } = await supabaseClient.rpc("admin_set_coach", { p_email: em, p_nome: nome || "", p_liberado: liberado });
-    if (error) { showToast(/usuario_nao_encontrado/.test(error.message) ? "Esse e-mail não tem conta no Movo" : "Não consegui alterar"); logClientError("admin_set_coach", error.message); return; }
-    const r = await supabaseClient.rpc("admin_coach_list");
-    setAdminCoaches(r.error ? null : r.data || []);
-    if (liberado) setAdminCoachForm({ email: "", nome: "" });
-    showToast(liberado ? "Treinador liberado" : "Acesso de treinador retirado");
-  }
-  async function adminDecidirTreinador(userId, status, motivo) {
-    const { error } = await supabaseClient.rpc("admin_coach_decide", { p_user: userId, p_status: status, p_motivo: motivo || null });
-    if (error) { showToast("Não consegui alterar"); logClientError("admin_coach_decide", error.message); return; }
-    const r = await supabaseClient.rpc("admin_coach_list");
-    setAdminCoaches(r.error ? null : r.data || []);
-    setAdminCoachMotivo(null);
-    showToast(status === "ativo" ? "Treinador aprovado" : "Treinador suspenso. Os alunos foram avisados");
-  }
-  async function adminEsconderProva(r, oculta) {
-    const { error } = await supabaseClient.rpc("admin_set_race_oculta", { p_id: r.id, p_oculta: oculta });
-    if (error) { showToast("Não consegui alterar a prova"); logClientError("admin_set_race_oculta", error.message); return; }
-    setAdminRaces((lista) => (lista || []).map((x) => (x.id === r.id ? { ...x, oculta } : x)));
-    showToast(oculta ? "Prova escondida de todos" : "Prova visível de novo");
-  }
-  async function loadAdminData() {
-    setAdminLoading(true);
-    const [usersRes, errorsRes, overviewRes, dailyRes, eventsRes, loginsRes, gapsRes, planUsageRes] = await Promise.all([
-      supabaseClient.rpc("admin_usage_stats"),
-      supabaseClient.rpc("admin_client_errors", { limit_n: 50 }),
-      supabaseClient.rpc("admin_overview_stats"),
-      supabaseClient.rpc("admin_daily_active", { dias: 14 }),
-      supabaseClient.rpc("admin_event_counts", { dias: 30 }),
-      supabaseClient.rpc("admin_login_stats", { dias: 7 }),
-      supabaseClient.rpc("admin_exercise_gaps", { dias: 90 }),
-      supabaseClient.rpc("admin_plan_usage"),
-    ]);
-    try {
-      const fbRes = await supabaseClient.rpc("admin_feedback_list", { limit_n: 100 });
-      // relatos de problema ficam só no painel de métricas (movoapp.com.br/admin › Relatos), decisão do Andre
-      setAdminFeedback(fbRes.error ? null : (fbRes.data || []).filter((f) => f.tipo !== "problema"));
-    } catch (e) { setAdminFeedback(null); }
-    setAdminPlanUsage(planUsageRes.error ? null : planUsageRes.data || []);
-    try {
-      const saudeRes = await supabaseClient.rpc("admin_saude");
-      setAdminSaude(saudeRes.error ? null : saudeRes.data || null);
-    } catch (e) { setAdminSaude(null); }
-    try {
-      const ctlRes = await supabaseClient.rpc("admin_ai_controle");
-      setAdminAiCtl(ctlRes.error ? null : ctlRes.data || null);
-    } catch (e) { setAdminAiCtl(null); }
-    try {
-      const custoRes = await supabaseClient.rpc("admin_ai_cost");
-      setAdminAiCost(custoRes.error ? null : (custoRes.data || [])[0] || null);
-    } catch (e) { setAdminAiCost(null); }
-    try {
-      const coachRes = await supabaseClient.rpc("admin_coach_list");
-      setAdminCoaches(coachRes.error ? null : coachRes.data || []);
-    } catch (e) { setAdminCoaches(null); }
-    try {
-      const featRes = await supabaseClient.rpc("admin_feature_list", { p_feature: "ajuste_semana" });
-      setAdminFeat(featRes.error ? null : featRes.data || []);
-      const todosRes = await supabaseClient.rpc("admin_feature_todos", { p_feature: "ajuste_semana" });
-      setAdminFeatTodos(todosRes.error || typeof todosRes.data !== "boolean" ? null : todosRes.data);
-    } catch (e) { setAdminFeat(null); }
-    try {
-      const bRes = await supabaseClient.rpc("admin_billing_get");
-      setAdminBilling(bRes.error || !bRes.data ? null : bRes.data);
-      const aRes = await supabaseClient.rpc("admin_plan_list");
-      setAdminAssin(aRes.error ? null : aRes.data || []);
-    } catch (e) { setAdminBilling(null); }
-    try {
-      const racesRes = await supabaseClient.rpc("admin_shared_races");
-      setAdminRaces(racesRes.error ? null : racesRes.data || []);
-    } catch (e) { setAdminRaces(null); }
-    setAdminGaps(gapsRes.error ? null : gapsRes.data || []);
-    setAdminUsers(usersRes.error ? [] : usersRes.data || []);
-    setAdminErrors(errorsRes.error ? [] : errorsRes.data || []);
-    setAdminOverview(overviewRes.error ? null : (overviewRes.data || [])[0] || null);
-    setAdminDaily(dailyRes.error ? [] : dailyRes.data || []);
-    setAdminEvents(eventsRes.error ? null : eventsRes.data || []);
-    setAdminLogins(loginsRes.error ? null : loginsRes.data || []);
-    setAdminLoading(false);
-  }
-
   // --- Seus dados: baixar uma cópia e excluir a conta (LGPD) ---
   function baixarJson(obj, nome) {
     const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
@@ -14408,69 +14103,9 @@ function App() {
     avisarFeedbackEmail(session, data.id);
     return { ok: true };
   }
-  async function adminDefinirIa(ativa, teto) {
-    if (adminAiSalvando) return;
-    setAdminAiSalvando(true);
-    const { error } = await supabaseClient.rpc("admin_ai_definir", { p_ativa: ativa, p_teto: teto });
-    if (error) showToast("Não consegui salvar");
-    else { setAdminAiCtl((c) => ({ ...(c || {}), ativa, teto_usd: teto })); showToast(ativa ? "IA ligada" : "IA desligada para todos"); }
-    setAdminAiSalvando(false);
-  }
-  async function adminFeatureTodos(ligar) {
-    const { error } = await supabaseClient.rpc("admin_feature_todos_set", { p_feature: "ajuste_semana", p_on: ligar });
-    if (error) { showToast("Não consegui salvar"); return; }
-    setAdminFeatTodos(ligar);
-    showToast(ligar ? "Liberado pra todos" : "Só a lista tem acesso");
-  }
-  async function adminFeatureSet(email, ligar) {
-    const em = String(email || "").trim();
-    if (!em) return;
-    const { data, error } = await supabaseClient.rpc("admin_feature_set", { p_email: em, p_feature: "ajuste_semana", p_on: ligar });
-    if (error) { showToast("Não consegui salvar"); return; }
-    if (data === "usuario_nao_encontrado") { showToast("Ninguém com esse e-mail"); return; }
-    const r = await supabaseClient.rpc("admin_feature_list", { p_feature: "ajuste_semana" });
-    setAdminFeat(r.error ? null : r.data || []);
-    if (ligar) setAdminFeatEmail("");
-    showToast(ligar ? "Liberado" : "Removido");
-  }
-  async function adminBillingSet(chave, ligar) {
-    const { error } = await supabaseClient.rpc("admin_billing_set", { p_chave: chave, p_on: ligar });
-    if (error) { showToast("Não consegui salvar"); return; }
-    setAdminBilling((b) => ({ ...(b || {}), [chave]: ligar }));
-    const r = await supabaseClient.rpc("my_plan");
-    if (!r.error && r.data) setPlano(r.data);
-    showToast(chave === "visivel" ? (ligar ? "Planos visíveis pra todos" : "Planos escondidos") : (ligar ? "Limites dos planos valendo" : "Limites desligados"));
-  }
-  async function adminPlanoSet(f) {
-    const em = String((f && f.email) || "").trim();
-    if (!em) return;
-    const { data, error } = await supabaseClient.rpc("admin_plan_set", {
-      p_email: em, p_linha: f.linha, p_plano: f.plano, p_ciclo: "mensal", p_status: f.modo === "teste" ? "teste" : "ativa", p_dias: f.modo === "teste" ? 14 : null,
-    });
-    if (error) { showToast("Não consegui salvar"); return; }
-    if (data === "usuario_nao_encontrado") { showToast("Ninguém com esse e-mail"); return; }
-    const r = await supabaseClient.rpc("admin_plan_list");
-    setAdminAssin(r.error ? null : r.data || []);
-    if (f.plano !== "gratis") setAdminPlanoForm((x) => ({ ...x, email: "" }));
-    showToast(f.plano === "gratis" ? "Voltou pro grátis" : "Plano dado");
-  }
   function planoInteresse(chave) {
     logEvent("plano_interesse_" + chave);
     showToast("Anotado! Avisamos quando abrir");
-  }
-  async function adminMarcarFeedback(f, lido) {
-    const { error } = await supabaseClient.rpc("admin_feedback_lido", { p_id: f.id, p_lido: lido });
-    if (error) { showToast("Não consegui atualizar"); logClientError("admin_feedback_lido", error.message); return; }
-    setAdminFeedback((l) => (l || []).map((x) => (x.id === f.id ? { ...x, lido } : x)));
-  }
-
-  function adminIrPara(t) {
-    setAdminTab(t);
-    try { localStorage.setItem("movo_admin_tab", t); } catch (e) {}
-  }
-  function openAdmin() {
-    setAdminOpen(true);
-    loadAdminData();
   }
 
   // --- Log de erros: registra falhas silenciosas (que hoje só viram um
@@ -16379,6 +16014,15 @@ function App() {
         )}
         {tab === "hoje" && (
           <div>
+            {recados.slice(0, 1).map((r) => (
+              <div className="gt-strava-convite gt-recado" role="region" aria-label="Recado do Movo" key={r.id}>
+                <div className="tx"><b>{r.titulo}</b><span>{r.texto}</span></div>
+                <div className="ac">
+                  {r.botao_txt && r.botao_url && <button type="button" className="gt-btn small" onClick={() => recadoAcao(r, "clicou")}>{r.botao_txt}</button>}
+                  <button type="button" className="gt-link-btn" onClick={() => recadoAcao(r, "dispensou")}>{r.botao_txt ? "Agora não" : "Ok, entendi"}</button>
+                </div>
+              </div>
+            ))}
             {coachUndo && (
               <div className="gt-co-desfazer" role="status"><span>Semana de {coachUndo.ass.coach_nome} aplicada.</span><button type="button" className="gt-co-mini" onClick={coachDesfazer}>Desfazer</button></div>
             )}
@@ -17246,7 +16890,7 @@ function App() {
               {item("ajuda", "Ajuda", () => setHelpOpen(true))}
               {item("feedback", "Enviar feedback", () => setFeedbackOpen(true))}
               {item("bug", "Reportar problema", () => setFeedbackOpen("problema"))}
-              {session.user.email === ADMIN_EMAIL && <button type="button" className="gt-menu-item" title="Painel de uso (admin)" onClick={ir(openAdmin)}><span className="ic"><Icon name="admin" weight="duotone" size={22} /></span><span className="tx">Painel de uso (admin)</span></button>}
+              {session.user.email === ADMIN_EMAIL && <a className="gt-menu-item" href="https://movoapp.com.br/admin/#pend" target="_blank" rel="noopener" onClick={() => setMenuOpen(false)}><span className="ic"><Icon name="admin" weight="duotone" size={22} /></span><span className="tx">Abrir painel{painelPend > 0 ? ` (${painelPend})` : ""}</span>{painelPend > 0 && <i className="gt-menu-dot inline" />}</a>}
               <button type="button" className="gt-menu-item sair" onClick={ir(handleLogout)} title={session.user.email}>
                 <span className="ic"><Icon name="sair" weight="duotone" size={22} /></span><span className="tx">Sair</span>
               </button>
@@ -17935,426 +17579,11 @@ function App() {
                   <button className="gt-btn secondary" onClick={() => openOnboardingRedo()}><Ei e="🔄" /> Refazer configuração inicial</button>
                 </div>
               </div>
-              {session.user.email === ADMIN_EMAIL && (
-                <div className="gt-settings-card">
-                  <div className="gt-settings-label-row">
-                    <div className="gt-settings-label">Uso (admin)</div>
-                    <button type="button" className={`gt-info-btn ${infoOpen.admin ? "active" : ""}`} onClick={() => toggleInfo("admin")}>i</button>
-                  </div>
-                  {infoOpen.admin && (
-                    <div className="gt-settings-hint">Quantas pessoas usam o Movo, engajamento e erros recentes.</div>
-                  )}
-                  <div className="gt-settings-body">
-                    <button className="gt-btn secondary" onClick={() => { setSettingsOpen(false); openAdmin(); }}><Ei e="📊" /> Ver uso</button>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="gt-modal-actions">
               <button className="gt-btn" onClick={() => setSettingsOpen(false)}>Fechar</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {adminOpen && (
-        <div className="gt-focus gt-admin-screen">
-          <div className="gt-focus-header">
-            <button className="gt-focus-close" aria-label="Voltar" onClick={() => setAdminOpen(false)}><IconVoltar /></button>
-            <div className="gt-focus-title-wrap">
-              <div className="gt-focus-title">Uso do Movo</div>
-            </div>
-            <button className="gt-admin-refresh" onClick={loadAdminData} title="Atualizar"><Ei e="🔄" /></button>
-          </div>
-          {(() => {
-            const nAnalise = (adminCoaches || []).filter((c) => c.status === "em_analise").length;
-            const nFb = (adminFeedback || []).filter((f) => !f.lido).length;
-            const abas = [["geral", "Geral", 0], ["usuarios", "Usuários", 0], ["treinadores", "Treinadores", nAnalise], ["catalogo", "Catálogo", 0], ["planos", "Planos", 0], ["ia", "IA", 0], ["suporte", "Suporte", nFb]];
-            return (
-              <div className="gt-admin-tabs" role="tablist">
-                {abas.map(([id, nome, n]) => (
-                  <button key={id} type="button" role="tab" aria-selected={adminTab === id} className={`gt-admin-tab ${adminTab === id ? "on" : ""}`} onClick={() => adminIrPara(id)}>
-                    {nome}{n > 0 && <span className="gt-admin-tab-badge">{n}</span>}
-                  </button>
-                ))}
-              </div>
-            );
-          })()}
-          <div className="gt-focus-body gt-builder-body">
-            {adminLoading && <div className="gt-empty">Carregando…</div>}
-            {!adminLoading && adminTab === "geral" && adminOverview && (
-              <div className="gt-kpi-grid">
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">{adminOverview.total_usuarios ?? 0}</div>
-                  <div className="gt-kpi-label">USUÁRIOS CADASTRADOS</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">{adminOverview.ativos_hoje ?? 0}</div>
-                  <div className="gt-kpi-label">ATIVOS HOJE</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">{adminOverview.ativos_7d ?? 0}</div>
-                  <div className="gt-kpi-label">ATIVOS NA SEMANA (7D)</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">{adminOverview.ativos_30d ?? 0}</div>
-                  <div className="gt-kpi-label">ATIVOS NO MÊS (30D)</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">+{adminOverview.novos_7d ?? 0}</div>
-                  <div className="gt-kpi-label">NOVOS CADASTROS (7D)</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">+{adminOverview.novos_30d ?? 0}</div>
-                  <div className="gt-kpi-label">NOVOS CADASTROS (30D)</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">{adminOverview.completaram_onboarding ?? 0}</div>
-                  <div className="gt-kpi-label">COM TREINOS CRIADOS</div>
-                </div>
-                <div className="gt-kpi-card">
-                  <div className="gt-kpi-value">{adminOverview.conectaram_strava ?? 0}</div>
-                  <div className="gt-kpi-label">CONECTADOS AO STRAVA</div>
-                </div>
-                <div className="gt-kpi-card" style={{ gridColumn: "1 / -1" }}>
-                  <div className="gt-kpi-value">{adminOverview.tamanho_banco_mb ?? 0} MB <span style={{ fontSize: 12, color: "var(--text-muted)" }}>/ 500 MB</span></div>
-                  <div className="gt-kpi-label">BANCO DE DADOS (plano grátis do Supabase) · {Math.min(100, Math.round(((adminOverview.tamanho_banco_mb ?? 0) / 500) * 100))}% usado</div>
-                </div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "geral" && !adminOverview && adminUsers && (
-              <div className="gt-settings-hint" style={{ marginBottom: 12 }}>
-                Painel geral indisponível — falta rodar a função admin_overview_stats/admin_daily_active no banco (peça pro Claude).
-              </div>
-            )}
-            {!adminLoading && adminTab === "geral" && adminDaily && adminDaily.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>USUÁRIOS ATIVOS POR DIA · últimos {adminDaily.length} dias</div>
-                <AdminDailyChart series={adminDaily} />
-              </div>
-            )}
-            {!adminLoading && adminTab === "geral" && adminEvents && (() => {
-              const ev = (n) => Number((adminEvents.find((e) => e.name === n) || {}).usuarios) || 0;
-              const ini = ev("onboarding_iniciado");
-              const linhas = [
-                ["Começaram", ini], ["Viram o passo 1", ev("onb_visto_t1")], ["Viram o passo 2", ev("onb_visto_t2")], ["Viram o passo 3", ev("onb_visto_t3")],
-                ["Concluíram", ev("onboarding_concluido")], ["Pularam", ev("onboarding_pulado")], ["1º registro (ativação)", ev("primeiro_registro")],
-              ];
-              const pct = (n) => (ini > 0 ? `${Math.round((n / ini) * 100)}%` : "–");
-              return (
-                <div style={{ marginBottom: 16 }}>
-                  <div className="gt-field-label" style={{ marginBottom: 8 }}>FUNIL DE ONBOARDING · últimos 30 dias · pessoas</div>
-                  {linhas.map(([nome, n]) => (
-                    <div className="gt-admin-login-row" key={nome}>
-                      <div className="gt-admin-login-email">{nome}</div>
-                      <div className="gt-admin-login-count">{n} · {pct(n)}</div>
-                    </div>
-                  ))}
-                  <div className="gt-settings-hint" style={{ marginTop: 6 }}>Caminhos escolhidos: plano de corrida com IA {ev("onb_plano_ia_clicado")} · Strava {ev("onb_strava_clicado")}. Objetivo: força {ev("onb_objetivo_forca")} · corrida {ev("onb_objetivo_corrida")} · emagrecer {ev("onb_objetivo_emagrecer")} · rotina {ev("onb_objetivo_rotina")}. A porcentagem é sobre quem começou; o 1º registro só conta quem entrou vazio depois desta versão.</div>
-                </div>
-              );
-            })()}
-            {!adminLoading && adminTab === "geral" && adminEvents && (() => {
-              const ev = (n) => adminEvents.find((e) => e.name === n) || { total: 0, usuarios: 0 };
-              const concl = Number(ev("treino_concluido").total);
-              const comAj = Number(ev("treino_concluido_com_ajuste").total);
-              const salvou = Number(ev("ficha_salva_com_ajustes").total);
-              const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "–");
-              return (
-                <div style={{ marginBottom: 16 }}>
-                  <div className="gt-field-label" style={{ marginBottom: 8 }}>AJUSTES NO TREINO · últimos 30 dias</div>
-                  <div className="gt-kpi-grid">
-                    <div className="gt-kpi-card"><div className="gt-kpi-value">{concl}</div><div className="gt-kpi-label">TREINOS CONCLUÍDOS</div></div>
-                    <div className="gt-kpi-card"><div className="gt-kpi-value">{comAj} <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{pct(comAj, concl)}</span></div><div className="gt-kpi-label">COM AJUSTE ({ev("treino_concluido_com_ajuste").usuarios} usuário{Number(ev("treino_concluido_com_ajuste").usuarios) === 1 ? "" : "s"})</div></div>
-                    <div className="gt-kpi-card" style={{ gridColumn: "1 / -1" }}><div className="gt-kpi-value">{salvou} <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{pct(salvou, comAj)} dos ajustados</span></div><div className="gt-kpi-label">SALVARAM NA FICHA</div></div>
-                  </div>
-                </div>
-              );
-            })()}
-            {adminTab === "catalogo" && <AdminCatalogo showToast={showToast} />}
-            {adminTab === "usuarios" && <AdminVersoes />}
-            {!adminLoading && adminTab === "suporte" && adminGaps && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>EXERCÍCIOS FORA DO CATÁLOGO · últimos 90 dias</div>
-                {adminGaps.length === 0 && <div className="gt-empty">Ninguém criou exercício livre ainda.</div>}
-                {adminGaps.slice(0, 15).map((g) => (
-                  <div className="gt-admin-login-row" key={g.nome}>
-                    <div className="gt-admin-login-email">{g.nome}</div>
-                    <div className="gt-admin-login-count">{Number(g.vezes)}x · {Number(g.usuarios)} pessoa{Number(g.usuarios) === 1 ? "" : "s"}</div>
-                  </div>
-                ))}
-                <div className="gt-settings-hint" style={{ marginTop: 6 }}>Nomes que as pessoas digitaram em "Não achou? Adicionar…". Os mais repetidos são candidatos a entrar no catálogo.</div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "geral" && adminSaude && (() => {
-              const h = adminSaude;
-              const e24 = Number(h.erros_24h) || 0, eAnt = Number(h.erros_24h_antes) || 0;
-              const iaF = Number(h.ia_falhas_24h) || 0, iaT = Number(h.ia_total_24h) || 0;
-              const db = Number(h.banco_mb) || 0;
-              const alerta = Number(h.erros_30min) >= 10 || (Number(h.ia_falhas_1h) >= 3 && Number(h.ia_falhas_1h) / Math.max(1, Number(h.ia_total_1h)) >= 0.5) || db >= 400;
-              const aviso = !alerta && (e24 > Math.max(10, eAnt * 2) || db >= 300);
-              const cor = alerta ? "var(--danger, #ef4444)" : aviso ? "#f59e0b" : "inherit";
-              return (
-                <div style={{ marginBottom: 16 }}>
-                  <div className="gt-field-label" style={{ marginBottom: 8 }}>SAÚDE DO APP</div>
-                  <div className="gt-settings-card">
-                    <div className="gt-settings-label-row"><div className="gt-settings-label" style={{ color: cor }}>{alerta ? "Atenção: algo fora do normal" : aviso ? "Vale ficar de olho" : "Tudo normal"}</div></div>
-                    <div className="gt-kpi-row" style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{e24}</div><div className="gt-kpi-label">ERROS · 24 H{eAnt ? ` (antes ${eAnt})` : ""}</div></div>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{iaF}/{iaT}</div><div className="gt-kpi-label">IA COM FALHA · 24 H</div></div>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{db.toFixed(0)}</div><div className="gt-kpi-label">BANCO · MB DE 500</div></div>
-                    </div>
-                    {(h.erros_top || []).length > 0 && (
-                      <div className="gt-settings-hint">Erros mais comuns (24 h): {(h.erros_top || []).map((t) => `${t.context} (${t.n}x)`).join(" · ")}.</div>
-                    )}
-                    <div className="gt-settings-hint">{Number(h.ativos_24h) || 0} pessoa{Number(h.ativos_24h) === 1 ? "" : "s"} abriram o app nas últimas 24 h. Você recebe um e-mail se houver pico de erros, a IA falhar muito, o gasto da IA chegar a 70% do teto ou o banco passar de 400 MB (verificação a cada 15 min).</div>
-                  </div>
-                </div>
-              );
-            })()}
-            {!adminLoading && adminTab === "ia" && adminAiCtl && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>CONTROLE DA IA</div>
-                <div className="gt-settings-card">
-                  {(() => {
-                    const teto = Number(adminAiCtl.teto_usd) || 0, hoje = Number(adminAiCtl.hoje_usd) || 0;
-                    const pct = teto > 0 ? Math.min(100, Math.round((hoje / teto) * 100)) : 0;
-                    const cor = !adminAiCtl.ativa ? "var(--danger, #ef4444)" : pct >= 100 ? "var(--danger, #ef4444)" : pct >= 70 ? "#f59e0b" : "inherit";
-                    return (
-                      <>
-                        <div className="gt-settings-label-row"><div className="gt-settings-label" style={{ color: cor }}>{!adminAiCtl.ativa ? "IA desligada para todos" : pct >= 100 ? "Teto de hoje atingido" : "IA ligada"}</div></div>
-                        <div className="gt-settings-hint">Hoje: US$ {hoje.toFixed(2)} de US$ {teto.toFixed(2)} ({teto > 0 ? pct + "%" : "sem teto"}). Ao atingir o teto, as pessoas veem "tente amanhã" (você continua podendo usar). O dia vira à meia-noite de Brasília.</div>
-                        <button type="button" className={`gt-btn secondary gt-settings-install-row ${adminAiCtl.ativa ? "gt-btn-danger-outline" : ""}`} disabled={adminAiSalvando} onClick={() => { if (!adminAiCtl.ativa || confirm("Desligar a IA para todos os usuários agora?")) adminDefinirIa(!adminAiCtl.ativa, teto); }}>{adminAiCtl.ativa ? "Desligar a IA" : "Ligar a IA"}</button>
-                        <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={adminAiSalvando} onClick={() => { const v = prompt("Teto diário em US$ (0 = sem teto):", String(teto)); if (v == null) return; const n = Number(String(v).replace(",", ".")); if (!isFinite(n) || n < 0) { showToast("Valor inválido"); return; } adminDefinirIa(adminAiCtl.ativa, n); }}>Mudar teto diário</button>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "ia" && adminFeat && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>EXPERIMENTO · AJUSTAR MINHA SEMANA (IA)</div>
-                <div className="gt-settings-hint" style={{ marginTop: 0, marginBottom: 8 }}>{adminFeatTodos ? "Liberado pra todos." : "Só quem estiver na lista vê o recurso."} Quem conectou o Strava fica de fora, mesmo liberado.</div>
-                {adminFeatTodos !== null && <button type="button" className="gt-btn secondary gt-settings-install-row" onClick={() => { if (adminFeatTodos || confirm("Liberar o ajuste da semana pra todos os usuários (sem Strava)?")) adminFeatureTodos(!adminFeatTodos); }}>{adminFeatTodos ? "Voltar a liberar só a lista" : "Liberar pra todos"}</button>}
-                {adminFeat.length === 0 && <div className="gt-settings-hint">Ninguém liberado ainda.</div>}
-                {adminFeat.map((u) => (
-                  <div key={u.email} className="gt-settings-label-row" style={{ gap: 8 }}>
-                    <div className="gt-settings-label" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}{u.tem_strava ? " · Strava (bloqueado)" : ""}</div>
-                    <button type="button" className="gt-link-btn" onClick={() => adminFeatureSet(u.email, false)}>Remover</button>
-                  </div>
-                ))}
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <input className="gt-input" type="email" inputMode="email" autoCapitalize="none" placeholder="e-mail da pessoa" value={adminFeatEmail} onChange={(e) => setAdminFeatEmail(e.target.value)} aria-label="E-mail para liberar o ajuste da semana" />
-                  <button type="button" className="gt-btn" disabled={!adminFeatEmail.trim()} onClick={() => adminFeatureSet(adminFeatEmail, true)}>Liberar</button>
-                </div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "planos" && adminBilling && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>PLANOS E COBRANÇA</div>
-                <div className="gt-settings-hint" style={{ marginTop: 0, marginBottom: 8 }}>
-                  Planos {adminBilling.visivel ? "visíveis pra todos" : "escondidos (só você vê)"} · limites {adminBilling.limites ? "valendo" : "desligados"}. Ligue os limites só depois de dar plano a quem já combinou e de ter o checkout pronto.
-                </div>
-                <button type="button" className="gt-btn secondary gt-settings-install-row" onClick={() => setPlanoOpen(true)}>Ver a tela de planos</button>
-                <button type="button" className="gt-btn secondary gt-settings-install-row" onClick={() => { if (adminBilling.visivel || confirm("Mostrar a tela de planos e preços pra todos os usuários? Nada é cobrado.")) adminBillingSet("visivel", !adminBilling.visivel); }}>{adminBilling.visivel ? "Esconder os planos" : "Mostrar os planos pra todos"}</button>
-                <button type="button" className={`gt-btn secondary gt-settings-install-row ${adminBilling.limites ? "" : "gt-btn-danger-outline"}`} onClick={() => { if (adminBilling.limites || confirm("Aplicar os limites dos planos agora? Quem está no grátis passa a ter 2 usos de IA por mês em cada recurso e treinador grátis só 3 alunos.")) adminBillingSet("limites", !adminBilling.limites); }}>{adminBilling.limites ? "Desligar os limites" : "Aplicar os limites"}</button>
-                {(adminAssin || []).length === 0 && <div className="gt-settings-hint">Ninguém com plano pago ainda.</div>}
-                {(adminAssin || []).map((a) => (
-                  <div key={a.email + a.linha} className="gt-settings-label-row" style={{ gap: 8 }}>
-                    <div className="gt-settings-label" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{a.email} · {planoNome(a.linha, a.plano)} ({a.status}{a.origem === "manual" ? ", manual" : ""})</div>
-                    <button type="button" className="gt-link-btn" onClick={() => adminPlanoSet({ email: a.email, linha: a.linha, plano: "gratis", modo: "ativa" })}>Tirar</button>
-                  </div>
-                ))}
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <input className="gt-input" type="email" inputMode="email" autoCapitalize="none" placeholder="e-mail da pessoa" value={adminPlanoForm.email} onChange={(e) => setAdminPlanoForm((x) => ({ ...x, email: e.target.value }))} aria-label="E-mail para dar um plano" />
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <select className="gt-input" aria-label="Linha do plano" value={adminPlanoForm.linha} onChange={(e) => setAdminPlanoForm((x) => ({ ...x, linha: e.target.value, plano: e.target.value === "aluno" ? "pro" : "start" }))}>
-                    <option value="aluno">Aluno</option>
-                    <option value="treinador">Treinador</option>
-                  </select>
-                  <select className="gt-input" aria-label="Plano" value={adminPlanoForm.plano} onChange={(e) => setAdminPlanoForm((x) => ({ ...x, plano: e.target.value }))}>
-                    {PLANOS_CATALOGO[adminPlanoForm.linha].filter((p) => p.id !== "gratis").map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                  </select>
-                  <select className="gt-input" aria-label="Modo" value={adminPlanoForm.modo} onChange={(e) => setAdminPlanoForm((x) => ({ ...x, modo: e.target.value }))}>
-                    <option value="ativa">Cortesia</option>
-                    <option value="teste">Teste (14d)</option>
-                  </select>
-                </div>
-                <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={!adminPlanoForm.email.trim()} onClick={() => adminPlanoSet(adminPlanoForm)}>Dar plano</button>
-              </div>
-            )}
-            {!adminLoading && adminTab === "ia" && adminAiCost && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>GASTO COM IA (API da Anthropic)</div>
-                {(() => {
-                  const usd = (n) => `US$ ${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: Number(n) < 1 ? 4 : 2 })}`;
-                  const ch = Number(adminAiCost.chamadas) || 0;
-                  return (
-                    <>
-                      <div className="gt-kpi-grid" style={{ marginBottom: 8 }}>
-                        <div className="gt-kpi-card"><div className="gt-kpi-value">{usd(adminAiCost.total_usd)}</div><div className="gt-kpi-label">TOTAL · TODOS OS USUÁRIOS</div></div>
-                        <div className="gt-kpi-card"><div className="gt-kpi-value">{usd(adminAiCost.mes_usd)}</div><div className="gt-kpi-label">ESTE MÊS</div></div>
-                      </div>
-                      <div className="gt-settings-hint">{ch} chamada{ch === 1 ? "" : "s"} ({Number(adminAiCost.falhas)} com falha, que também custam) · {ch ? usd(Number(adminAiCost.total_usd) / ch) : usd(0)} por chamada · {Number(adminAiCost.tokens_in).toLocaleString("pt-BR")} tokens de entrada, {Number(adminAiCost.tokens_out).toLocaleString("pt-BR")} de saída. Estimativa pelos preços configurados na função; o valor oficial está no Console da Anthropic. Só conta a partir do primeiro registro{adminAiCost.desde ? ` (${new Date(adminAiCost.desde).toLocaleDateString("pt-BR")})` : ""}.</div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-            {!adminLoading && adminTab === "ia" && adminPlanUsage && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>PLANOS DE CORRIDA COM IA · este mês</div>
-                {adminPlanUsage.length === 0 && <div className="gt-empty">Ninguém gerou plano com IA ainda.</div>}
-                {adminPlanUsage.length > 0 && (() => {
-                  const noMes = adminPlanUsage.reduce((t, u) => t + Number(u.no_mes), 0);
-                  const pessoas = adminPlanUsage.filter((u) => Number(u.no_mes) > 0).length;
-                  const total = adminPlanUsage.reduce((t, u) => t + Number(u.total), 0);
-                  return (
-                    <div className="gt-kpi-grid" style={{ marginBottom: 8 }}>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{noMes}</div><div className="gt-kpi-label">PLANOS NO MÊS ({pessoas} pessoa{pessoas === 1 ? "" : "s"})</div></div>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{total}</div><div className="gt-kpi-label">PLANOS NO TOTAL</div></div>
-                    </div>
-                  );
-                })()}
-                {adminPlanUsage.slice(0, 15).map((u) => (
-                  <div className="gt-admin-login-row" key={u.email}>
-                    <div className="gt-admin-login-email">{u.email}</div>
-                    <div className={`gt-admin-login-count ${Number(u.no_mes) >= 3 ? "warn" : ""}`}>{Number(u.no_mes)}/3 no mês · {Number(u.total)} no total</div>
-                  </div>
-                ))}
-                <div className="gt-settings-hint" style={{ marginTop: 6 }}>Gerações pedidas à IA (o limite é 3 por pessoa por mês). O gasto em dólares está no bloco acima.</div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "treinadores" && adminCoaches && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>TREINADORES{adminCoaches.filter((c) => c.status === "em_analise").length > 0 ? ` · ${adminCoaches.filter((c) => c.status === "em_analise").length} EM ANÁLISE` : ""}</div>
-                {adminCoaches.length === 0 && <div className="gt-empty">Ninguém cadastrado ainda.</div>}
-                {adminCoaches.length > 0 && (() => {
-                  const stDe = (c) => c.status || (c.liberado ? "ativo" : "suspenso");
-                  const ativos = adminCoaches.filter((c) => stDe(c) === "ativo");
-                  const alunos = ativos.reduce((t, c) => t + (Number(c.alunos) || 0), 0);
-                  const pagos = (adminAssin || []).filter((a) => a.linha === "treinador" && a.plano !== "gratis").length;
-                  const cheios = ativos.filter((c) => (Number(c.alunos) || 0) >= (COACH_ALUNOS_MAX[planoDoTreinador(adminAssin, c.email)] || 3)).length;
-                  return (
-                    <div className="gt-kpi-grid" style={{ marginBottom: 12 }}>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{ativos.length}</div><div className="gt-kpi-label">TREINADORES ATIVOS</div></div>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{alunos}</div><div className="gt-kpi-label">ALUNOS VINCULADOS</div></div>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{ativos.length ? (alunos / ativos.length).toFixed(1).replace(".", ",") : "0"}</div><div className="gt-kpi-label">ALUNOS POR TREINADOR</div></div>
-                      <div className="gt-kpi-card"><div className="gt-kpi-value">{pagos}</div><div className="gt-kpi-label">COM PLANO PAGO / CORTESIA</div></div>
-                      <div className="gt-kpi-card" style={{ gridColumn: "1 / -1" }}><div className="gt-kpi-value">{cheios}</div><div className="gt-kpi-label">NO LIMITE DE ALUNOS DO PLANO · candidatos a upgrade</div></div>
-                    </div>
-                  );
-                })()}
-                {[...adminCoaches].sort((a, b) => (b.status === "em_analise") - (a.status === "em_analise")).map((c) => {
-                  const st = c.status || (c.liberado ? "ativo" : "suspenso");
-                  const planoT = planoDoTreinador(adminAssin, c.email);
-                  const maxT = COACH_ALUNOS_MAX[planoT] || 3;
-                  return (
-                    <div key={c.user_id} className={`gt-admin-coach ${st}`}>
-                      <div className="gt-admin-login-email">
-                        {c.nome_exibicao} <span className={`gt-admin-st ${st}`}>{st === "em_analise" ? "EM ANÁLISE" : st === "ativo" ? "ATIVO" : "SUSPENSO"}</span>
-                        <div className="gt-settings-hint" style={{ margin: 0, whiteSpace: "normal" }}>{c.email} · {c.alunos}/{maxT} {c.alunos === 1 ? "aluno" : "alunos"} · {planoNome("treinador", planoT)}{c.cref ? ` · CREF ${c.cref}` : ""}{c.pedido_em ? ` · pedido em ${coachDataCurta(c.pedido_em)}` : ""}</div>
-                        {c.bio && <div className="gt-settings-hint" style={{ margin: "4px 0 0" }}>{c.bio}</div>}
-                        {st === "suspenso" && c.motivo && <div className="gt-settings-hint" style={{ margin: "4px 0 0" }}>Motivo: {c.motivo}</div>}
-                      </div>
-                      {adminCoachMotivo && adminCoachMotivo.user_id === c.user_id ? (
-                        <div className="gt-admin-coach-motivo">
-                          <input className="gt-input" aria-label="Motivo" placeholder="Motivo (opcional, o aluno não vê)" maxLength={200} value={adminCoachMotivo.texto} onChange={(e) => setAdminCoachMotivo({ ...adminCoachMotivo, texto: e.target.value })} />
-                          <div className="gt-modal-actions"><button type="button" className="gt-btn gt-btn-danger small" onClick={() => adminDecidirTreinador(c.user_id, "suspenso", adminCoachMotivo.texto)}>{st === "em_analise" ? "Recusar" : "Suspender"}</button><button type="button" className="gt-btn secondary small" onClick={() => setAdminCoachMotivo(null)}>Cancelar</button></div>
-                        </div>
-                      ) : (
-                        <div className="gt-admin-coach-acoes">
-                          {st !== "ativo" && <button type="button" className="gt-btn small" onClick={() => adminDecidirTreinador(c.user_id, "ativo")}>{st === "em_analise" ? "Aprovar" : "Reativar"}</button>}
-                          {st !== "suspenso" && <button type="button" className="gt-btn secondary small" onClick={() => setAdminCoachMotivo({ user_id: c.user_id, texto: "" })}>{st === "em_analise" ? "Recusar" : "Suspender"}</button>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                <input className="gt-input" type="email" inputMode="email" autoCapitalize="none" placeholder="E-mail da pessoa (já com conta no Movo)" aria-label="E-mail do treinador" value={adminCoachForm.email} onChange={(e) => setAdminCoachForm({ ...adminCoachForm, email: e.target.value })} style={{ marginTop: 8 }} />
-                <input className="gt-input" type="text" placeholder="Nome que os alunos vão ver" aria-label="Nome do treinador" value={adminCoachForm.nome} onChange={(e) => setAdminCoachForm({ ...adminCoachForm, nome: e.target.value })} style={{ marginTop: 8 }} />
-                <button type="button" className="gt-btn" style={{ marginTop: 8 }} disabled={!adminCoachForm.email.trim()} onClick={() => adminLiberarTreinador(adminCoachForm.email, adminCoachForm.nome, true)}>Liberar treinador</button>
-                <div className="gt-settings-hint" style={{ marginTop: 6 }}>Quem pede cadastro aparece na lista acima. Aprovar libera os convites; suspender congela os vínculos e avisa os alunos. O formulário libera direto pelo e-mail.</div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "suporte" && adminRaces && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>PROVAS CADASTRADAS PELA COMUNIDADE</div>
-                {adminRaces.length === 0 && <div className="gt-empty">Ninguém cadastrou prova ainda.</div>}
-                {adminRaces.slice(0, 30).map((r) => (
-                  <div className="gt-admin-login-row" key={r.id} style={{ alignItems: "center", opacity: r.oculta ? 0.55 : 1 }}>
-                    <div className="gt-admin-login-email">
-                      {r.nome}
-                      <div className="gt-settings-hint" style={{ margin: 0 }}>{r.data_inicio.split("-").reverse().join("/")}{r.cidade ? ` · ${r.cidade}${r.uf ? "/" + r.uf : ""}` : ""} · por {r.criada_por_email || "?"}</div>
-                    </div>
-                    <button type="button" className="gt-btn secondary small" onClick={() => adminEsconderProva(r, !r.oculta)}>{r.oculta ? "Mostrar" : "Esconder"}</button>
-                  </div>
-                ))}
-                <div className="gt-settings-hint" style={{ marginTop: 6 }}>Esconder tira a prova da lista de todo mundo (quem já marcou continua com a marcação).</div>
-              </div>
-            )}
-            {!adminLoading && adminTab === "usuarios" && adminLogins && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="gt-field-label" style={{ marginBottom: 8 }}>LOGINS POR USUÁRIO · últimos 7 dias</div>
-                {adminLogins.length === 0 && <div className="gt-empty">Nenhum login registrado ainda.</div>}
-                {adminLogins.map((u) => {
-                  const logins = Number(u.logins), logouts = Number(u.logouts);
-                  const semSair = logins - logouts;
-                  return (
-                    <div className="gt-admin-login-row" key={u.email}>
-                      <div className="gt-admin-login-email">{u.email}</div>
-                      <div className={`gt-admin-login-count ${semSair >= 3 ? "warn" : ""}`}>
-                        {logins} login{logins === 1 ? "" : "s"} · {logouts} saída{logouts === 1 ? "" : "s"}{semSair >= 3 ? " ⚠" : ""}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="gt-settings-hint" style={{ marginTop: 6 }}><Ei e="⚠" /> = 3 ou mais logins sem ter tocado em "Sair": a sessão está caindo sozinha.</div>
-              </div>
-            )}
-            {!adminLoading && adminUsers && (
-              <>
-                {adminTab === "usuarios" && (<>
-                <AdminContas usuarios={adminUsers} />
-                <div className="gt-settings-hint" style={{ marginTop: -2 }}>* Dias com treino logado conta a data do treino, não quando ele foi salvo — sincronizar o Strava pela primeira vez importa até 30 dias pra trás de uma vez, então esse número pode subir bastante sem a pessoa ter aberto o app naqueles dias. "Último login" é só quando a sessão expira e a pessoa precisa logar de novo (pode ficar parado por semanas mesmo com uso diário) — "último acesso real" e "acessos ao app" é que mostram se a pessoa tá de fato abrindo o app.</div>
-                </>)}
-                {adminTab === "suporte" && (<>
-                {adminFeedback && (
-                  <>
-                    <div className="gt-settings-label" style={{ marginTop: 16 }}>Feedback dos usuários{adminFeedback.filter((f) => !f.lido).length ? ` (${adminFeedback.filter((f) => !f.lido).length} novo${adminFeedback.filter((f) => !f.lido).length === 1 ? "" : "s"})` : ""}</div>
-                    <div className="gt-admin-list">
-                      {adminFeedback.map((f) => (
-                        <div className={`gt-fb-item ${f.lido ? "" : "novo"}`} key={f.id}>
-                          <div className="gt-admin-user-row">{new Date(f.created_at).toLocaleString("pt-BR")} · {f.email || "—"} · <b>{f.tipo}</b> · {f.versao || "?"}{f.contato ? "" : " · não quer resposta"}</div>
-                          <div className="gt-fb-msg">{f.mensagem}</div>
-                          <div className="gt-modal-actions" style={{ marginTop: 0 }}>
-                            {f.email && f.contato && <a className="gt-btn secondary small" href={`mailto:${f.email}?subject=${encodeURIComponent("Sobre seu feedback no Movo")}`}>Responder</a>}
-                            <button className="gt-btn secondary small" onClick={() => adminMarcarFeedback(f, !f.lido)}>{f.lido ? "Marcar como novo" : "Marcar como lido"}</button>
-                          </div>
-                        </div>
-                      ))}
-                      {adminFeedback.length === 0 && <div className="gt-empty">Nenhum feedback ainda.</div>}
-                    </div>
-                    <div className="gt-settings-hint">Relatos de problema (com detalhes técnicos e revisão do Claude) ficam no painel de métricas, aba Relatos.</div>
-                  </>
-                )}
-                <div className="gt-settings-label" style={{ marginTop: 16 }}>Erros recentes</div>
-                <div className="gt-admin-list">
-                  {(adminErrors || []).map((e, i) => (
-                    <div className="gt-admin-error-item" key={i}>
-                      <div className="gt-admin-user-row">{new Date(e.created_at).toLocaleString("pt-BR")} · {e.email || "—"}</div>
-                      <div className="gt-admin-user-row"><b>{e.context}</b>{e.message ? ` — ${e.message}` : ""}</div>
-                    </div>
-                  ))}
-                  {(adminErrors || []).length === 0 && <div className="gt-empty">Nenhum erro registrado.</div>}
-                </div>
-                </>)}
-              </>
-            )}
-            <div style={{ height: 24 }} />
           </div>
         </div>
       )}
@@ -19483,49 +18712,6 @@ function FrequencyChart({ series, unit }) {
         <div className="gt-chart-tooltip" style={{ display: "inline-block" }}>
           <div>{series[hover].label}</div>
           <div style={{ color: "#C6F135" }}>{series[hover].count} treino{series[hover].count === 1 ? "" : "s"}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Gráfico simples de usuários ativos por dia (painel admin) — mesma estrutura
-// de barra do FrequencyChart, mas sobre dados de admin_daily_active (um
-// usuário é "ativo" num dia se abriu o app, via app_opens).
-function AdminDailyChart({ series }) {
-  const W = 320, H = 150, PAD_L = 24, PAD_R = 8, PAD_T = 12, PAD_B = 20;
-  const [hover, setHover] = useState(null);
-  useEffect(() => { setHover(null); }, [series]);
-  const counts = series.map((d) => Number(d.usuarios_ativos) || 0);
-  const max = Math.max(1, ...counts);
-  const barW = series.length ? (W - PAD_L - PAD_R) / series.length : W - PAD_L - PAD_R;
-  const yFor = (v) => PAD_T + (1 - v / max) * (H - PAD_T - PAD_B);
-
-  return (
-    <div style={{ width: "100%" }}>
-      {series.length === 0 ? (
-        <div className="gt-empty">Sem dados ainda.</div>
-      ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 150, overflow: "visible" }}>
-          <line x1={PAD_L} x2={W - PAD_R} y1={PAD_T} y2={PAD_T} stroke="#2C3038" strokeWidth="1" />
-          <line x1={PAD_L} x2={W - PAD_R} y1={H - PAD_B} y2={H - PAD_B} stroke="#2C3038" strokeWidth="1" />
-          <text x={2} y={PAD_T + 4} fontSize="10" fill="#9AA0A6" fontFamily="Roboto Mono, monospace">{max}</text>
-          <text x={2} y={H - PAD_B + 4} fontSize="10" fill="#9AA0A6" fontFamily="Roboto Mono, monospace">0</text>
-          {series.map((d, i) => (
-            <rect
-              key={d.dia}
-              x={PAD_L + i * barW + 1} y={yFor(counts[i])} width={Math.max(1, barW - 2)} height={Math.max(0, H - PAD_B - yFor(counts[i]))}
-              fill={hover === i ? "#F2F3F1" : "#C6F135"}
-              onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onTouchStart={() => setHover(i)}
-              style={{ cursor: "pointer" }}
-            />
-          ))}
-        </svg>
-      )}
-      {hover !== null && series[hover] && (
-        <div className="gt-chart-tooltip" style={{ display: "inline-block" }}>
-          <div>{new Date(series[hover].dia + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</div>
-          <div style={{ color: "#C6F135" }}>{series[hover].usuarios_ativos} usuário{Number(series[hover].usuarios_ativos) === 1 ? "" : "s"} ativo{Number(series[hover].usuarios_ativos) === 1 ? "" : "s"}</div>
         </div>
       )}
     </div>

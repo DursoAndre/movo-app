@@ -15,7 +15,7 @@ declare
   usados int;
 begin
   if uid is null then raise exception 'not authenticated'; end if;
-  if (select email from auth.users where id = uid) = 'ardurso@gmail.com' then max_per_month := 1000000; end if;
+  if public.movo_admin_uid(uid) then max_per_month := 1000000; end if;
   select count(*) into usados from public.plan_generations where user_id = uid and kind = p_kind and created_at >= inicio;
   return jsonb_build_object('usados', usados, 'limite', max_per_month);
 end;
@@ -34,7 +34,7 @@ declare
   novo bigint;
 begin
   if uid is null then raise exception 'not authenticated'; end if;
-  if (select email from auth.users where id = uid) = 'ardurso@gmail.com' then max_per_month := 1000000; end if;
+  if public.movo_admin_uid(uid) then max_per_month := 1000000; end if;
   perform pg_advisory_xact_lock(hashtext(uid::text));
   select count(*) into usados from public.plan_generations where user_id = uid and kind = p_kind and created_at >= inicio;
   if usados >= max_per_month then

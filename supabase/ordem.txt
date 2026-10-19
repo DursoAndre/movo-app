@@ -1,5 +1,6 @@
 # Ordem para montar o banco do zero (usada por build_setup.py). Uma linha por arquivo de supabase/sql/.
 # Cada arquivo só depende dos que vêm antes.
+admin_identidade.sql
 base_app_e_amigos.sql
 exercise_gaps_setup.sql
 exercise_gaps_origem.sql
@@ -64,3 +65,4 @@ avisos_email.sql
 admin_m_contas.sql
 user_feedback_relatos.sql
 admin_m_relatos.sql
+painel_gestao.sql

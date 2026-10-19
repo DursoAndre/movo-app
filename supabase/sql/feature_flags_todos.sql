@@ -16,7 +16,7 @@ set search_path = public, auth
 as $$
   select case
     when p_uid is null then false
-    when (select email from auth.users where id = p_uid) = 'ardurso@gmail.com' then true
+    when public.movo_admin_uid(p_uid) then true
     when p_feature = 'ajuste_semana' then
       (coalesce((select (valor)::text::boolean from public.app_config where chave = 'ff_ajuste_semana_todos'), false)
        or exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature))
@@ -35,7 +35,7 @@ security definer
 set search_path = public, auth
 as $$
   select coalesce((select (valor)::text::boolean from public.app_config where chave = 'ff_' || p_feature || '_todos'), false)
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+  where public.is_movo_admin();
 $$;
 
 create or replace function public.admin_feature_todos_set(p_feature text, p_on boolean)
@@ -45,7 +45,7 @@ security definer
 set search_path = public, auth
 as $$
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then raise exception 'forbidden'; end if;
+  if not public.is_movo_admin() then raise exception 'forbidden'; end if;
   if p_feature is distinct from 'ajuste_semana' then raise exception 'feature desconhecida'; end if;
   insert into public.app_config (chave, valor, atualizado_em) values ('ff_' || p_feature || '_todos', to_jsonb(coalesce(p_on, false)), now())
     on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();

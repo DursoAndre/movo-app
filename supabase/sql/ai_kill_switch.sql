@@ -30,7 +30,7 @@ begin
   if teto > 0 then
     select coalesce(sum(custo_usd), 0) into hoje from public.ai_usage_log
      where created_at >= date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo';
-    if hoje >= teto and (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then
+    if hoje >= teto and not public.is_movo_admin() then
       return 'teto_diario';
     end if;
   end if;
@@ -60,7 +60,7 @@ begin
     return jsonb_build_object('ok', false, 'indisponivel', true, 'motivo', bloqueio, 'usados', 0, 'limite', max_per_month,
       'mensagem', case bloqueio when 'desligada' then 'A IA está temporariamente desligada. Tente mais tarde.' else 'A IA atingiu o limite de uso de hoje. Tente amanhã.' end);
   end if;
-  if (select email from auth.users where id = uid) = 'ardurso@gmail.com' then max_per_month := 1000000; end if;
+  if public.movo_admin_uid(uid) then max_per_month := 1000000; end if;
   perform pg_advisory_xact_lock(hashtext(uid::text));
   select count(*) into usados from public.plan_generations where user_id = uid and kind = p_kind and created_at >= inicio;
   if usados >= max_per_month then
@@ -84,7 +84,7 @@ as $$
     'hoje_usd', coalesce((select sum(custo_usd) from public.ai_usage_log
         where created_at >= date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo'), 0)
   )
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+  where public.is_movo_admin();
 $$;
 
 create or replace function public.admin_ai_definir(p_ativa boolean, p_teto numeric)
@@ -94,7 +94,7 @@ security definer
 set search_path = public, auth
 as $$
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then raise exception 'forbidden'; end if;
+  if not public.is_movo_admin() then raise exception 'forbidden'; end if;
   insert into public.app_config (chave, valor, atualizado_em) values ('ai_ativa', to_jsonb(coalesce(p_ativa, true)), now())
     on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
   if p_teto is not null and p_teto >= 0 then

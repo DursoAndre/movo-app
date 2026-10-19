@@ -9,7 +9,7 @@ language sql security definer set search_path = public, auth as $$
          (select count(*)::int from public.coach_links l where l.coach_id = p.user_id and l.status in ('ativo','pausado'))
   from public.coach_profiles p
   join auth.users u on u.id = p.user_id
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   order by p.created_at desc;
 $$;
 
@@ -17,7 +17,7 @@ create or replace function public.admin_set_coach(p_email text, p_nome text, p_l
 returns boolean language plpgsql security definer set search_path = public, auth as $$
 declare v_id uuid;
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then
+  if not public.is_movo_admin() then
     raise exception 'not allowed';
   end if;
   select id into v_id from auth.users where lower(email) = lower(trim(p_email));

@@ -4,7 +4,7 @@ create or replace function public.cat_norm(t text) returns text language sql imm
 $$;
 
 create or replace function public.is_movo_admin() returns boolean language sql stable security definer set search_path=public as $$
-  select coalesce((select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com', false)
+  select public.movo_admin_uid(auth.uid()) -- quem é admin: admin_identidade.sql
 $$;
 
 create table if not exists public.catalogo_grupos (

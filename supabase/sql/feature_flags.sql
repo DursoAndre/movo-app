@@ -22,7 +22,7 @@ set search_path = public, auth
 as $$
   select case
     when p_uid is null then false
-    when (select email from auth.users where id = p_uid) = 'ardurso@gmail.com' then true
+    when public.movo_admin_uid(p_uid) then true
     when p_feature = 'ajuste_semana' then
       exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
       and not exists (select 1 from public.strava_connections where user_id = p_uid)
@@ -59,7 +59,7 @@ as $$
   from public.feature_access fa
   join auth.users u on u.id = fa.user_id
   where fa.feature = p_feature
-    and (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+    and public.is_movo_admin()
   order by fa.created_at desc;
 $$;
 
@@ -73,7 +73,7 @@ as $$
 declare
   alvo uuid;
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then raise exception 'forbidden'; end if;
+  if not public.is_movo_admin() then raise exception 'forbidden'; end if;
   select id into alvo from auth.users where lower(email) = lower(trim(p_email));
   if alvo is null then return 'usuario_nao_encontrado'; end if;
   if p_on then
@@ -113,7 +113,7 @@ begin
     return jsonb_build_object('ok', false, 'indisponivel', true, 'motivo', 'sem_acesso', 'usados', 0, 'limite', max_per_month,
       'mensagem', 'O ajuste da semana com IA está em teste fechado e ainda não está liberado pra você.');
   end if;
-  if (select email from auth.users where id = uid) = 'ardurso@gmail.com' then max_per_month := 1000000; end if;
+  if public.movo_admin_uid(uid) then max_per_month := 1000000; end if;
   perform pg_advisory_xact_lock(hashtext(uid::text));
   select count(*) into usados from public.plan_generations where user_id = uid and kind = p_kind and created_at >= inicio;
   if usados >= max_per_month then

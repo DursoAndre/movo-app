@@ -16,7 +16,7 @@ as $$
          max(g.created_at) as ultima
   from public.plan_generations g
   join auth.users u on u.id = g.user_id
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   group by u.email
   order by no_mes desc, max(g.created_at) desc
   limit 50;
