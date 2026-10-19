@@ -33,7 +33,7 @@ as $$
          max(s.created_at) as ultima
   from public.exercise_suggestions s
   where s.created_at >= now() - make_interval(days => dias)
-    and (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+    and public.is_movo_admin()
   group by lower(translate(trim(s.nome), 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC'))
   order by count(*) desc, max(s.created_at) desc
   limit 50;

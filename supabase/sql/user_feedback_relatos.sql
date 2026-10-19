@@ -49,7 +49,7 @@ as $$
   select f.id, f.origem, f.contexto, f.revisao, f.revisado_em
   from public.user_feedback f
   where f.id = any(p_ids)
-    and (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+    and public.is_movo_admin();
 $$;
 
 grant execute on function public.admin_feedback_contexto(bigint[]) to authenticated;

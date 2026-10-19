@@ -32,7 +32,7 @@ as $$
   select e.name, count(*) as total, count(distinct e.user_id) as usuarios
   from public.app_events e
   where e.created_at >= now() - make_interval(days => dias)
-    and (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+    and public.is_movo_admin()
   group by e.name;
 $$;
 

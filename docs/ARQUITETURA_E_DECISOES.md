@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 19/10/2026 (v201).
+Última atualização: 19/10/2026 (v202).
 
 ---
 
@@ -27,13 +27,16 @@ PWA de treino em português do Brasil. Tudo num lugar só: musculação (fichas,
 | E-mail transacional | Resend (conta criada; domínio movoapp.com.br; ver 2.2) |
 | Build | `npm run build` (esbuild, `build.mjs`) no GitHub Actions; publica `dist/` |
 
-### 2.0 Vocabulário: dois "admins" diferentes (não confundir)
-| Como o Andre chama | O que é | Onde fica | Dados |
-|---|---|---|---|
-| **Painel de métricas** (ou "Movo Admin") | PWA separado só de métricas e gestão: visão geral, retenção, funil, ativação, canais, convites, domínio, contas, **relatos** | `movoapp.com.br/admin/`, repositório **movo-site** (pasta `admin/`) | RPCs `admin_m_*` (`admin_metricas*.sql`), só para quem passa em `is_movo_admin()` |
-| **Aba Admin do app** | Tela dentro do app normal (menu), com abas Geral, Usuários, IA, Planos, Treinadores, Suporte, Catálogo | `app.js` (repositório **movo-app**), `adminTab` | RPCs `admin_*` (usage_stats, coach_list, feedback...) |
+### 2.0 Vocabulário: "admin" agora é só o painel
+Desde a v202 (decisão do Andre, 19/10/2026) **toda a gestão fica no painel** `movoapp.com.br/admin/` (repositório **movo-site**, pasta `admin/`). A antiga **aba Admin do app** foi removida do `app.js`; no app sobrou só o item de menu **"Abrir painel (N)"**, visível só para `ADMIN_EMAIL`, com o total de `admin_m_pendencias()`.
 
-Regra: se o Andre disser só "admin", **perguntar qual** antes de mexer. A lista de contas (ordem de cadastro/último acesso) está na **aba Admin do app › Usuários** (v190). Também está no **painel de métricas** (aba Contas, v. 16/10), com a mesma ordenação e busca.
+O painel tem duas áreas (seletor no topo):
+| Área | Abas | RPCs |
+|---|---|---|
+| **Operação** (padrão) | Pendências, Contas (toque abre a **ficha da conta**), Relatos, Suporte, Treinadores, Catálogo, Planos, IA, Desafios (só leitura, toque abre o livro-caixa), Recados, Integrações, Saúde, Registro | as `admin_*` que o app usava + `admin_m_*` novas de `painel_gestao.sql` |
+| **Métricas** | Visão geral, Retenção, Funil, Ativação, Uso, Convites, Domínio | `admin_m_*` (`admin_metricas*.sql`) |
+
+Quem é admin: tabela `movo_admins` (por `user_id`, `admin_identidade.sql`); todas as funções usam `is_movo_admin()` / `movo_admin_uid(uid)`, não mais o e-mail escrito. Segundo admin = `insert into movo_admins`. Toda mudança feita por admin em tabelas de gestão fica em `admin_log` (imutável), visível na aba Registro e na ficha da conta.
 
 ### 2.1 Regras de entrega (sempre)
 - Todo commit que muda o app: subir `APP_BUILD` no `app.js` (ex.: "v189") **e** `CACHE` no `sw.js` (ex.: "treino-app-v189"). Sem isso o cache do service worker segura a versão antiga.
@@ -77,7 +80,7 @@ Deploy: pelo MCP do Supabase (`deploy_edge_function`) ou CLI. Funções novas us
 
 ## 5. Banco de dados (`supabase/sql/`, ordem em `supabase/ordem.txt`)
 
-Total: 64 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
+Total: 66 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
 
 Marcos recentes:
 - `challenge_acertos.sql`, `challenge_formatos.sql`, `challenge_acertos_saida.sql` (prêmios; ver 6.1)
@@ -89,6 +92,8 @@ Marcos recentes:
 - `admin_m_contas.sql` (lista de contas do painel de métricas)
 - `user_feedback_relatos.sql` (relatos de problema com contexto técnico e revisão do agente; v200)
 - `admin_m_relatos.sql` (aba Relatos do painel de métricas: relatos + erros mais frequentes; v201)
+- `admin_identidade.sql` (1º da ordem: `movo_admins`, `is_movo_admin()`, `movo_admin_uid()`; v202). Os 21 arquivos que comparavam o e-mail do admin foram reescritos para usar essas funções.
+- `painel_gestao.sql` (último da ordem, v202): `admin_log` + gatilhos (Registro), `admin_m_pendencias`, `admin_m_conta` (ficha: só contagens e vínculos), `admin_m_conta_exportar`/`admin_m_conta_apagar` (a pedido, ficam no Registro; apagar exige digitar o e-mail e recusa conta de admin), `admin_m_desafios`/`admin_m_desafio` (só leitura), `admin_m_integracoes` (Strava 10 atletas, e-mails 7 dias), recados (`admin_recados`, `recado_vistos`, `meus_recados()`, `recado_marcar()`, `admin_m_recado_*`).
 
 ## 6. Decisões por área
 
@@ -125,7 +130,7 @@ Marcos recentes:
 ## 7. Pendências
 
 ### Do Andre
-1. Rodar `challenge_acertos_saida.sql` (sair/excluir desafio com livro-caixa). Em 16/10 ainda não estava aplicado.
+1. ~~Rodar `challenge_acertos_saida.sql`~~: conferido aplicado em 19/10 (`leave_challenge` já fecha o livro).
 2. E-mail: secrets criados em 16/10; falta só testar que um e-mail chega (pedido de treinador ou relatório compartilhado entre duas contas suas).
 3. Migração de domínio: 26 pessoas nunca abriram o domínio novo, 21 sem banner; `dominio_novo.redirecionar` ligado em 19/10 e mantido (resolveu o Strava, ver seção 8); Site URL do Supabase; templates de e-mail do Supabase; tirar a lista de e-mails da tela Domínio no admin; congelar `meu-treino`.
 4. Jurídico/contábil: perguntas da seção 5 de `PLANO_NEGOCIO_E_PREMIOS.md` ao contador e ao advogado; revisão legal antes de abrir recursos com dinheiro; teste de validação de venda.
@@ -133,11 +138,15 @@ Marcos recentes:
 
 ### Do Claude / backlog
 - Exportar `race_favorites` no pedido de dados (LGPD).
-- Roadmap item 9: trocar o e-mail da conta.
+- Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
+- Painel: e-mail em massa para Recados (usa Resend, **custo a combinar com o Andre antes**); botão de e-mail de teste em Integrações (idem); ação de encerrar desafio abandonado (fora por risco).
+- Apagar conta pelo painel não remove a foto do storage nem revoga o acesso no Strava (o app faz isso quando a própria pessoa apaga).
 - Aviso em tela (não só e-mail) quando alguém libera relatório para você.
 - Compartilhar relatório escolhendo da lista de amigos (hoje só por e-mail).
 
 ## 8. Registro de decisões (mais recentes primeiro)
+
+- **19/10/2026 (v202, decisão do Andre):** **toda a gestão sai do app e vai para o painel** (movo-site/admin, área **Operação**); no app fica só o atalho "Abrir painel" para ele. Substitui a decisão de 16/10 de manter Usuários no app. Plano por fases no Claude Doc https://claude.ai/code/artifact/f8c70169-0230-43b6-803c-e2806aeea318 (executadas as 4 fases). Novidades: aba Pendências (padrão, contador nas abas e no ícone do PWA), ficha da conta com exportar/apagar a pedido (LGPD), Registro imutável de mudanças de admin, Desafios só leitura, Integrações (Strava/e-mails), **Recados** (cartão no topo da aba Hoje para um público: todos, inativos há N dias, treinadores, quem está em desafio com prêmio, e-mails escolhidos; só no app, sem custo). Admin passou a ser `movo_admins` por `user_id`. Fora por custo ou risco: e-mail em massa, e-mail de teste, encerrar desafio.
 
 - **19/10/2026 (v201, decisão do Andre):** relatos de problema ficam **só no painel de métricas** (movo-site/admin, aba **Relatos**), não na aba Admin do app. A aba mostra os relatos do período (7/30/90 dias) com origem, aba, versão, mensagem, **revisão do Claude**, detalhes técnicos (JSON), Responder e marcar como lido (RPCs `admin_m_relatos`, `admin_m_relato_lido`, arquivo `admin_m_relatos.sql`), e os erros de `client_errors` agrupados por contexto. A aba Suporte do app deixou de listar `tipo='problema'` e aponta para o painel. A função `admin_feedback_contexto` (v200) ficou sem uso. **Revisão pelo Claude é manual (decisão do Andre, 19/10):** a tarefa de hora em hora foi cancelada por custo (~US$0,60 por disparo mesmo sem relato). Na aba Relatos, o botão "Revisar N relatos abertos com o Claude" copia um pedido pronto (com os ids) e abre o projeto no claude.ai para colar no chat. **Regra:** qualquer coisa com custo adicional precisa ser avisada ao Andre antes de implementar.
 - **19/10/2026 (v200, pedido do Andre):** **Reportar problema** com contexto, em 3 lugares: (1) tela de erro nova quando o React quebra ("Ops, algo quebrou nesta tela": campo opcional, Reportar, Recarregar, detalhes técnicos), que também grava sozinha em `client_errors` (`tela_quebrou`); (2) barra "Algo deu errado aqui · Reportar" quando há erro não tratado fora do React (no máx. 1 vez a cada 5 min; ignora rede/offline, extensões, `Script error`, ResizeObserver); (3) item "Reportar problema" no menu. Tudo vai para `user_feedback` (`tipo='problema'`) com `origem` (`manual`/`erro`/`tela_quebrou`) e `contexto` jsonb: versão, caminho (sem query/hash), user agent, janela, instalado, online, aba, últimos 15 erros e 10 telas (memória, `DIAG`), e stack/componentes quando a tela quebra. Sem login cai em `client_errors` (`relato_sem_login`). "Problema" pelo "Enviar feedback" também leva o contexto. O e-mail de `notificar-feedback` mostra um resumo; o completo fica na aba Admin do app › Suporte (RPC `admin_feedback_contexto`, sem mexer no retorno de `admin_feedback_list`). Depois de abrir, o `index.html` para de mostrar erros na caixa vermelha de carregamento (`window.__movoMontado`). Revisão pelo Claude: manual, ver v201 (gatilho instantâneo não é possível: o banco não consegue acionar o Claude direto). Tela de erro e barra testadas no Chromium (headless); não testado no aparelho.

@@ -115,7 +115,7 @@ declare
   ra public.assinaturas; rt public.assinaturas;
 begin
   if uid is null then raise exception 'not authenticated'; end if;
-  adm := (select email from auth.users where id = uid) = 'ardurso@gmail.com';
+  adm := public.movo_admin_uid(uid);
   pa := public.plano_efetivo(uid, 'aluno');
   pt := public.plano_efetivo(uid, 'treinador');
   select * into ra from public.assinaturas where user_id = uid and linha = 'aluno';
@@ -150,7 +150,7 @@ declare
   usados int;
 begin
   if uid is null then raise exception 'not authenticated'; end if;
-  if (select email from auth.users where id = uid) = 'ardurso@gmail.com' then max_per_month := 1000000;
+  if public.movo_admin_uid(uid) then max_per_month := 1000000;
   else max_per_month := public.ia_limite_efetivo(uid, max_per_month); end if;
   select count(*) into usados from public.plan_generations where user_id = uid and kind = p_kind and created_at >= inicio;
   return jsonb_build_object('usados', usados, 'limite', max_per_month, 'por_plano', public.billing_cfg('limites'));
@@ -180,7 +180,7 @@ begin
     return jsonb_build_object('ok', false, 'indisponivel', true, 'motivo', 'sem_acesso', 'usados', 0, 'limite', max_per_month,
       'mensagem', 'O ajuste da semana com IA está em teste fechado e ainda não está liberado pra você.');
   end if;
-  if (select email from auth.users where id = uid) = 'ardurso@gmail.com' then max_per_month := 1000000;
+  if public.movo_admin_uid(uid) then max_per_month := 1000000;
   else max_per_month := public.ia_limite_efetivo(uid, max_per_month); end if;
   perform pg_advisory_xact_lock(hashtext(uid::text));
   select count(*) into usados from public.plan_generations where user_id = uid and kind = p_kind and created_at >= inicio;
@@ -201,7 +201,7 @@ declare
 begin
   perform public.coach_assert_coach();
   if public.billing_cfg('limites')
-     and (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then
+     and not public.is_movo_admin() then
     v_max := (public.plano_limites('treinador', public.plano_efetivo(auth.uid(), 'treinador'))->>'alunos')::int;
     if (select count(*) from public.coach_links
          where coach_id = auth.uid() and status in ('pendente', 'ativo', 'pausado')) >= v_max then
@@ -232,7 +232,7 @@ security definer
 set search_path = public, auth
 as $$
   select jsonb_build_object('visivel', public.billing_cfg('visivel'), 'limites', public.billing_cfg('limites'))
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+  where public.is_movo_admin();
 $$;
 
 create or replace function public.admin_billing_set(p_chave text, p_on boolean)
@@ -242,7 +242,7 @@ security definer
 set search_path = public, auth
 as $$
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then raise exception 'forbidden'; end if;
+  if not public.is_movo_admin() then raise exception 'forbidden'; end if;
   if p_chave not in ('visivel', 'limites') then raise exception 'chave desconhecida'; end if;
   insert into public.app_config (chave, valor, atualizado_em) values ('billing_' || p_chave, to_jsonb(coalesce(p_on, false)), now())
     on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
@@ -262,7 +262,7 @@ as $$
 declare
   alvo uuid;
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then raise exception 'forbidden'; end if;
+  if not public.is_movo_admin() then raise exception 'forbidden'; end if;
   select id into alvo from auth.users where lower(email) = lower(trim(p_email));
   if alvo is null then return 'usuario_nao_encontrado'; end if;
   if p_plano = 'gratis' then
@@ -290,7 +290,7 @@ as $$
   select u.email::text, a.linha, a.plano, a.ciclo, a.status, a.origem, a.teste_ate, a.renova_em
   from public.assinaturas a
   join auth.users u on u.id = a.user_id
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   order by a.atualizado_em desc;
 $$;
 

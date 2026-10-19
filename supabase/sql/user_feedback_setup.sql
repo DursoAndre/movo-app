@@ -28,7 +28,7 @@ as $$
   select f.id, f.created_at, u.email, f.tipo, f.mensagem, f.contato, f.versao, f.lido
   from public.user_feedback f
   left join auth.users u on u.id = f.user_id
-  where (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com'
+  where public.is_movo_admin()
   order by f.lido asc, f.created_at desc
   limit limit_n;
 $$;
@@ -43,7 +43,7 @@ set search_path = public, auth
 as $$
   update public.user_feedback set lido = p_lido
   where id = p_id
-    and (select email from auth.users where id = auth.uid()) = 'ardurso@gmail.com';
+    and public.is_movo_admin();
 $$;
 
 grant execute on function public.admin_feedback_lido(bigint, boolean) to authenticated;

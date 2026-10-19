@@ -47,7 +47,7 @@ security definer
 set search_path = public, auth
 as $$
   select case
-    when (select email from auth.users where id = p_uid) = 'ardurso@gmail.com' then 'pro'
+    when public.movo_admin_uid(p_uid) then 'pro'
     when public.plano_efetivo(p_uid, 'aluno') <> 'gratis' then 'pro'
     when exists (select 1 from public.coach_links l
                  where l.student_id = p_uid and l.status in ('ativo', 'pausado')
@@ -115,7 +115,7 @@ declare
   ra public.assinaturas; rt public.assinaturas;
 begin
   if uid is null then raise exception 'not authenticated'; end if;
-  adm := (select email from auth.users where id = uid) = 'ardurso@gmail.com';
+  adm := public.movo_admin_uid(uid);
   pa := public.aluno_plano(uid);
   pe := public.plano_efetivo(uid, 'aluno');
   pt := public.plano_efetivo(uid, 'treinador');
@@ -152,7 +152,7 @@ security definer
 set search_path = public, auth
 as $$
 begin
-  if (select email from auth.users where id = auth.uid()) is distinct from 'ardurso@gmail.com' then raise exception 'forbidden'; end if;
+  if not public.is_movo_admin() then raise exception 'forbidden'; end if;
   if p_chave not in ('visivel', 'limites') then raise exception 'chave desconhecida'; end if;
   if p_chave = 'limites' and coalesce(p_on, false) and not public.billing_cfg('limites') then
     insert into public.app_config (chave, valor, atualizado_em) values ('billing_limites_desde', to_jsonb(now()::text), now())
