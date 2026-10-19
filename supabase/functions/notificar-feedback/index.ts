@@ -13,6 +13,21 @@ function esc(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Relato de problema (v200): resumo do contexto técnico; o completo fica na aba Admin › Suporte.
+function resumoContexto(f: { origem?: string; contexto?: Record<string, unknown> | null }) {
+  const c = f.contexto as Record<string, any> | null | undefined;
+  if (!c) return "";
+  const erros = Array.isArray(c.erros) ? c.erros.slice(-3) : [];
+  const linhas = [
+    `origem: ${f.origem || "manual"} · aba: ${c.aba || "?"} · ${c.instalado ? "instalado" : "navegador"} · ${c.janela || ""}`,
+    String(c.ua || ""),
+    c.erro ? `erro: ${c.erro}` : "",
+    c.stack ? String(c.stack).split("\n").slice(0, 6).join("\n") : "",
+    ...erros.map((e: any) => `[${e.origem}] ${String(e.msg || "").split("\n")[0]}`),
+  ].filter(Boolean);
+  return `<pre style="white-space:pre-wrap;font-size:12px;color:#555">${esc(linhas.join("\n"))}</pre>`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const json = (o: unknown, s = 200) =>
@@ -39,8 +54,8 @@ Deno.serve(async (req) => {
         from,
         to: [to],
         reply_to: f.contato ? u.user.email : undefined,
-        subject: `[Movo] ${f.tipo}: ${String(f.mensagem).slice(0, 50)}`,
-        html: `<p><b>${esc(f.tipo)}</b> · ${esc(u.user.email || "")} · app ${esc(f.versao || "?")}${f.contato ? "" : " · (não quer resposta)"}</p><p style="white-space:pre-wrap">${esc(f.mensagem)}</p>`,
+        subject: `[Movo] ${f.origem === "tela_quebrou" ? "tela quebrou" : f.tipo}: ${String(f.mensagem).slice(0, 50)}`,
+        html: `<p><b>${esc(f.tipo)}</b> · ${esc(u.user.email || "")} · app ${esc(f.versao || "?")}${f.contato ? "" : " · (não quer resposta)"}</p><p style="white-space:pre-wrap">${esc(f.mensagem)}</p>${resumoContexto(f)}`,
       }),
     });
     return json({ ok: r.ok, enviado: r.ok });
