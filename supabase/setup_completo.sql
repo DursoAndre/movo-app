@@ -7015,11 +7015,49 @@ $$;
 grant execute on function public.admin_feedback_contexto(bigint[]) to authenticated;
 
 -- ======================================================================
+-- relatos_prints.sql
+-- ======================================================================
+-- Prints no "Fale com a gente" (v203, qualquer categoria): até 3 imagens por mensagem, reduzidas no aparelho
+-- (lado maior 1280px, JPEG). Bucket PRIVADO "relatos", pasta = user_id. Só o dono grava/lê/apaga
+-- a própria pasta; o admin (is_movo_admin) lê tudo e vê pelo painel de métricas com URL assinada.
+-- Seguro rodar de novo.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('relatos', 'relatos', false, 1048576, array['image/jpeg'])
+on conflict (id) do update set public = false, file_size_limit = 1048576, allowed_mime_types = array['image/jpeg'];
+
+-- Sem "drop policy" (o conector do Supabase cancela comandos destrutivos): cria só se não existir.
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'relatos_insert_own') then
+    create policy relatos_insert_own on storage.objects for insert to authenticated
+      with check (bucket_id = 'relatos' and (storage.foldername(name))[1] = auth.uid()::text);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'relatos_select_own_ou_admin') then
+    create policy relatos_select_own_ou_admin on storage.objects for select to authenticated
+      using (bucket_id = 'relatos' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_movo_admin()));
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'relatos_delete_own') then
+    create policy relatos_delete_own on storage.objects for delete to authenticated
+      using (bucket_id = 'relatos' and (storage.foldername(name))[1] = auth.uid()::text);
+  end if;
+end $$;
+
+alter table public.user_feedback add column if not exists prints text[];
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'user_feedback_prints_chk') then
+    alter table public.user_feedback add constraint user_feedback_prints_chk
+      check (prints is null or cardinality(prints) <= 3);
+  end if;
+end $$;
+
+-- ======================================================================
 -- admin_m_relatos.sql
 -- ======================================================================
 -- Painel de métricas (movoapp.com.br/admin), aba "Relatos" (v201): relatos de problema
 -- (user_feedback tipo 'problema', com contexto e revisão do agente; ver user_feedback_relatos.sql)
--- e os erros mais frequentes de client_errors. Só passa quem é admin (is_movo_admin).
+-- e os erros mais frequentes de client_errors. Desde v203 devolve também `prints` (relatos_prints.sql; rodar antes)
+-- e todas as mensagens do "Fale com a gente" (problema, ideia, elogio, outro), com `tipo`. Só passa quem é admin (is_movo_admin).
 -- Decisão do Andre (19/10): relatos ficam só no painel de métricas, não na aba Admin do app.
 create or replace function public.admin_m_relatos(p_dias int default 30) returns jsonb
 language plpgsql stable security definer set search_path to 'public', 'auth' as $$
@@ -7029,12 +7067,12 @@ begin
   select jsonb_build_object(
     'relatos', coalesce((
       select jsonb_agg(x order by x.lido, x.criado desc) from (
-        select f.id, f.created_at as criado, u.email, nullif(trim(a.display_name), '') as nome,
-               f.mensagem, f.contato, f.versao, f.origem, f.contexto, f.revisao, f.revisado_em, f.lido
+        select f.id, f.created_at as criado, f.tipo, u.email, nullif(trim(a.display_name), '') as nome,
+               f.mensagem, f.contato, f.versao, f.origem, f.contexto, f.revisao, f.revisado_em, f.lido, f.prints
         from public.user_feedback f
         left join auth.users u on u.id = f.user_id
         left join public.app_data a on a.user_id = f.user_id
-        where f.tipo = 'problema' and f.created_at >= now() - make_interval(days => greatest(p_dias, 1))
+        where f.created_at >= now() - make_interval(days => greatest(p_dias, 1))
         order by f.created_at desc
         limit 200
       ) x), '[]'::jsonb),
@@ -7058,7 +7096,7 @@ create or replace function public.admin_m_relato_lido(p_id bigint, p_lido boolea
 language plpgsql security definer set search_path to 'public' as $$
 begin
   if not public.is_movo_admin() then raise exception 'forbidden'; end if;
-  update public.user_feedback set lido = p_lido where id = p_id and tipo = 'problema';
+  update public.user_feedback set lido = p_lido where id = p_id;
 end $$;
 revoke all on function public.admin_m_relato_lido(bigint, boolean) from public, anon;
 grant execute on function public.admin_m_relato_lido(bigint, boolean) to authenticated;
