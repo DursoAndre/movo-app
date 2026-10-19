@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v198";
+const APP_BUILD = "v199";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -9767,6 +9767,8 @@ function coachFichaConteudo(sem, aluno, coachNome, rodape) {
   };
 }
 
+// Modelos do treinador (coach_templates): semana = {dias,fichas}; treino de corrida = {tipo:"corrida",corrida}.
+function coachModeloCorrida(m) { return !!(m && m.payload && m.payload.tipo === "corrida" && m.payload.corrida); }
 function coachSemanaResumo(sem) {
   let dias = 0, ex = 0;
   COACH_ORDEM_DIAS.forEach((d) => {
@@ -11000,7 +11002,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   }
   async function abrirModelos() {
     setMenu(false); setModelos([]);
-    try { const { data } = await supabaseClient.from("coach_templates").select("*").order("created_at", { ascending: false }); setModelos(data || []); } catch (e) { setModelos([]); }
+    try { const { data } = await supabaseClient.from("coach_templates").select("*").order("created_at", { ascending: false }); setModelos((data || []).filter((m) => !coachModeloCorrida(m))); } catch (e) { setModelos([]); }
   }
   async function salvarModelo() {
     const nome = (modeloNome || "").trim();
@@ -11150,6 +11152,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       )}
       {corridaModal && (
         <CoachCorridaModal
+          coachUid={aluno.coach_uid} showToast={showToast}
           inicial={corridaModal.idx != null ? coachCorridaNorm(((sem.dias[corridaModal.dow] || [])[corridaModal.idx] || {}).corrida) : null}
           onClose={() => setCorridaModal(null)}
           onSalvar={(c) => {
@@ -11515,7 +11518,7 @@ function CoachEtapasEditor({ itens, onChange }) {
   );
 }
 // Modal do treinador: escolhe um modelo (ou parte de um treino existente) e ajusta etapa por etapa.
-function CoachCorridaModal({ inicial, onSalvar, onClose }) {
+function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) {
   const [fase, setFase] = useState(inicial ? "editar" : "montar");
   const [tipo, setTipo] = useState("tiros400");
   const [kmTxt, setKmTxt] = useState("");
@@ -11527,6 +11530,16 @@ function CoachCorridaModal({ inicial, onSalvar, onClose }) {
   const [modelo, setModelo] = useState(inicial ? inicial.modelo : "");
   const [esforco, setEsforco] = useState(inicial ? inicial.esforco : "");
   const [itens, setItens] = useState(inicial ? coachEtapasDraft(inicial.etapas) : []);
+  const [meus, setMeus] = useState([]); // treinos de corrida salvos como modelo
+  const [nomeModelo, setNomeModelo] = useState(null);
+  const [salvandoModelo, setSalvandoModelo] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try { const { data } = await supabaseClient.from("coach_templates").select("*").order("created_at", { ascending: false }); if (vivo) setMeus((data || []).filter(coachModeloCorrida)); } catch (e) {}
+    })();
+    return () => { vivo = false; };
+  }, []);
   const km = parseFloat(String(kmTxt).replace(",", ".")) || 0;
   const cfg = TREINOS_CORRIDA[tipo];
   function montar() {
@@ -11535,14 +11548,36 @@ function CoachCorridaModal({ inicial, onSalvar, onClose }) {
     if (!r.ok) { setErro(r.erro); return; }
     setErro(""); setTitulo(r.treino.titulo); setDetalhes(r.treino.detalhes || ""); setModelo(tipo); setEsforco(r.treino.esforco || ""); setItens(coachEtapasDraft(r.treino.etapas)); setFase("editar");
   }
+  function usarMeu(m) {
+    const c = coachCorridaNorm(m.payload.corrida);
+    if (!c) { setErro("Esse modelo está vazio."); return; }
+    setErro(""); setTitulo(c.titulo); setDetalhes(c.detalhes); setModelo(c.modelo); setEsforco(c.esforco); setItens(coachEtapasDraft(c.etapas)); setFase("editar");
+  }
   const conv = coachDraftEtapas(itens);
-  function salvar() {
-    if (!conv.ok) { setErro(conv.erro); return; }
+  function montarCorrida() {
+    if (!conv.ok) { setErro(conv.erro); return null; }
     const paceBase = planoParsePace(paceTxt);
     const total = planoEtapasSegmentos(conv.etapas, paceBase > 0 ? paceBase : 0).reduce((t, x) => t + x.min, 0);
     const c = coachCorridaNorm({ modelo, titulo: titulo.trim() || (TREINOS_CORRIDA[modelo] || {}).nome || "Treino de corrida", distanciaKm: coachEtapasKm(conv.etapas), duracaoMin: Math.round(total), pace: "", esforco, detalhes, etapas: conv.etapas });
-    if (!c) { setErro("Confira as etapas."); return; }
-    onSalvar(c);
+    if (!c) { setErro("Confira as etapas."); return null; }
+    return c;
+  }
+  function salvar() {
+    const c = montarCorrida();
+    if (c) onSalvar(c);
+  }
+  async function salvarModelo() {
+    const nome = (nomeModelo || "").trim().slice(0, 80);
+    const c = montarCorrida();
+    if (!nome || !c || !coachUid) return;
+    setSalvandoModelo(true);
+    try {
+      const { data, error } = await supabaseClient.from("coach_templates").insert({ coach_id: coachUid, nome, payload: { tipo: "corrida", corrida: c } }).select("*").single();
+      if (error) throw error;
+      if (data) setMeus((l) => [data, ...l]);
+      setNomeModelo(null); showToast && showToast("Treino salvo nos seus modelos");
+    } catch (e) { showToast && showToast("Não consegui salvar o modelo agora"); }
+    setSalvandoModelo(false);
   }
   return (
     <div className="gt-modal-backdrop" onClick={onClose}>
@@ -11553,6 +11588,15 @@ function CoachCorridaModal({ inicial, onSalvar, onClose }) {
         </div>
         {fase === "montar" && (
           <div className="gt-plano-form">
+            {meus.length > 0 && (
+              <>
+                <label className="gt-plano-lbl">Seus modelos</label>
+                <div className="gt-provas-filters" style={{ margin: 0 }}>
+                  {meus.map((m) => <button key={m.id} type="button" className="gt-provas-pill" onClick={() => usarMeu(m)}>{m.nome}</button>)}
+                </div>
+                <div className="gt-plano-dica">Ou monte um treino novo:</div>
+              </>
+            )}
             <div className="gt-plano-dica">Escolha um modelo, a distância e o nível. O app monta as etapas e você ajusta o que quiser.</div>
             <label className="gt-plano-lbl">Modelo</label>
             <div className="gt-provas-filters" style={{ margin: 0 }}>
@@ -11593,11 +11637,22 @@ function CoachCorridaModal({ inicial, onSalvar, onClose }) {
               </div>
             )}
             {erro && <div className="gt-plano-erro">{erro}</div>}
+            {nomeModelo != null && (
+              <div style={{ marginTop: 10 }}>
+                <label className="gt-plano-lbl">Nome do modelo</label>
+                <input className="gt-input" aria-label="Nome do modelo" placeholder="Ex.: Tiros 8x400 iniciante" maxLength={80} value={nomeModelo} onChange={(e) => setNomeModelo(e.target.value)} />
+                <div className="gt-modal-actions" style={{ marginTop: 8 }}>
+                  <button type="button" className="gt-btn small" disabled={!nomeModelo.trim() || salvandoModelo} onClick={salvarModelo}>{salvandoModelo ? "Salvando…" : "Salvar modelo"}</button>
+                  <button type="button" className="gt-btn secondary small" onClick={() => setNomeModelo(null)}>Cancelar</button>
+                </div>
+              </div>
+            )}
             <div className="gt-modal-actions" style={{ marginTop: 10 }}>
               <button type="button" className="gt-btn" onClick={salvar}>{inicial ? "Salvar alterações" : "Adicionar ao dia"}</button>
               {!inicial && <button type="button" className="gt-btn secondary" onClick={() => setFase("montar")}>Trocar modelo</button>}
               {inicial && <button type="button" className="gt-btn secondary" onClick={onClose}>Cancelar</button>}
             </div>
+            {nomeModelo == null && coachUid && <button type="button" className="gt-btn secondary small" style={{ marginTop: 8 }} onClick={() => { if (montarCorrida()) setNomeModelo(titulo.trim()); }}>Salvar como modelo</button>}
           </div>
         )}
       </div>
@@ -11829,23 +11884,31 @@ function CoachModelos({ showToast, ativos, recarregar, onNovo, onEditar, onAplic
   async function duplicar(m) {
     try { const { error } = await supabaseClient.from("coach_templates").insert({ coach_id: m.coach_id, nome: `${m.nome} (cópia)`.slice(0, 80), payload: m.payload }); if (error) throw error; showToast("Modelo duplicado"); carregar(); } catch (e) { showToast("Não consegui duplicar agora"); }
   }
+  const semanas = lista && lista.filter((m) => !coachModeloCorrida(m));
+  const corridas = (lista || []).filter(coachModeloCorrida);
   return (
     <>
       <div className="gt-co-top"><div><div className="gt-co-sec">SEMANAS PRONTAS</div><div className="gt-co-h1">Modelos</div></div>
         <button type="button" className="gt-btn small gt-co-convidar" onClick={onNovo}>+ Novo modelo</button></div>
       {lista === null && <div className="gt-empty">Carregando…</div>}
-      {lista && lista.length === 0 && <div className="gt-empty-cta"><div className="tt">Nenhum modelo ainda</div><div className="sb">Crie uma semana-base (ex.: “Hipertrofia 4x”) e aplique em qualquer aluno, ajustando só o que muda.</div><button type="button" className="gt-btn" onClick={onNovo}>Criar primeiro modelo</button></div>}
-      {(lista || []).map((m) => { const r = coachSemanaResumo(m.payload); return (
+      {semanas && semanas.length === 0 && <div className="gt-empty-cta"><div className="tt">Nenhum modelo ainda</div><div className="sb">Crie uma semana-base (ex.: “Hipertrofia 4x”) e aplique em qualquer aluno, ajustando só o que muda.</div><button type="button" className="gt-btn" onClick={onNovo}>Criar primeiro modelo</button></div>}
+      {(semanas || []).map((m) => { const r = coachSemanaResumo(m.payload); return (
         <div key={m.id} className="gt-co-modelo gt-co-modelo2">
           <button type="button" className="tx" onClick={() => onEditar(m)} aria-label={`Editar ${m.nome}`}><div className="t">{m.nome}</div><div className="d">{r.dias} {r.dias === 1 ? "dia" : "dias"} · {coachTxtEx(r.ex)}</div></button>
           <button type="button" className="gt-co-mini" disabled={ativos.length === 0} onClick={() => setAcao({ tipo: "aplicar", m })}>Aplicar</button>
           <button type="button" className="gt-co-mini" aria-label={`Mais opções de ${m.nome}`} aria-haspopup="menu" onClick={() => setAcao({ tipo: "menu", m })}>Mais ⋯</button>
         </div>); })}
+      {corridas.length > 0 && <div className="gt-co-sec" style={{ marginTop: 18 }}>TREINOS DE CORRIDA</div>}
+      {corridas.map((m) => (
+        <div key={m.id} className="gt-co-modelo gt-co-modelo2">
+          <div className="tx"><div className="t">{m.nome}</div><div className="d">{coachCorridaMeta(m.payload.corrida) || "Treino de corrida"} · use em ＋ › Treino de corrida</div></div>
+          <button type="button" className="gt-co-mini" aria-label={`Mais opções de ${m.nome}`} aria-haspopup="menu" onClick={() => setAcao({ tipo: "menu", m })}>Mais ⋯</button>
+        </div>))}
       {acao && acao.tipo === "menu" && (
         <div className="gt-modal-backdrop" onClick={() => setAcao(null)}>
           <div className="gt-modal" role="dialog" aria-modal="true" aria-label={`Opções de ${acao.m.nome}`} onClick={(e) => e.stopPropagation()}>
             <div className="gt-sheet-head"><h3>{acao.m.nome}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={() => setAcao(null)}>✕</button></div>
-            <button type="button" className="gt-sheet-item" onClick={() => { const m = acao.m; setAcao(null); onEditar(m); }}><div className="tx"><div className="t">Editar semana</div></div></button>
+            {!coachModeloCorrida(acao.m) && <button type="button" className="gt-sheet-item" onClick={() => { const m = acao.m; setAcao(null); onEditar(m); }}><div className="tx"><div className="t">Editar semana</div></div></button>}
             <button type="button" className="gt-sheet-item" onClick={() => setAcao({ tipo: "renomear", m: acao.m, valor: acao.m.nome })}><div className="tx"><div className="t">Renomear</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={() => { const m = acao.m; setAcao(null); duplicar(m); }}><div className="tx"><div className="t">Duplicar</div></div></button>
             <button type="button" className="gt-sheet-item perigo" onClick={() => setAcao({ tipo: "apagar", m: acao.m })}><div className="tx"><div className="t">Apagar</div></div></button>
@@ -11865,7 +11928,7 @@ function CoachModelos({ showToast, ativos, recarregar, onNovo, onEditar, onAplic
         <div className="gt-modal-backdrop" onClick={() => setAcao(null)}>
           <div className="gt-modal" role="alertdialog" aria-modal="true" aria-label="Apagar modelo" onClick={(e) => e.stopPropagation()}>
             <h3>Apagar “{acao.m.nome}”?</h3>
-            <p>Semanas que você já enviou com esse modelo não mudam.</p>
+            <p>{coachModeloCorrida(acao.m) ? "Treinos" : "Semanas"} que você já enviou com esse modelo não mudam.</p>
             <div className="gt-modal-actions"><button type="button" className="gt-btn gt-btn-danger" onClick={() => apagar(acao.m)}>Apagar</button><button type="button" className="gt-btn secondary" onClick={() => setAcao(null)}>Cancelar</button></div>
           </div>
         </div>

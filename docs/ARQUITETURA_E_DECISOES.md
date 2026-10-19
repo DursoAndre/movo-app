@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 16/10/2026 (v190).
+Última atualização: 19/10/2026 (v199).
 
 ---
 
@@ -111,7 +111,7 @@ Marcos recentes:
 - Vínculos em `coach_links` (`pendente`, `ativo`, `pausado`, `encerrado`, `recusado`, `congelado`); 1 treinador ativo por aluno. Permissões do aluno: `ver_treinos`, `ver_cargas`, `ver_esforco_dor`, `ver_corrida`.
 - Três caminhos de vínculo: (a) treinador convida (`?treinador=`); (b) aluno gera link para treinador fora do Movo (`?prof=`, `coach_student_invites`); (c) **aluno busca treinador ativo e faz pedido direto** (`coach_buscar`, `coach_pedir`, `coach_pedidos_recebidos`, `coach_pedido_recusar`; validade 14 dias, até 3 pedidos abertos, 1 por treinador, recusado bloqueia novo pedido por 7 dias). Pedido direto só é visível ao treinador escolhido e ao aluno.
 - Treinador envia a semana como **proposta**; o aluno revisa o diff antes de entrar na agenda. Payload: `{dias:{0..6:[itens]}, fichas:{ref:ficha}}`; item `{tipo:"treino",ref}` ou `{tipo:"atividade",id,nome,detalhe,corrida?}`.
-- **Treino de corrida estruturado do treinador (v185):** item `atividade` com `id:"corrida"` e `corrida:{modelo,titulo,distanciaKm,duracaoMin,pace,esforco,detalhes,etapas}`. Modelos prontos (`TREINOS_CORRIDA`) + edição etapa por etapa (`CoachCorridaModal`, `CoachEtapasEditor`). Aluno vê gráfico e etapas (`PlanoEtapas`); `detalhe` em texto mantém apps antigos funcionando; entra no diff e no PDF. Falta: salvar como modelo reutilizável.
+- **Treino de corrida estruturado do treinador (v185):** item `atividade` com `id:"corrida"` e `corrida:{modelo,titulo,distanciaKm,duracaoMin,pace,esforco,detalhes,etapas}`. Modelos prontos (`TREINOS_CORRIDA`) + edição etapa por etapa (`CoachCorridaModal`, `CoachEtapasEditor`). Aluno vê gráfico e etapas (`PlanoEtapas`); `detalhe` em texto mantém apps antigos funcionando; entra no diff e no PDF. **Modelos de corrida do treinador (v199):** ficam na mesma tabela `coach_templates`, com `payload = {tipo:"corrida", corrida:{...}}` (sem SQL novo); semanas continuam `{dias,fichas}`. `coachModeloCorrida(m)` separa os dois tipos: "Usar modelo" da semana e a lista de semanas ignoram os de corrida.
 - Aviso por e-mail ao treinador quando recebe pedido (v188, depende do Resend).
 
 ### 6.4 Relatórios compartilhados
@@ -130,7 +130,6 @@ Marcos recentes:
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- Salvar treino de corrida do treinador como modelo reutilizável.
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta.
 - Aviso em tela (não só e-mail) quando alguém libera relatório para você.
@@ -138,6 +137,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **19/10/2026 (v199):** treinador salva o treino de corrida que montou como modelo. No editor do treino de corrida (fase de etapas) há "Salvar como modelo" (pede nome, sugere o título). Ao abrir "Treino de corrida" num dia, os modelos salvos aparecem em "Seus modelos" no topo; tocar abre as etapas para ajustar e adicionar ao dia. Na aba Modelos aparece a seção "Treinos de corrida" com Renomear, Duplicar e Apagar. Guardado em `coach_templates` com `payload.tipo = "corrida"`, sem SQL novo; o pedido de dados (LGPD) já exporta todos os modelos. Não testado visualmente.
 - **16/10/2026:** painel de métricas (movo-site/admin) ganhou a aba **Contas** (RPC `admin_m_contas`, arquivo `admin_m_contas.sql`): lista rolável de todas as contas, ordem por cadastro ou último acesso (recentes/antigos), busca por nome/e-mail, selos "treinou" e "você/teste", origem do cadastro. A aba Usuários da aba Admin do app continua como está (decisão do Andre: não tirar).
 - **16/10/2026 (v190):** admin › aba Usuários ganhou lista compacta de contas (`AdminContas`): caixa com rolagem, ordena por **cadastro** ou **último acesso** (recentes/antigos), busca por nome ou e-mail, toque expande os detalhes. Usa os dados que o admin já carregava; sem SQL novo.
 - **16/10/2026 (v189):** bolinha de Desafios conta só avisos não vistos.
