@@ -60,11 +60,14 @@
       el.textContent = "Erro ao carregar o app:\n\n" + msg + "\n\nTira um print desta mensagem inteira e manda pro Claude.";
     }
   }
+  // Depois que o app abriu (window.__movoMontado), erros vão para a barra "Reportar" do próprio app.
   window.addEventListener("error", function (e) {
+    if (window.__movoMontado) return;
     var msg = (e.error && e.error.stack) || e.message || (e.target && e.target.src ? "Falha ao carregar: " + e.target.src : String(e));
     showBootError(msg);
   }, true);
   window.addEventListener("unhandledrejection", function (e) {
+    if (window.__movoMontado) return;
     showBootError(String((e.reason && e.reason.stack) || e.reason));
   });
 </script>

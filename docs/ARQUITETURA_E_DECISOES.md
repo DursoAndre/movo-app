@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 19/10/2026 (v199).
+Última atualização: 19/10/2026 (v200).
 
 ---
 
@@ -77,7 +77,7 @@ Deploy: pelo MCP do Supabase (`deploy_edge_function`) ou CLI. Funções novas us
 
 ## 5. Banco de dados (`supabase/sql/`, ordem em `supabase/ordem.txt`)
 
-Total: 62 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
+Total: 63 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
 
 Marcos recentes:
 - `challenge_acertos.sql`, `challenge_formatos.sql`, `challenge_acertos_saida.sql` (prêmios; ver 6.1)
@@ -87,6 +87,7 @@ Marcos recentes:
 - `coach_pedido_aluno.sql` (aluno pede a treinador que já está no Movo)
 - `avisos_email.sql` (log e regras dos avisos por e-mail)
 - `admin_m_contas.sql` (lista de contas do painel de métricas)
+- `user_feedback_relatos.sql` (relatos de problema com contexto técnico e revisão do agente; v200)
 
 ## 6. Decisões por área
 
@@ -137,6 +138,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **19/10/2026 (v200, pedido do Andre):** **Reportar problema** com contexto, em 3 lugares: (1) tela de erro nova quando o React quebra ("Ops, algo quebrou nesta tela": campo opcional, Reportar, Recarregar, detalhes técnicos), que também grava sozinha em `client_errors` (`tela_quebrou`); (2) barra "Algo deu errado aqui · Reportar" quando há erro não tratado fora do React (no máx. 1 vez a cada 5 min; ignora rede/offline, extensões, `Script error`, ResizeObserver); (3) item "Reportar problema" no menu. Tudo vai para `user_feedback` (`tipo='problema'`) com `origem` (`manual`/`erro`/`tela_quebrou`) e `contexto` jsonb: versão, caminho (sem query/hash), user agent, janela, instalado, online, aba, últimos 15 erros e 10 telas (memória, `DIAG`), e stack/componentes quando a tela quebra. Sem login cai em `client_errors` (`relato_sem_login`). "Problema" pelo "Enviar feedback" também leva o contexto. O e-mail de `notificar-feedback` mostra um resumo; o completo fica na aba Admin do app › Suporte (RPC `admin_feedback_contexto`, sem mexer no retorno de `admin_feedback_list`). Depois de abrir, o `index.html` para de mostrar erros na caixa vermelha de carregamento (`window.__movoMontado`). Revisão pelo agente: tarefa agendada que lê relatos com `revisado_em is null` e grava `revisao` (gatilho instantâneo não é possível: o banco não consegue acionar o Claude direto). Tela de erro e barra testadas no Chromium (headless); não testado no aparelho.
 - **19/10/2026 (v199):** treinador salva o treino de corrida que montou como modelo. No editor do treino de corrida (fase de etapas) há "Salvar como modelo" (pede nome, sugere o título). Ao abrir "Treino de corrida" num dia, os modelos salvos aparecem em "Seus modelos" no topo; tocar abre as etapas para ajustar e adicionar ao dia. Na aba Modelos aparece a seção "Treinos de corrida" com Renomear, Duplicar e Apagar. Guardado em `coach_templates` com `payload.tipo = "corrida"`, sem SQL novo; o pedido de dados (LGPD) já exporta todos os modelos. Não testado visualmente.
 - **16/10/2026:** painel de métricas (movo-site/admin) ganhou a aba **Contas** (RPC `admin_m_contas`, arquivo `admin_m_contas.sql`): lista rolável de todas as contas, ordem por cadastro ou último acesso (recentes/antigos), busca por nome/e-mail, selos "treinou" e "você/teste", origem do cadastro. A aba Usuários da aba Admin do app continua como está (decisão do Andre: não tirar).
 - **16/10/2026 (v190):** admin › aba Usuários ganhou lista compacta de contas (`AdminContas`): caixa com rolagem, ordena por **cadastro** ou **último acesso** (recentes/antigos), busca por nome ou e-mail, toque expande os detalhes. Usa os dados que o admin já carregava; sem SQL novo.
