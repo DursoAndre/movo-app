@@ -7175,6 +7175,9 @@ function planoFichaSimulacao(meia) {
   if (meia) { b.nome = "Meia simulação HYROX"; b.exercicios = b.exercicios.slice(0, 8).map((ex) => (/^corrida/i.test(ex.nome) ? { ...ex, distanciaM: 500 } : ex)); }
   return { nome: meia ? "HYROX: meia simulação" : "HYROX: simulação completa", duracaoMin: meia ? 45 : 90, notas: "", blocos: [b] };
 }
+// Dias da semana de cada divisão de força (0 = domingo).
+const PLANO_FORCA_DIAS = { 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6] };
+function planoForcaDias(opts) { const d = Number(opts && opts.dias); return PLANO_FORCA_DIAS[d] ? d : 3; }
 const PLANO_MODELOS = [
   {
     id: "hibrido", grupo: "hibrido", nome: "Híbrido", foco: "Equilibrado", desc: "3 treinos de força e 2 corridas por semana", icone: "treinos", semanas: 8,
@@ -7223,9 +7226,18 @@ const PLANO_MODELOS = [
     },
   },
   {
-    id: "forca", grupo: "forca", nome: "Força", desc: "Academia, 3 treinos por semana", icone: "treinos", semanas: 6,
-    fichas: () => { const t = buildMusculacaoSplit(3); return { A: t[0], B: t[1], C: t[2] }; },
-    semana: () => [{ dia: 1, ficha: "A" }, { dia: 3, ficha: "B" }, { dia: 5, ficha: "C" }],
+    // Força de 2 a 6 dias (divisões de buildMusculacaoSplit); a chave da ficha leva o número de dias.
+    id: "forca", grupo: "forca", nome: "Força", desc: "Academia, de 2 a 6 dias por semana", icone: "treinos", semanas: 6,
+    fichas: (opts) => {
+      const d = planoForcaDias(opts);
+      const out = {};
+      buildMusculacaoSplit(d).forEach((t, i) => { out[`${d}${"ABCDEF"[i]}`] = t; });
+      return out;
+    },
+    semana: (w, fase, nivel, n, opts) => {
+      const d = planoForcaDias(opts);
+      return PLANO_FORCA_DIAS[d].map((dia, i) => ({ dia, ficha: `${d}${"ABCDEF"[i]}` }));
+    },
   },
   {
     // Corrida sem prova marcada: ganhar base, 3 corridas por semana.
@@ -7256,7 +7268,7 @@ function planoDeModelo(modeloId, opts, treinosAtuais) {
   const n = Math.max(1, Math.min(24, Number(opts.semanas) || m.semanas));
   const nivel = TREINOS_CORRIDA_NIVEIS[opts.nivel] ? opts.nivel : "intermediario";
   const inicio = planoSemanaChave(opts.inicio || todayISO());
-  const fichas = m.fichas();
+  const fichas = m.fichas(opts);
   const ids = {};
   Object.keys(fichas).forEach((k) => { ids[k] = { id: `pl-${m.id}-${k.toLowerCase()}`, nome: fichas[k].nome }; });
   const sessoes = [];
@@ -20008,15 +20020,16 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
   const [semanas, setSemanas] = useState(PLANO_MODELOS[0].semanas);
   const [nivel, setNivel] = useState("intermediario");
   const [provaHyrox, setProvaHyrox] = useState(false);
+  const [dias, setDias] = useState(3);
   const hoje = todayISO();
   const estaSegunda = planoSemanaChave(hoje);
   const [inicio, setInicio] = useState(weekdayOf(hoje) >= 1 && weekdayOf(hoje) <= 2 ? estaSegunda : addDays(estaSegunda, 7));
   const temSemanaFixa = Object.values(schedule || {}).some((l) => (l || []).some((it) => !agendaEntradaDoTreinador(it) && (it.tipo === "treino" || it.id === "corrida")));
   const previa = useMemo(() => {
-    if (passo === "modelo") return planoDeModelo(modelo, { semanas, nivel, inicio, provaHyrox }, treinos);
+    if (passo === "modelo") return planoDeModelo(modelo, { semanas, nivel, inicio, provaHyrox, dias }, treinos);
     if (passo === "meu") return { plano: planoDaSemanaFixa(schedule, treinoById, { semanas, nivel, inicio }), fichasNovas: [] };
     return null;
-  }, [passo, modelo, semanas, nivel, inicio, provaHyrox, treinos, schedule]);
+  }, [passo, modelo, semanas, nivel, inicio, provaHyrox, dias, treinos, schedule]);
   const sem = previa ? planoSemanasLista(previa.plano) : [];
   const m = PLANO_MODELOS.find((x) => x.id === modelo);
   const temCorrida = sem.some((w) => w.sessoes.some((x) => x.tipo !== "treino"));
@@ -20045,7 +20058,7 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
         {passo === "origem" && (
           <>
             <p className="gt-ps-intro">O Movo organiza suas próximas semanas, com semanas leves para recuperar. Dá para ajustar depois.</p>
-            {objetivo("forca", "treinos", "Força", "Academia, 3 treinos por semana", () => escolher("forca"))}
+            {objetivo("forca", "treinos", "Força", "Academia, de 2 a 6 dias por semana", () => escolher("forca"))}
             {objetivo("corrida", "corrida", "Corrida", "Do 5 km à maratona, com ou sem prova", () => setPasso("corrida"))}
             {objetivo("hibrido", "raio", "Híbrido", "Força, corrida e funcional na mesma semana, inclusive para HYROX", () => setPasso("foco"))}
             {temSemanaFixa && (
@@ -20074,6 +20087,12 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
             {passo === "modelo" && <p className="gt-ps-intro">{m.desc}.</p>}
             {passo === "modelo" && m.id === "hyrox" && (
               <label className="gt-ps-check"><input type="checkbox" checked={provaHyrox} onChange={(e) => setProvaHyrox(e.target.checked)} /> Tenho prova de HYROX <small>Entram uma meia simulação no meio do plano e a simulação completa na última semana.</small></label>
+            )}
+            {passo === "modelo" && m.id === "forca" && (
+              <>
+                <div className="gt-field-label">Dias por semana</div>
+                {opcoes([2, 3, 4, 5, 6], dias, setDias)}
+              </>
             )}
             <div className="gt-field-label">Semanas</div>
             {opcoes([4, 6, 8, 12], semanas, setSemanas)}
