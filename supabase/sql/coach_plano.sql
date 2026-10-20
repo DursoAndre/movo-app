@@ -54,3 +54,19 @@ end;
 $$;
 revoke execute on function public.coach_link_aceite_auto(uuid) from public, anon;
 grant execute on function public.coach_link_aceite_auto(uuid) to authenticated;
+
+-- Permissão nova: o treinador ajusta a semana inteira (tira fichas e atividades do aluno no envio).
+-- Ausente = desligada. Mesmas chaves de coach_contato.sql + ajustar_semana.
+create or replace function public.coach_clean_perms(p jsonb)
+returns jsonb language sql immutable as $$
+  select jsonb_build_object(
+    'ver_treinos', coalesce((p->>'ver_treinos')::boolean, true),
+    'ver_cargas', coalesce((p->>'ver_cargas')::boolean, true),
+    'ver_esforco_dor', coalesce((p->>'ver_esforco_dor')::boolean, false),
+    'ver_corrida', coalesce((p->>'ver_corrida')::boolean, true),
+    'ver_contato', coalesce((p->>'ver_contato')::boolean, false),
+    'ajustar_semana', coalesce((p->>'ajustar_semana')::boolean, false)
+  );
+$$;
+revoke execute on function public.coach_clean_perms(jsonb) from public, anon;
+grant execute on function public.coach_clean_perms(jsonb) to authenticated;

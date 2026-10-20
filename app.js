@@ -3823,13 +3823,25 @@ const APP_CSS = `
   .gt-ps-aviso { font-size:12px; color:var(--amber); margin:8px 0 0; }
   .gt-ps-rodape { position:sticky; bottom:-1px; background:var(--surface); padding:12px 0 2px; margin-top:12px; }
   .gt-ps-rodape .gt-btn { width:100%; }
-  .gt-co-plano { background:var(--surface-2); border-radius:var(--radius); padding:12px; margin-bottom:8px; }
+  .gt-co-plano { background:var(--surface-2); border-radius:var(--radius); padding:12px; margin:12px 0; }
   .gt-co-plano .gt-field-label { font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin:12px 0 6px; }
   .gt-co-plano .gt-ps-fases { margin-top:12px; }
   .gt-ps-saifica { background:var(--surface-2); border-radius:var(--radius); padding:10px 12px; font-size:13px; line-height:1.45; margin:0 0 4px; display:flex; flex-direction:column; gap:4px; }
   .gt-ps-saifica b, .gt-ps-fixa-fechada b { font-weight:600; color:var(--text); }
-  .gt-ps-saifica .gt-ps-check { margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
-  .gt-ps-fixa-fechada { display:flex; flex-direction:column; align-items:flex-start; gap:4px; font-size:13px; line-height:1.45; color:var(--text-muted); } .gt-ps-fixa-fechada .gt-link-btn { margin-top:6px; font-size:13px; }
+  .gt-co-ajustar { margin:12px 0; background:var(--surface-2); border:none; padding:12px; } .gt-co-ajustar .gt-co-sec { margin-top:0; } .gt-co-ajustar-d { font-size:13px; color:var(--text-muted); margin:4px 0 10px; line-height:1.45; }
+  .gt-co-ajustar .gt-ps-itens li { font-size:14px; }
+  .gt-ps-itens { list-style:none; margin:2px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .gt-ps-itens li { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .gt-ps-seg { display:inline-flex; border:1px solid var(--border); border-radius:999px; flex-shrink:0; padding:2px; gap:2px; background:var(--bg); }
+  .gt-ps-seg button { min-height:32px; min-width:72px; padding:0 12px; border-radius:999px; background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; font-family:inherit; }
+  .gt-ps-seg button.on { background:color-mix(in srgb, var(--accent) 16%, transparent); color:var(--accent); font-weight:600; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .gt-ps-sai-vez { background:color-mix(in srgb, var(--amber) 12%, transparent); border:1px solid color-mix(in srgb, var(--amber) 40%, transparent); border-radius:var(--radius); padding:10px 12px; font-size:13px; line-height:1.45; margin:0 0 8px; }
+  .gt-ps-sai-vez b { color:var(--amber); font-weight:600; }
+  .gt-ps-resumo { display:flex; flex-direction:column; gap:6px; }
+  .gt-ps-saifica .lk { display:flex; gap:16px; }
+  .gt-ps-fixa-fechada .gt-ps-itens li > span:first-child { color:var(--text); }
+  .gt-ps-saifica-nota { font-size:12px; color:var(--text-muted); } .gt-ps-saifica-nota.sep { padding-bottom:6px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+  .gt-ps-fixa-fechada { display:flex; flex-direction:column; align-items:stretch; gap:4px; font-size:13px; line-height:1.45; color:var(--text-muted); } .gt-ps-fixa-fechada .gt-link-btn { margin-top:6px; font-size:13px; align-self:flex-start; } .gt-ps-fixa-fechada .gt-ps-saifica { padding:0; background:none; }
   .gt-ps-lista .st { width:44px; text-align:center; flex-shrink:0; font-size:12px; color:var(--text-muted); }
   .gt-co-plano-fim { font-size:12px; color:var(--text-muted); margin-top:4px; }
   .gt-co-auto-aviso { font-size:13px; color:var(--amber); margin:0 0 8px; }
@@ -7132,28 +7144,57 @@ function planoOcupa(pl) {
 }
 // A entrada da semana fixa sai enquanto o plano cobre a data? A semana que veio do treinador sai
 // num plano do treinador (o plano é ela repetida) e fica num plano próprio.
-function agendaPlanoTira(it, pl, oc) {
+function planoChaveItem(dow, it) { return `${dow}:${it.tipo}:${it.id}`; }
+function agendaPlanoTira(it, pl, oc, dow) {
   const forca = it.tipo === "treino", corrida = it.tipo === "atividade" && it.id === "corrida";
   if (!forca && !corrida) return false;
   if (agendaEntradaDoTreinador(it)) return pl.origem === "treinador";
+  if (Array.isArray(pl.manter) && pl.manter.includes(planoChaveItem(dow, it))) return false;
   return forca ? oc.forca : oc.corrida;
 }
 // O que da semana fixa sai e o que continua enquanto o plano dura. nomeDe(it) devolve o nome
 // (ou null para descanso/desconhecido). A semana do treinador num plano dele não entra na lista.
+// itens: o que o plano cobre (dá para pausar ou manter, um por um); fica: o resto, que continua.
 function planoSaiFica(schedule, nomeDe, pl) {
-  const sai = [], fica = [];
+  const sai = [], fica = [], itens = [];
   let saiForca = 0, saiCorrida = 0;
   const oc = planoOcupa(pl);
+  const ocBase = planoOcupa({ ...pl, somar: false });
   PLANO_ORDEM_SEMANA.forEach((dow) => ((schedule && schedule[dow]) || []).forEach((it) => {
     const nome = nomeDe(it);
     if (!nome) return;
     if (pl.origem === "treinador" && agendaEntradaDoTreinador(it)) return;
-    if (agendaPlanoTira(it, pl, oc)) {
-      sai.push(`${it.id === "corrida" ? "Corrida" : nome} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`);
+    const rotulo = `${it.id === "corrida" ? "Corrida" : nome} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`;
+    const cobre = agendaPlanoTira(it, { ...pl, somar: false, manter: [] }, ocBase, dow);
+    const tira = agendaPlanoTira(it, pl, oc, dow);
+    if (cobre) itens.push({ chave: planoChaveItem(dow, it), rotulo, forca: it.tipo === "treino", pausado: tira });
+    if (tira) {
+      sai.push(rotulo);
       if (it.tipo === "treino") saiForca++; else saiCorrida++;
-    } else if (!fica.includes(nome)) fica.push(nome);
+    } else if (!cobre && !fica.includes(nome)) fica.push(nome);
   }));
-  return { sai, fica, saiForca, saiCorrida };
+  return { sai, fica, itens, saiForca, saiCorrida };
+}
+// O que o treinador tira de vez da semana do aluno (só com a permissão "ajustar_semana").
+// remover: [{dow, tipo, id}] no payload; nunca mexe no que já veio do treinador.
+// Com ajuste do treinador, o que ele deixou na semana fica (não pausa): devolve as chaves para "manter".
+function coachManterDoAjuste(payload, schedule, nomeDe, pl, permitido) {
+  if (!permitido || !payload || !payload.ajuste) return null;
+  return planoSaiFica(schedule, nomeDe, { ...pl, origem: "treinador", somar: false, manter: [] }).itens.map((x) => x.chave);
+}
+function coachRemocoes(payload, schedule, nomeDe, permitido) {
+  const lista = permitido && payload && Array.isArray(payload.remover) ? payload.remover : [];
+  const out = { ...(schedule || {}) };
+  const nomes = [];
+  if (!lista.length) return { schedule: out, nomes };
+  for (let d = 0; d < 7; d++) {
+    out[d] = ((schedule && schedule[d]) || []).filter((it) => {
+      const sai = !agendaEntradaDoTreinador(it) && lista.some((r) => Number(r.dow) === d && r.tipo === it.tipo && r.id === it.id);
+      if (sai) nomes.push(`${(nomeDe && nomeDe(it)) || "Treino"} (${PLANO_DIAS_CURTO[d].toLowerCase()})`);
+      return !sai;
+    });
+  }
+  return { schedule: out, nomes };
 }
 // O que está marcado para uma data: a semana fixa, ou o plano de semanas quando ele cobre a data.
 function agendaDoDia(schedule, planos, iso) {
@@ -7161,7 +7202,7 @@ function agendaDoDia(schedule, planos, iso) {
   const pl = planoSemanasAtivo(planos, iso);
   if (!pl) return fixos;
   const oc = planoOcupa(pl);
-  const mantidos = fixos.filter((it) => !agendaPlanoTira(it, pl, oc));
+  const mantidos = fixos.filter((it) => !agendaPlanoTira(it, pl, oc, weekdayOf(iso)));
   const doPlano = [];
   (pl.sessoes || []).forEach((s) => {
     if (s.data !== iso || s.tipo !== "treino" || !s.ref) return;
@@ -10194,7 +10235,7 @@ const COACH_FLAGS_PADRAO = { esforcoDor: false, lote: false };
 function coachFlags() {
   try { return { ...COACH_FLAGS_PADRAO, ...JSON.parse(localStorage.getItem("treino-app:coachFlags") || "{}") }; } catch (e) { return { ...COACH_FLAGS_PADRAO }; }
 }
-const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_dor: false, ver_corrida: true, ver_contato: true };
+const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_dor: false, ver_corrida: true, ver_contato: true, ajustar_semana: false };
 const COACH_PERM_ITENS = [
   { k: "ver_treinos", t: "Meus treinos e agenda", d: "Fichas, dias e histórico de sessões" },
   { k: "ver_cargas", t: "Cargas e repetições", d: "O que você levantou em cada exercício" },
@@ -11230,8 +11271,11 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
             <div className="gt-co-sec">O QUE ELE PODE VER</div>
             <CoachPermLista perms={atual} onChange={mudarPerms} flags={flags} />
             {link.aceite_auto !== undefined && (<>
-            <div className="gt-co-sec">ACEITE AUTOMÁTICO</div>
+            <div className="gt-co-sec">O QUE ELE PODE MUDAR</div>
             <div className="gt-co-perms"><div className="gt-co-perm">
+              <div className="tx"><div className="t">Ajustar minha semana inteira</div><div className="d">{link.coach_nome} pode tirar fichas e atividades da sua semana para encaixar o treino dele. O que sai não volta sozinho; continua na sua lista. {autoLigado ? "Com o aceite automático, entra direto e você pode desfazer no Hoje." : "Você vê o que sai antes de aceitar."}</div></div>
+              <CoachSwitch checked={!!(atual && atual.ajustar_semana)} onChange={(on) => mudarPerms({ ...atual, ajustar_semana: on })} label="Ajustar minha semana inteira" semTexto />
+            </div><div className="gt-co-perm">
               <div className="tx"><div className="t">Aplicar direto o que {link.coach_nome} mandar</div><div className="d">Semanas e planos de {link.coach_nome} entram direto. Você vê um aviso no Hoje e pode desfazer por lá.</div></div>
               <CoachSwitch checked={autoLigado} onChange={mudarAuto} label="Aceite automático" semTexto />
             </div></div>
@@ -11457,7 +11501,7 @@ function CoachProfConviteModal({ code, coachInfo, onClose, onPrecisaCadastro, on
 }
 
 // ---------- Aluno: cartão na Hoje + revisão ----------
-function CoachRecebidoCard({ ass, diff, onAceitarTudo, onRevisar, busy }) {
+function CoachRecebidoCard({ ass, diff, removidos, onAceitarTudo, onRevisar, busy }) {
   const semMudanca = diff.total === 0;
   return (
     <div className="gt-co-recebido" role="region" aria-label={`Atualização de ${ass.coach_nome}`}>
@@ -11471,6 +11515,7 @@ function CoachRecebidoCard({ ass, diff, onAceitarTudo, onRevisar, busy }) {
           <div key={g.dow} className="gt-co-difflinha"><b>{g.dia}:</b> {g.linhas.filter((l) => l.sinal !== "=").map((l) => l.texto).slice(0, 2).join("; ")}</div>
         ))}
       </div>
+      {removidos && removidos.length > 0 && <div className="gt-co-difflinha"><b>Sai da sua semana:</b> {removidos.join(", ")}</div>}
       <div className="gt-co-recebido-note">Seu treino de hoje não mudou até você aceitar.</div>
       <div className="gt-co-recebido-acoes">
         <button type="button" className="gt-btn" disabled={busy} onClick={onAceitarTudo}>{busy ? "Aplicando…" : "Aceitar tudo"}</button>
@@ -11481,27 +11526,64 @@ function CoachRecebidoCard({ ass, diff, onAceitarTudo, onRevisar, busy }) {
 }
 // O que sai e o que continua da semana do aluno, com a opção de manter tudo e somar o plano.
 function planoListaE(l) { return l.length < 2 ? l.join("") : `${l.slice(0, -1).join(", ")} e ${l[l.length - 1]}`; }
-function PlanoSaiFicaBox({ schedule, nomeDe, plano, somar, setSomar }) {
+// fixo: o treinador já decidiu (permissão "ajustar_semana"); mostra só o que fica e o que sai, sem botões.
+// resumo: aba Treinos, uma linha com "Mudar" que abre os botões.
+function PlanoSaiFicaBox({ schedule, nomeDe, plano, manter, setManter, removidos, coachNome, semRotulo, fixo, resumo, extra }) {
+  const [aberto, setAberto] = useState(!resumo);
   const fimIso = planoFimSemanas(plano);
-  const base = planoSaiFica(schedule, nomeDe, { ...plano, somar: false });
-  const { sai, fica } = somar ? { sai: [], fica: planoSaiFica(schedule, nomeDe, { ...plano, somar: true }).fica } : base;
-  if (!base.sai.length && !fica.length) return null;
-  // Com "manter tudo", quanto fica na semana do tipo que coincide (1ª semana do plano + a semana fixa).
+  const r = planoSaiFica(schedule, nomeDe, { ...plano, somar: false, manter });
+  if (!r.itens.length && !r.fica.length && !(removidos && removidos.length)) return null;
+  const mudar = (chave, manterEste) => setManter(manterEste ? [...manter.filter((k) => k !== chave), chave] : manter.filter((k) => k !== chave));
+  // Quanto fica na semana do tipo mantido (1ª semana do plano + o que o aluno manteve).
   const sem1 = (plano.sessoes || []).filter((x) => x.data < addDays(plano.inicio, 7));
+  const mantF = r.itens.filter((x) => !x.pausado && x.forca).length, mantC = r.itens.filter((x) => !x.pausado && !x.forca).length;
   const total = [
-    base.saiCorrida ? `${sem1.filter((x) => x.tipo !== "treino").length + base.saiCorrida} corridas` : "",
-    base.saiForca ? `${sem1.filter((x) => x.tipo === "treino").length + base.saiForca} treinos de academia` : "",
+    mantC ? `${sem1.filter((x) => x.tipo !== "treino").length + mantC} corridas` : "",
+    mantF ? `${sem1.filter((x) => x.tipo === "treino").length + mantF} treinos de academia` : "",
   ].filter(Boolean);
+  const pausados = r.itens.filter((x) => x.pausado).map((x) => x.rotulo);
+  const volta = planoDataCurta(addDays(fimIso, 1)).slice(4);
+  const nota = [total.length ? `Você vai ter ${planoListaE(total)} na semana.` : "", pausados.length ? `O que ficar pausado volta em ${volta}.` : ""].filter(Boolean).join(" ");
+  const ficaTudo = [...r.itens.filter((x) => !x.pausado).map((x) => x.rotulo), ...r.fica];
   return (
     <>
-      <div className="gt-field-label">Na sua semana</div>
+      {!semRotulo && <div className="gt-field-label">Na sua semana</div>}
+      {removidos && removidos.length > 0 && (
+        <div className="gt-ps-sai-vez" role="note"><b>{coachNome || "O treinador"} tira da sua semana de vez:</b> {removidos.join(", ")}. Não volta quando o plano acabar; continua na sua lista de treinos e atividades.</div>
+      )}
       <div className="gt-ps-saifica">
-        {sai.length > 0 && <div><b>Pausado até {planoDataCurta(fimIso).slice(4)}:</b> {sai.join(", ")}. Volta em {planoDataCurta(addDays(fimIso, 1)).slice(4)}.</div>}
-        {fica.length > 0 && <div><b>Continua:</b> {fica.join(", ")}.</div>}
-        {base.sai.length > 0 && (
-          <label className="gt-ps-check"><input type="checkbox" checked={somar} onChange={(e) => setSomar(e.target.checked)} /> Manter tudo da minha semana
-            <small>{somar ? `Você vai ter ${planoListaE(total)} na semana.` : `${planoListaE(base.sai)} ${base.sai.length > 1 ? "continuam" : "continua"} e o plano entra junto.`}</small>
-          </label>
+        {fixo ? (
+          <>
+            {ficaTudo.length > 0 && <div><b>Fica:</b> {ficaTudo.join(", ")}.</div>}
+            {total.length > 0 && <div className="gt-ps-saifica-nota">Você vai ter {planoListaE(total)} na semana.</div>}
+          </>
+        ) : (
+          <>
+            {r.itens.length > 0 && !aberto && (
+              <div className="gt-ps-resumo">
+                <span>{pausados.length ? <><b>Pausados até {planoDataCurta(fimIso).slice(4)}:</b> {pausados.join(", ")}.</> : <><b>Nada pausado:</b> você mantém tudo junto com o plano.</>}</span>
+              </div>
+            )}
+            {r.itens.length > 0 && aberto && (
+              <>
+                <div><b>Até {planoDataCurta(fimIso).slice(4)}, o plano cobre:</b></div>
+                <ul className="gt-ps-itens">
+                  {r.itens.map((x) => (
+                    <li key={x.chave}>
+                      <span>{x.rotulo}</span>
+                      <span className="gt-ps-seg" role="group" aria-label={x.rotulo}>
+                        <button type="button" aria-pressed={!x.pausado} className={!x.pausado ? "on" : ""} onClick={() => mudar(x.chave, true)}>Manter</button>
+                        <button type="button" aria-pressed={x.pausado} className={x.pausado ? "on" : ""} onClick={() => mudar(x.chave, false)}>Pausar</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {nota && <div className={`gt-ps-saifica-nota ${r.fica.length ? "sep" : ""}`}>{nota}</div>}
+              </>
+            )}
+            {r.fica.length > 0 && <div><b>Continua:</b> {r.fica.join(", ")}.</div>}
+            {resumo && <span className="lk">{r.itens.length > 0 && <button type="button" className="gt-link-btn" onClick={() => setAberto(!aberto)}>{aberto ? "Pronto" : "Mudar"}</button>}{extra}</span>}
+          </>
         )}
       </div>
     </>
@@ -11525,10 +11607,12 @@ function CoachPlanoRecebidoCard({ ass, onVer, busy }) {
     </div>
   );
 }
-function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, onClose, busy }) {
+function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, podeAjustar, onAceitar, onRecusar, onClose, busy }) {
   const pl = useMemo(() => coachPlanoSessoes(ass.payload, ass.link_id), [ass]);
   const [recusar, setRecusar] = useState(null);
-  const [somar, setSomar] = useState(false);
+  const [manter, setManter] = useState([]);
+  const remov = useMemo(() => coachRemocoes(ass.payload, schedule, nomeDe, podeAjustar), [ass, schedule, nomeDe, podeAjustar]);
+  const manterCoach = useMemo(() => (pl ? coachManterDoAjuste(ass.payload, remov.schedule, nomeDe, pl, podeAjustar) : null), [ass, remov, nomeDe, pl, podeAjustar]);
   if (!pl) return null;
   const sem = planoSemanasLista({ ...pl, sessoes: pl.sessoes });
   const nomeFicha = (it) => (pl.semana.fichas[it.ref] || {}).nome || "Treino";
@@ -11552,7 +11636,7 @@ function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, o
             <li key={`${dow}-${i}`}><span className="d">{i === 0 ? PLANO_DIAS_CURTO[dow] : ""}</span><Ei e={it.tipo === "treino" ? "🏋" : it.corrida ? "🏃" : "🏅"} /><span>{it.tipo === "treino" ? nomeFicha(it) : (coachCorridaNorm(it.corrida) || {}).titulo || it.nome || it.id}</span></li>
           )))}
         </ul>
-        <PlanoSaiFicaBox schedule={schedule} nomeDe={nomeDe} plano={{ ...pl, origem: "treinador" }} somar={somar} setSomar={setSomar} />
+        <PlanoSaiFicaBox schedule={remov.schedule} nomeDe={nomeDe} plano={{ ...pl, origem: "treinador" }} manter={manterCoach || manter} setManter={setManter} removidos={remov.nomes} coachNome={ass.coach_nome} fixo={!!manterCoach} />
         {recusar != null ? (
           <div className="gt-co-confirma" role="alert">
             <textarea className="gt-input" rows={2} maxLength={200} placeholder={`Motivo para ${ass.coach_nome} (opcional)`} aria-label="Motivo" value={recusar} onChange={(e) => setRecusar(e.target.value)} />
@@ -11560,7 +11644,7 @@ function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, o
           </div>
         ) : (
           <div className="gt-ps-rodape">
-            <button type="button" className="gt-btn" disabled={busy} onClick={() => onAceitar(somar)}>{busy ? "Aplicando…" : "Aceitar plano"}</button>
+            <button type="button" className="gt-btn" disabled={busy} onClick={() => onAceitar(manterCoach || manter)}>{busy ? "Aplicando…" : "Aceitar plano"}</button>
             <button type="button" className="gt-btn secondary" style={{ width: "100%", marginTop: 8 }} disabled={busy} onClick={() => setRecusar("")}>Recusar</button>
           </div>
         )}
@@ -11990,6 +12074,43 @@ function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
   );
 }
 
+// Treinador com a permissão "ajustar_semana": vê a semana do aluno e marca o que sai de vez.
+function CoachAjustarAluno({ aluno, remover, setRemover }) {
+  const [det, setDet] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    coachCall("coach_student_detail", { p_link: aluno.link_id, p_dias: 1 }).then((r) => { if (vivo) setDet(r.ok ? r.data : { erro: true }); });
+    return () => { vivo = false; };
+  }, [aluno.link_id]);
+  const primeiro = aluno.nome.split(" ")[0];
+  if (!det) return null;
+  if (det.erro || det.bloqueado) return <div className="gt-card gt-co-ajustar"><div className="gt-co-sec">SEMANA ATUAL DE {primeiro.toUpperCase()}</div><p className="gt-co-ajustar-d">{primeiro} deixou você ajustar a semana, mas os treinos dele não estão compartilhados. Peça para ele ligar "Meus treinos e agenda".</p></div>;
+  const tId = Object.fromEntries((det.treinos || []).map((t) => [t.id, t.nome]));
+  const aId = Object.fromEntries((det.atividades || []).map((a) => [a.id, a]));
+  const itens = COACH_ORDEM_DIAS.flatMap((dow) => ((det.schedule || {})[dow] || []).filter((it) => !agendaEntradaDoTreinador(it) && !(aId[it.id] && aId[it.id].descanso)).map((it) => ({ dow, it, nome: it.tipo === "treino" ? tId[it.id] : (aId[it.id] || {}).nome || (it.id === "corrida" ? "Corrida" : it.id) })).filter((x) => x.nome));
+  if (!itens.length) return null;
+  const chave = (x) => planoChaveItem(x.dow, x.it);
+  const sai = (x) => remover.some((r) => r.dow === x.dow && r.tipo === x.it.tipo && r.id === x.it.id);
+  const mudar = (x, tirar) => setRemover(tirar ? [...remover.filter((r) => !(r.dow === x.dow && r.tipo === x.it.tipo && r.id === x.it.id)), { dow: x.dow, tipo: x.it.tipo, id: x.it.id }] : remover.filter((r) => !(r.dow === x.dow && r.tipo === x.it.tipo && r.id === x.it.id)));
+  return (
+    <div className="gt-card gt-co-ajustar">
+      <div className="gt-co-sec">SEMANA ATUAL DE {primeiro.toUpperCase()}</div>
+      <p className="gt-co-ajustar-d">{primeiro} deixou você ajustar a semana inteira. O que fica continua junto com o seu treino; o que você marcar como “Sai” sai de vez da semana dele quando o treino entrar (a ficha continua com ele).</p>
+      <ul className="gt-ps-itens">
+        {itens.map((x) => (
+          <li key={chave(x)}>
+            <span>{PLANO_DIAS_CURTO[x.dow]} · {x.nome}</span>
+            <span className="gt-ps-seg" role="group" aria-label={`${x.nome}, ${PLANO_DIAS_CURTO[x.dow]}`}>
+              <button type="button" aria-pressed={!sai(x)} className={!sai(x) ? "on" : ""} onClick={() => mudar(x, false)}>Fica</button>
+              <button type="button" aria-pressed={sai(x)} className={sai(x) ? "on" : ""} onClick={() => mudar(x, true)}>Sai</button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ---------- Treinador: montar e enviar a semana ----------
 function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent, planoLiberado }) {
   const ehModelo = !!modelo;
@@ -12002,6 +12123,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   const [plProgressao, setPlProgressao] = useState(true);
   // O aluno aplica automaticamente? (aviso antes de enviar)
   const [alunoAuto, setAlunoAuto] = useState(false);
+  const [remover, setRemover] = useState([]);
+  const podeAjustar = !ehModelo && aluno.status === "ativo" && !!(aluno.permissions && aluno.permissions.ajustar_semana);
   useEffect(() => {
     if (ehModelo || aluno.status !== "ativo") return;
     let vivo = true;
@@ -12130,7 +12253,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     if (ehModelo) return salvarComoModeloAtual();
     setEnviando(true);
     const plano = comoPlano && planoLiberado;
-    const payload = plano ? { semana: sem, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao } : sem;
+    const rem = podeAjustar ? { ajuste: true, remover } : {};
+    const payload = plano ? { semana: sem, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao, ...rem } : { ...sem, ...rem };
     const item = { link_id: aluno.link_id, nome: aluno.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
     const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
     setEnviando(false);
@@ -12228,36 +12352,37 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
             </div>
           );
         })}
+      {!ehModelo && planoLiberado && (
+        <div className="gt-co-plano">
+          <div className="gt-co-perm">
+            <div className="tx"><div className="t">Enviar como plano</div><div className="d">Repetir por várias semanas. A cada 4 semanas, uma semana mais leve.</div></div>
+            <CoachSwitch checked={comoPlano} onChange={setComoPlano} label="Enviar como plano" semTexto />
+          </div>
+          {comoPlano && (() => {
+            const fases = Array.from({ length: plSemanas }, (_, w) => planoFaseDaSemana(w, plSemanas));
+            const dc = (d) => planoDataCurta(d).toLowerCase();
+            const sobem = COACH_ORDEM_DIAS.flatMap((dow) => (sem.dias[dow] || []).map((it) => (it.tipo === "atividade" ? coachCorridaNorm(it.corrida) : null)).filter((c) => c && c.modelo && c.distanciaKm).map((c) => `${c.titulo} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`));
+            return (
+              <>
+                <div className="gt-field-label">Duração</div>
+                <div className="gt-provas-filters" role="group" aria-label="Duração">{[4, 6, 8, 12].map((n) => <button key={n} type="button" className={`gt-provas-pill ${plSemanas === n ? "on" : ""}`} aria-pressed={plSemanas === n} onClick={() => setPlSemanas(n)}>{n} sem.</button>)}</div>
+                <div className="gt-field-label">Início</div>
+                <div className="gt-provas-filters" role="group" aria-label="Início">{[segundaEsta, segundaQueVem].map((d) => <button key={d} type="button" className={`gt-provas-pill ${plInicio === d ? "on" : ""}`} aria-pressed={plInicio === d} onClick={() => setPlInicio(d)}>{d === segundaEsta ? `Nesta semana (${dc(d)})` : `Na próxima (${dc(d)})`}</button>)}</div>
+                <ol className="gt-ps-fases" aria-hidden="true">{fases.map((f, i) => <li key={i} className={planoFaseClasse(f)}><span>{i + 1}</span></li>)}</ol>
+                <PlanoFasesLegenda semanas={fases.map((f) => ({ fase: f }))} />
+                <div className="gt-co-plano-fim">Até {dc(addDays(plInicio, plSemanas * 7 - 1))}</div>
+                {sobem.length > 0 && <label className="gt-ps-check"><input type="checkbox" checked={plProgressao} onChange={(e) => setPlProgressao(e.target.checked)} /> Corrida aumenta ~8% por semana <small>Aumentam: {sobem.join(", ")}. As outras corridas ficam iguais.</small></label>}
+              </>
+            );
+          })()}
+        </div>
+      )}
+      {podeAjustar && <CoachAjustarAluno aluno={aluno} remover={remover} setRemover={setRemover} />}
       </div>
       <div className="gt-focus-footer gt-co-footer">
         <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
-        {!ehModelo && planoLiberado && (
-          <div className="gt-co-plano">
-            <div className="gt-co-perm">
-              <div className="tx"><div className="t">Enviar como plano</div><div className="d">Repetir por várias semanas. A cada 4 semanas, uma semana mais leve.</div></div>
-              <CoachSwitch checked={comoPlano} onChange={setComoPlano} label="Enviar como plano" semTexto />
-            </div>
-            {comoPlano && (() => {
-              const fases = Array.from({ length: plSemanas }, (_, w) => planoFaseDaSemana(w, plSemanas));
-              const dc = (d) => planoDataCurta(d).toLowerCase();
-              const sobem = COACH_ORDEM_DIAS.flatMap((dow) => (sem.dias[dow] || []).map((it) => (it.tipo === "atividade" ? coachCorridaNorm(it.corrida) : null)).filter((c) => c && c.modelo && c.distanciaKm).map((c) => `${c.titulo} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`));
-              return (
-                <>
-                  <div className="gt-field-label">Duração</div>
-                  <div className="gt-provas-filters" role="group" aria-label="Duração">{[4, 6, 8, 12].map((n) => <button key={n} type="button" className={`gt-provas-pill ${plSemanas === n ? "on" : ""}`} aria-pressed={plSemanas === n} onClick={() => setPlSemanas(n)}>{n} sem.</button>)}</div>
-                  <div className="gt-field-label">Início</div>
-                  <div className="gt-provas-filters" role="group" aria-label="Início">{[segundaEsta, segundaQueVem].map((d) => <button key={d} type="button" className={`gt-provas-pill ${plInicio === d ? "on" : ""}`} aria-pressed={plInicio === d} onClick={() => setPlInicio(d)}>{d === segundaEsta ? `Nesta semana (${dc(d)})` : `Na próxima (${dc(d)})`}</button>)}</div>
-                  <ol className="gt-ps-fases" aria-hidden="true">{fases.map((f, i) => <li key={i} className={planoFaseClasse(f)}><span>{i + 1}</span></li>)}</ol>
-                  <PlanoFasesLegenda semanas={fases.map((f) => ({ fase: f }))} />
-                  <div className="gt-co-plano-fim">Até {dc(addDays(plInicio, plSemanas * 7 - 1))}</div>
-                  {sobem.length > 0 && <label className="gt-ps-check"><input type="checkbox" checked={plProgressao} onChange={(e) => setPlProgressao(e.target.checked)} /> Corrida aumenta ~8% por semana <small>Aumentam: {sobem.join(", ")}. As outras corridas ficam iguais.</small></label>}
-                </>
-              );
-            })()}
-          </div>
-        )}
         {!ehModelo && <textarea className="gt-input" aria-label={`Mensagem para ${primeiroNome} (opcional)`} placeholder={`Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
-        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar.</div>}
+        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana dele` : ""}. Ele pode desfazer.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
         <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
       </div>
@@ -15861,7 +15986,7 @@ function App() {
   const atividadeById = useCallback((id) => atividades.find((a) => a.id === id), [atividades]);
   const nomeNaAgenda = useCallback((it) => { if (it.tipo === "treino") return (treinoById(it.id) || {}).nome || null; const a = atividadeById(it.id); return a && !a.descanso ? a.nome : null; }, [treinoById, atividadeById]);
   const semanaSaiFica = planoAtivoHoje ? planoSaiFica(schedule, nomeNaAgenda, planoAtivoHoje) : null;
-  const semanaRecolhida = !!(semanaSaiFica && semanaSaiFica.sai.length);
+  const semanaRecolhida = !!(semanaSaiFica && semanaSaiFica.itens.length);
 
   // --- Desafios: lista, check-ins automáticos e convite por link ---
   const desafioHoje = (() => {
@@ -15974,6 +16099,7 @@ function App() {
   const [ativVisto, setAtivVisto] = useState(() => { try { return Number(localStorage.getItem("treino-app:coachVisto")) || 0; } catch (e) { return 0; } });
   const [modo, setModoState] = useState(() => { try { return localStorage.getItem("treino-app:modo") === "coach" ? "coach" : "aluno"; } catch (e) { return "aluno"; } });
   const [coachLinks, setCoachLinks] = useState([]); // meu(s) treinador(es) (como aluno)
+  const coachPodeAjustar = !!((coachLinks || [])[0] && ((coachLinks[0].permissions) || {}).ajustar_semana);
   const [coachAss, setCoachAss] = useState([]); // envios recebidos
   const [coachNotas, setCoachNotas] = useState([]);
   const [coachConvite, setCoachConvite] = useState(() => { try { return localStorage.getItem("treino-app:coachInvite") || null; } catch (e) { return null; } });
@@ -16064,20 +16190,22 @@ function App() {
   }, [coachPendPlano]);
   // Aceitar o plano do treinador: as fichas e a semana dele entram como sempre (e ficam quando o
   // plano acabar) e o plano de semanas passa a mandar nas datas.
-  async function coachAceitarPlano(ass, auto, somar) {
+  async function coachAceitarPlano(ass, auto, manter) {
     const pl = coachPlanoSessoes(ass.payload, ass.link_id);
     if (!pl) { showToast("Esse plano veio com um problema. Peça para o treinador enviar de novo."); return; }
     setCoachBusy(true);
     const antes = { treinos, schedule, atividades, planos };
-    const novo = coachAplicarSemana(pl.semana, { linkId: ass.link_id, assignmentId: ass.id, versao: ass.versao, coachNome: ass.coach_nome }, antes);
+    const remov = coachRemocoes(ass.payload, schedule, nomeNaAgenda, coachPodeAjustar);
+    manter = coachManterDoAjuste(ass.payload, remov.schedule, nomeNaAgenda, pl, coachPodeAjustar) || manter;
+    const novo = coachAplicarSemana(pl.semana, { linkId: ass.link_id, assignmentId: ass.id, versao: ass.versao, coachNome: ass.coach_nome }, { ...antes, schedule: remov.schedule });
     setTreinos(novo.treinos); persist("treinos", novo.treinos);
     setSchedule(novo.schedule); persist("schedule", novo.schedule);
     if (novo.atividades.length !== atividades.length) { setAtividades(novo.atividades); persist("atividades", novo.atividades); }
     const nome = pl.nome || `Plano de ${ass.coach_nome}`;
-    criarPlanoSemanas({ id: planoIdNovo(), tipo: "semanas", versao: 2, nome, provaNome: nome, origem: "treinador", coachNome: ass.coach_nome, linkId: ass.link_id, assignmentId: ass.id, ...(somar ? { somar: true } : {}), nivel: "intermediario", inicio: pl.inicio, semanas: pl.semanas, criadoEm: new Date().toISOString(), sessoes: pl.sessoes }, [], { silencioso: true });
+    criarPlanoSemanas({ id: planoIdNovo(), tipo: "semanas", versao: 2, nome, provaNome: nome, origem: "treinador", coachNome: ass.coach_nome, linkId: ass.link_id, assignmentId: ass.id, ...(manter && manter.length ? { manter } : {}), nivel: "intermediario", inicio: pl.inicio, semanas: pl.semanas, criadoEm: new Date().toISOString(), sessoes: pl.sessoes }, [], { silencioso: true });
     try { localStorage.setItem("treino-app:coachAplicados", JSON.stringify([...coachAplicadosLer(), ass.id].slice(-50))); } catch (e) {}
-    const mantidos = somar ? planoSaiFica(antes.schedule, nomeNaAgenda, { ...pl, origem: "treinador" }).sai : [];
-    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aceito", p_motivo: auto ? "Aceite automático" : mantidos.length ? `Aceitou mantendo a semana dele: ${mantidos.join(", ")}` : null });
+    const mantidos = manter && manter.length && !(ass.payload && ass.payload.ajuste) ? planoSaiFica(remov.schedule, nomeNaAgenda, { ...pl, origem: "treinador" }).itens.filter((x) => manter.includes(x.chave)).map((x) => x.rotulo) : [];
+    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aceito", p_motivo: auto ? "Aceite automático" : mantidos.length ? `Aceitou mantendo também: ${mantidos.join(", ")}` : null });
     await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aplicado" });
     setCoachBusy(false); setCoachPlanoAberto(false);
     logEvent(auto ? "coach_plano_aceito_auto" : "coach_plano_aceito");
@@ -16119,7 +16247,8 @@ function App() {
     const aplicar = mudaDows.length === 0 || aceitosMud.length > 0;
     const antes = { treinos, schedule, atividades };
     if (aplicar) {
-      const novo = coachAplicarSemana(ass.payload, { linkId: ass.link_id, assignmentId: ass.id, versao: ass.versao, coachNome: ass.coach_nome }, antes, dows);
+      const remov = coachRemocoes(ass.payload, schedule, nomeNaAgenda, coachPodeAjustar);
+      const novo = coachAplicarSemana(ass.payload, { linkId: ass.link_id, assignmentId: ass.id, versao: ass.versao, coachNome: ass.coach_nome }, { ...antes, schedule: remov.schedule }, dows);
       updateTreinos(novo.treinos); updateSchedule(novo.schedule);
       if (novo.atividades.length !== atividades.length) updateAtividades(novo.atividades);
     }
@@ -17211,7 +17340,7 @@ function App() {
             )}
             {coachPendPlano && <CoachPlanoRecebidoCard ass={coachPendPlano} busy={coachBusy} onVer={() => setCoachPlanoAberto(true)} />}
             {coachPend[0] && coachPendDiff && (
-              <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
+              <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} removidos={coachRemocoes(coachPend[0].payload, schedule, nomeNaAgenda, coachPodeAjustar).nomes} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
             {coachLinks[0] && <CoachNotaHoje notas={coachNotas} linkId={coachLinks[0].link_id} nomeCoach={coachLinks[0].coach_nome} onEnviar={coachResponder} />}
             {stravaConvite && !stravaConnected && !templatesOpen && !treinoIAOpen && (
@@ -17628,12 +17757,6 @@ function App() {
                     onRemover={(idx) => { mudarSessoesPlano(planoSemanas.id, (ss) => ss.filter((_, i) => i !== idx)); showToast("Sessão tirada desta semana"); }}
                     onEncerrar={() => encerrarPlanoSemanas(planoSemanas)}
                     onTrocar={() => setPlanoNovoAberto(true)}
-                    podeSomar={planoSaiFica(schedule, nomeNaAgenda, { ...planoSemanas, somar: false }).sai.length > 0}
-                    onSomar={(v) => {
-                      const sai = planoSaiFica(schedule, nomeNaAgenda, { ...planoSemanas, somar: false }).sai;
-                      savePlanos(planos.map((p) => (p.id !== planoSemanas.id ? p : { ...p, somar: v })));
-                      showToast(v ? "Sua semana volta inteira. O plano continua junto" : `${planoListaE(sai)} ${sai.length > 1 ? "ficam pausados" : "fica pausado"} até ${planoDataCurta(planoFimSemanas(planoSemanas)).slice(4)}`);
-                    }}
                   />
                 ) : (
                   <div className="gt-card gt-ps-vazio">
@@ -17648,9 +17771,9 @@ function App() {
             {semanaRecolhida && (
               <div className="gt-card gt-ps-fixa-nota">
                 <div className="gt-ps-fixa-fechada">
-                  <div><b>Pausado até {planoDataCurta(planoFimSemanas(planoAtivoHoje)).slice(4)}:</b> {semanaSaiFica.sai.join(", ")}. Volta em {planoDataCurta(addDays(planoFimSemanas(planoAtivoHoje), 1)).slice(4)}.</div>
-                  {semanaSaiFica.fica.length > 0 && <div><b>Continua:</b> {semanaSaiFica.fica.join(", ")}.</div>}
-                  <button type="button" className="gt-link-btn" aria-expanded={verSemanaFixa} onClick={() => setVerSemanaFixa(!verSemanaFixa)}>{verSemanaFixa ? "Esconder semana ▾" : "Ver semana ▸"}</button>
+                  <PlanoSaiFicaBox schedule={schedule} nomeDe={nomeNaAgenda} plano={planoAtivoHoje} manter={planoAtivoHoje.somar ? semanaSaiFica.itens.map((x) => x.chave) : (planoAtivoHoje.manter || [])} semRotulo resumo
+                    setManter={(m) => savePlanos(planos.map((p) => (p.id !== planoAtivoHoje.id ? p : { ...p, somar: false, manter: m })))}
+                    extra={<button type="button" className="gt-link-btn" aria-expanded={verSemanaFixa} onClick={() => setVerSemanaFixa(!verSemanaFixa)}>{verSemanaFixa ? "Esconder semana ▾" : "Ver semana ▸"}</button>} />
                 </div>
               </div>
             )}
@@ -18143,7 +18266,7 @@ function App() {
         <CoachRevisaoModal ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onClose={() => setCoachRevisao(false)} onConfirmar={(dows, motivo, nRec) => coachAplicar(coachPend[0], coachPendDiff, dows, motivo, nRec)} />
       )}
       {coachPlanoAberto && coachPendPlano && (
-        <CoachPlanoRevisaoModal ass={coachPendPlano} schedule={schedule} nomeDe={nomeNaAgenda} busy={coachBusy} onClose={() => setCoachPlanoAberto(false)} onAceitar={(somar) => coachAceitarPlano(coachPendPlano, false, somar)} onRecusar={(m) => coachRecusarPlano(coachPendPlano, m)} />
+        <CoachPlanoRevisaoModal ass={coachPendPlano} schedule={schedule} nomeDe={nomeNaAgenda} podeAjustar={coachPodeAjustar} busy={coachBusy} onClose={() => setCoachPlanoAberto(false)} onAceitar={(manter) => coachAceitarPlano(coachPendPlano, false, manter)} onRecusar={(m) => coachRecusarPlano(coachPendPlano, m)} />
       )}
 
       {toast && <div className="gt-toast" role="status" aria-live="polite">{toast}</div>}
@@ -20347,7 +20470,7 @@ function PlanoFasesLegenda({ semanas }) {
 
 // Criar plano: começa pelo objetivo (modelos do Movo e prova); "repetir minha semana" fica no rodapé.
 function PlanoSemanasNovo({ treinos, schedule, treinoById, nomeDe, planoAtual, onCriar, onProva, onClose }) {
-  const [somar, setSomar] = useState(false);
+  const [manter, setManter] = useState([]);
   const [passo, setPasso] = useState("origem");
   const [modelo, setModelo] = useState(PLANO_MODELOS[0].id);
   const [semanas, setSemanas] = useState(PLANO_MODELOS[0].semanas);
@@ -20458,12 +20581,12 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, nomeDe, planoAtual, o
                     {previa.fichasNovas.map((f) => f.nome).join(", ")}. Você pode editar quando quiser.
                   </details>
                 )}
-                {passo === "modelo" && nomeDe && <PlanoSaiFicaBox schedule={schedule} nomeDe={nomeDe} plano={previa.plano} somar={somar} setSomar={setSomar} />}
+                {passo === "modelo" && nomeDe && <PlanoSaiFicaBox schedule={schedule} nomeDe={nomeDe} plano={previa.plano} manter={manter} setManter={setManter} />}
                 {planoAtual && <p className="gt-ps-aviso">Seu plano "{planoAtual.nome}" termina quando este começar.</p>}
               </>
             )}
             <div className="gt-ps-rodape">
-              <button type="button" className="gt-btn" disabled={!previa || !previa.plano.sessoes.length} onClick={() => onCriar(passo === "modelo" && somar ? { ...previa.plano, somar: true } : previa.plano, previa.fichasNovas)}>Começar plano</button>
+              <button type="button" className="gt-btn" disabled={!previa || !previa.plano.sessoes.length} onClick={() => onCriar(passo === "modelo" && manter.length ? { ...previa.plano, manter } : previa.plano, previa.fichasNovas)}>Começar plano</button>
             </div>
           </>
         )}
@@ -20472,7 +20595,7 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, nomeDe, planoAtual, o
   );
 }
 
-function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTrocar, onAbrirFicha, podeSomar, onSomar }) {
+function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTrocar, onAbrirFicha }) {
   const hoje = todayISO();
   const semanas = planoSemanasLista(plano, feitoFn);
   const atual = Math.max(0, semanas.findIndex((w) => hoje >= w.inicio && hoje <= w.fim));
@@ -20494,7 +20617,6 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
       </div>
       {acoes && (
         <div className="gt-ps-acoes">
-          {onSomar && (plano.somar || podeSomar) && <button type="button" onClick={() => { setAcoes(false); onSomar(!plano.somar); }}>{plano.somar ? "Pausar o que o plano cobre" : "Manter tudo da minha semana"}</button>}
           <button type="button" onClick={() => { setAcoes(false); onTrocar(); }}>Trocar de plano</button>
           <button type="button" className="warn" onClick={() => { setAcoes(false); onEncerrar(); }}>{hoje < plano.inicio ? "Excluir plano" : "Encerrar plano"}</button>
         </div>
