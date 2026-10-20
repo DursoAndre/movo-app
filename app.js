@@ -18694,7 +18694,7 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
               <button type="button" className="gt-co-mini perigo" aria-label={`Remover bloco ${b.nome}`} onClick={() => remover(i)}>✕</button>
             </div>
             <button type="button" className="gt-bl-cfg" aria-expanded={!!cfg[b.id || i]} onClick={() => setCfg({ ...cfg, [b.id || i]: !cfg[b.id || i] })}>
-              {tipo === "corrida" ? "Corrida" : formato === "normal" ? `${BLOCO_TIPOS[tipo].label} · ${tipo === "hyrox" ? "Estações livres" : "Séries normais"}` : `${BLOCO_TIPOS[tipo].label} · ${blocoResumo(b)}`} <span aria-hidden="true">✎</span>
+              {tipo === "corrida" ? "Corrida" : tipo === "forca" ? (formato === "normal" ? "Fazer como bi-set ou circuito" : blocoResumo(b)) : formato === "normal" ? `${BLOCO_TIPOS[tipo].label} · ${tipo === "hyrox" ? "Estações livres" : "Séries normais"}` : `${BLOCO_TIPOS[tipo].label} · ${blocoResumo(b)}`} <span aria-hidden="true">✎</span>
             </button>
             {cfg[b.id || i] && <div className="gt-bl-tipo">
               <select className="gt-input" aria-label="Tipo do bloco" value={tipo} onChange={(e) => trocarTipo(i, e.target.value)}>
@@ -18751,9 +18751,9 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
       <button className="gt-add-extra-card" type="button" onClick={() => setPickerGeral(true)}>
         <span className="plus">+</span> Adicionar exercício
       </button>
-      <div className="gt-bl-novos-lbl">Ou um bloco com formato próprio:</div>
+      <div className="gt-bl-novos-lbl">Outro tipo de treino na mesma sessão:</div>
       <div className="gt-bl-novos">
-        {BLOCO_TIPOS_ORDEM.map((t) => (
+        {BLOCO_TIPOS_ORDEM.filter((t) => t !== "forca").map((t) => (
           <button key={t} type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS[t].cor }} onClick={() => novoBloco(blocoNovo(t))}>＋ {BLOCO_TIPOS[t].label}</button>
         ))}
         <button type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS.hyrox.cor }} onClick={() => novoBloco(blocoSimulacaoHyrox())}>＋ Simulação HYROX</button>
