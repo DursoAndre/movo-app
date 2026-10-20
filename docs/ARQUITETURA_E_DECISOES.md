@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 20/10/2026 (v208, ainda não publicada: montar ficha nova em tela cheia com lista única, catálogo v2 com +341 exercícios em `catalogo_v2.sql`, ainda não aplicado; antes, v207: plano de semanas e plano do treinador para todos).
+Última atualização: 20/10/2026 (v208 publicada: montar ficha nova em tela cheia com lista única, catálogo v2 com +341 exercícios em `catalogo_v2.sql`, aplicado; antes, v207: plano de semanas e plano do treinador para todos).
 
 ---
 
@@ -96,7 +96,7 @@ Marcos recentes:
 - `admin_identidade.sql` (1º da ordem: `movo_admins`, `is_movo_admin()`, `movo_admin_uid()`; v202). Os 21 arquivos que comparavam o e-mail do admin foram reescritos para usar essas funções.
 - `painel_gestao.sql` (último da ordem, v202): `admin_log` + gatilhos (Registro), `admin_m_pendencias`, `admin_m_conta` (ficha: só contagens e vínculos), `admin_m_conta_exportar`/`admin_m_conta_apagar` (a pedido, ficam no Registro; apagar exige digitar o e-mail e recusa conta de admin), `admin_m_desafios`/`admin_m_desafio` (só leitura), `admin_m_integracoes` (Strava 10 atletas, e-mails 7 dias), recados (`admin_recados`, `recado_vistos`, `meus_recados()`, `recado_marcar()`, `admin_m_recado_*`).
 - `relatos_prints.sql` (bucket privado `relatos` e coluna `user_feedback.prints`; v203)
-- `catalogo_v2.sql` (v208, logo depois de `catalogo_banco.sql`): +341 exercícios (ordem 100+, depois dos básicos de cada grupo), grupos novos Antebraço e Funcional, reordena os grupos, 189 grupos de sinônimos. 173 vídeos do YouTube conferidos um a um (título e canal); 168 exercícios ainda sem vídeo. Gerado de uma lista pesquisada pelo Claude (scratchpad); idempotente. **Ainda não aplicado em produção.**
+- `catalogo_v2.sql` (v208, logo depois de `catalogo_banco.sql`): +341 exercícios (ordem 100+, depois dos básicos de cada grupo), grupos novos Antebraço e Funcional, reordena os grupos, 189 grupos de sinônimos. 173 vídeos do YouTube conferidos um a um (título e canal); 168 exercícios ainda sem vídeo. Gerado de uma lista pesquisada pelo Claude (scratchpad); idempotente. **Aplicado em produção em 20/10** (417 exercícios ativos, 13 grupos, 206 sinônimos).
 - `coach_plano.sql` (v207, depois de `coach_setup_v2.sql`): envio `tipo 'plano'` em `coach_assignments`, `coach_links.aceite_auto` (padrão desligado), `coach_set_aceite_auto(p_link, p_on)` (só o aluno, grava em `coach_audit`), `coach_my_coach()` devolve `aceite_auto`, `coach_link_aceite_auto(p_link)` (o treinador consulta, para o aviso no envio). Também redefine `coach_clean_perms` com `ajustar_semana`. **Aplicado em produção em 20/10** (v207).
 
 ## 6. Decisões por área
@@ -178,6 +178,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **20/10/2026 (Andre: "Ok, pode publicar, e buscar os vídeos dos demais exercícios"):** v208 publicada e `catalogo_v2.sql` aplicado em produção; busca de vídeos para os exercícios restantes em andamento.
 - **20/10/2026 (v208, Andre: montar ficha "precisa ser muito simples", "dá pra adicionar mas não dá pra remover", "modal apertado", "deveria começar com uma lista livre e ter os filtros dos grupos"):** proposta do diretor de UX revisada pelo diretor de design. "Montar do zero" abre direto o seletor em tela cheia (`ExercisePickerModal` com `onConfirm` = lote: tocar marca, tocar de novo desmarca, número = ordem, "Adicionar N exercícios"); começa em "Todos" com seções por grupo e uma linha de chips; "Criar" livre vai para o fim da busca. Ficha nova vira lista única (`BlocosEditor simples`): séries x reps na linha, ⋮ com Subir/Descer/Bi-set/Remover (com Desfazer), nome sugerido ("Peito e quadríceps" ou "Treino A") que nunca trava o salvar, duração e outros tipos em "Mais opções". Texto do fluxo passa a ser "ficha". Cortado da 1ª entrega: arrastar, deslizar, prévia de vídeo, recentes. Treino de hoje e treinador usam o seletor novo sem lote (adiciona na hora). Lista única no lugar dos blocos por grupo: **aprovada pelo Andre (cartão, 20/10)**.
 - **20/10/2026 (Andre: "nosso catálogo tá muito pequeno... precisamos ser mais exaustivos... link do vídeo no YouTube"):** catálogo v2 (`catalogo_v2.sql`), ver seção 5. A IA passa a receber só os 8 exercícios mais comuns de cada grupo, para o catálogo maior não encarecer as chamadas.
 - **20/10/2026 (Andre: "para tasks simples... usa agentes com modelos mais baratos e o opus pra gerenciar o plano"):** subagentes de pesquisa, levantamento e conferência rodam em Sonnet (Haiku para coisas mecânicas); Opus fica com plano, revisões de UX/design e mudanças delicadas.
