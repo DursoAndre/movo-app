@@ -1031,6 +1031,9 @@ const BLOCO_FORMATOS = {
 };
 // Formatos com cronômetro próprio no treino guiado.
 const BLOCO_COM_TIMER = new Set(["amrap", "emom", "fortime", "tabata", "intervalos"]);
+// Bi-set e tri-set têm número fixo de exercícios.
+const BLOCO_LIMITE = { biset: 2, triset: 3 };
+function blocoLimite(b) { return blocoTipo(b) === "forca" ? BLOCO_LIMITE[blocoFormato(b)] || 0 : 0; }
 // Campos de prescrição do exercício (os que a entrada rápida escreve).
 const RX_CAMPOS = ["series", "repeticoes", "cargaKg", "pct1rm", "rir", "descansoSeg", "tempoSeg", "distanciaM", "calorias"];
 // Simulação de HYROX: 8 x (1 km de corrida + estação), na ordem oficial.
@@ -3690,6 +3693,8 @@ const APP_CSS = `
   .gt-input.gt-bl-rx { font-family:'Roboto Mono',monospace; font-size:14px; }
   .gt-bl-entrada-wrap { display:flex; flex-direction:column; gap:6px; }
   .gt-bl-entrada { display:flex; gap:6px; align-items:center; }
+  .gt-bl-limite { font-size:12px; color:var(--bl-cor); line-height:1.4; }
+  .gt-bl-limite.falta { color:var(--amber); }
   .gt-bl-entrada-prev { font-size:12px; color:var(--text-muted); line-height:1.4; }
   .gt-bl-entrada-prev.ok { color:var(--accent); }
   .gt-bl-entrada-prev strong { font-weight:600; }
@@ -18664,7 +18669,20 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
   const setEx = (i, j, ex) => setBloco(i, { ...lista[i], exercicios: lista[i].exercicios.map((x, k) => (k === j ? ex : x)) });
   const moverEx = (i, j, d) => { const exs = lista[i].exercicios.slice(); const k = j + d; if (k < 0 || k >= exs.length) return; [exs[j], exs[k]] = [exs[k], exs[j]]; setBloco(i, { ...lista[i], exercicios: exs }); };
   const tirarEx = (i, j) => setBloco(i, { ...lista[i], exercicios: lista[i].exercicios.filter((_, k) => k !== j) });
-  const addEx = (i, ex) => setBloco(i, { ...lista[i], exercicios: [...lista[i].exercicios, ex] });
+  const addEx = (i, ex) => {
+    const lim = blocoLimite(lista[i]);
+    if (lim && lista[i].exercicios.length >= lim) return;
+    if (lim && lista[i].exercicios.length + 1 >= lim && picker === i) setPicker(null);
+    setBloco(i, { ...lista[i], exercicios: [...lista[i].exercicios, ex] });
+  };
+  // Trocar para bi-set/tri-set com exercícios demais: os que sobram vão para um bloco normal logo abaixo.
+  function trocarFormato(i, formato) {
+    const b = { ...lista[i], formato };
+    const lim = blocoLimite(b);
+    if (!lim || b.exercicios.length <= lim) { setBloco(i, b); return; }
+    const resto = { nome: b.nome, exercicios: b.exercicios.slice(lim) };
+    onChange([...lista.slice(0, i), { ...b, exercicios: b.exercicios.slice(0, lim) }, resto, ...lista.slice(i + 1)]);
+  }
   // "Adicionar exercício" geral: igual ao app de hoje, agrupa por grupo muscular em blocos de força.
   function addPorGrupo(cat) {
     const nomeBloco = cat.grupo || "Exercícios";
@@ -18685,6 +18703,7 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
       {lista.map((b, i) => {
         const tipo = blocoTipo(b), formato = blocoFormato(b);
         const p = (k, v) => setBloco(i, { ...b, [k]: v });
+        const lim = blocoLimite(b), faltam = lim ? lim - b.exercicios.length : 0;
         return (
           <div key={b.id || i} className="gt-bl" style={{ "--bl-cor": BLOCO_TIPOS[tipo].cor }}>
             <div className="gt-bl-head">
@@ -18701,7 +18720,7 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
                 {BLOCO_TIPOS_ORDEM.map((t) => <option key={t} value={t}>{BLOCO_TIPOS[t].label}</option>)}
               </select>
               {BLOCO_TIPOS[tipo].formatos.length > 1 && (
-                <select className="gt-input" aria-label="Formato do bloco" value={formato} onChange={(e) => p("formato", e.target.value)}>
+                <select className="gt-input" aria-label="Formato do bloco" value={formato} onChange={(e) => trocarFormato(i, e.target.value)}>
                   {BLOCO_TIPOS[tipo].formatos.map((f) => <option key={f} value={f}>{tipo === "hyrox" && f === "normal" ? "Estações livres" : BLOCO_FORMATOS[f]}</option>)}
                 </select>
               )}
@@ -18735,10 +18754,17 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
                     </div>
                   );
                 })}
-                <EntradaRapida label={`Adicionar exercício em ${b.nome}`}
-                  placeholder={tipo === "condicionamento" ? "Ex.: 15 wall ball 9kg" : tipo === "hyrox" ? "Ex.: SkiErg 1000m" : tipo === "mobilidade" ? "Ex.: Alongamento de quadril 45s" : "Ex.: Agachamento 4x6 80kg rir2"}
+                {lim > 0 && (
+                  <div className={`gt-bl-limite ${faltam > 0 ? "falta" : ""}`}>
+                    {faltam > 0
+                      ? `${BLOCO_FORMATOS[formato]}: ${lim} exercícios seguidos, sem descanso entre eles. ${faltam === lim ? `Adicione os ${lim}.` : faltam === 1 ? "Falta 1." : `Faltam ${faltam}.`}`
+                      : `${BLOCO_FORMATOS[formato]} completo: ${b.exercicios.map((_, k) => String.fromCharCode(65 + k)).join(", ")} seguidos, depois o descanso.`}
+                  </div>
+                )}
+                {(!lim || faltam > 0) && <EntradaRapida label={`Adicionar exercício em ${b.nome}`}
+                  placeholder={lim ? `Exercício ${String.fromCharCode(65 + b.exercicios.length)}, ex.: Rosca direta 3x12 12kg` : tipo === "condicionamento" ? "Ex.: 15 wall ball 9kg" : tipo === "hyrox" ? "Ex.: SkiErg 1000m" : tipo === "mobilidade" ? "Ex.: Alongamento de quadril 45s" : "Ex.: Agachamento 4x6 80kg rir2"}
                   onAdd={(ex) => addEx(i, exercicioNovo(ex))}
-                  extra={<button type="button" className="gt-btn secondary small" onClick={() => setPicker(i)}>Catálogo</button>} />
+                  extra={<button type="button" className="gt-btn secondary small" onClick={() => setPicker(i)}>Catálogo</button>} />}
               </>
             )}
           </div>
