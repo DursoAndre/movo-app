@@ -3646,7 +3646,7 @@ const APP_CSS = `
   .gt-co-sw { display:flex; align-items:center; gap:8px; min-height:44px; background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; font-family:inherit; }
   .gt-co-sw i { width:44px; height:26px; border-radius:999px; background:var(--border); position:relative; display:block; flex-shrink:0; }
   .gt-co-sw i::after { content:""; position:absolute; left:3px; top:3px; width:20px; height:20px; border-radius:50%; background:var(--text-muted); transition:all .15s; }
-  .gt-co-sw.on i { background:#C6F135; } .gt-co-sw.on i::after { left:21px; background:#14161A; }
+  .gt-co-sw.on i { background:var(--accent); } .gt-co-sw.on i::after { left:21px; background:#14161A; }
   .gt-co-sw.on .gt-co-sw-t { color:var(--text); }
   .gt-co-notas { display:flex; flex-direction:column; gap:6px; font-size:14px; color:var(--text-muted); background:var(--surface-2); border-radius:14px; padding:12px; margin:12px 0; }
   .gt-co-check { display:flex; gap:10px; align-items:flex-start; font-size:14px; min-height:44px; margin-bottom:8px; }
@@ -3689,6 +3689,7 @@ const APP_CSS = `
   .gt-co-nota { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px; margin-bottom:12px; } .gt-co-nota .gt-co-sec { margin-top:0; }
   .gt-co-nota-txt { font-size:14px; margin:6px 0 8px; }
   .gt-co-nota-resp { display:flex; gap:8px; align-items:center; } .gt-co-nota-resp .gt-btn { min-height:44px; }
+  .gt-co-desfazer .ac { display:flex; gap:6px; flex-shrink:0; }
   .gt-co-desfazer { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px 12px; margin-bottom:10px; font-size:14px; }
   .gt-co-prescrito { display:inline-block; border:1px solid var(--accent-dim); color:var(--accent); border-radius:4px; padding:1px 8px; font-size:11px; font-family:'Roboto Mono',monospace; margin-left:6px; vertical-align:middle; }
   @media (prefers-reduced-motion: reduce) { .gt-co-sw i::after { transition:none; } }
@@ -3786,7 +3787,7 @@ const APP_CSS = `
   .gt-ps-lista .linha { flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:10px 0; background:none; border:none; color:var(--text); font:inherit; text-align:left; cursor:pointer; }
   .gt-ps-lista div.linha { cursor:default; }
   .gt-ps-lista .linha .gt-ico-inl { color:var(--text-muted); flex-shrink:0; }
-  .gt-ps-lista .linha .seta { color:var(--text-muted); margin-left:auto; }
+  .gt-ps-lista .linha .seta { color:var(--text-muted); margin-left:auto; width:10px; flex-shrink:0; }
   .gt-ps-lista li.hoje .d { color:var(--accent); }
   .gt-ps-lista li.feito .nm { color:var(--text-muted); }
   .gt-ps-lista li.vazio { color:var(--text-muted); font-size:13px; padding:10px 0; }
@@ -3822,8 +3823,18 @@ const APP_CSS = `
   .gt-ps-aviso { font-size:12px; color:var(--amber); margin:8px 0 0; }
   .gt-ps-rodape { position:sticky; bottom:-1px; background:var(--surface); padding:12px 0 2px; margin-top:12px; }
   .gt-ps-rodape .gt-btn { width:100%; }
+  .gt-co-plano { background:var(--surface-2); border-radius:var(--radius); padding:12px; margin-bottom:8px; }
+  .gt-co-plano .gt-field-label { font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin:12px 0 6px; }
+  .gt-co-plano .gt-ps-fases { margin-top:12px; }
+  .gt-ps-saifica { background:var(--surface-2); border-radius:var(--radius); padding:10px 12px; font-size:13px; line-height:1.45; margin:8px 0 4px; display:flex; flex-direction:column; gap:4px; }
+  .gt-ps-fixa-fechada { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; } .gt-ps-fixa-fechada .gt-link-btn { white-space:nowrap; flex-shrink:0; }
+  .gt-ps-lista .st { width:44px; text-align:center; flex-shrink:0; font-size:12px; color:var(--text-muted); }
+  .gt-co-plano-fim { font-size:12px; color:var(--text-muted); margin-top:4px; }
+  .gt-co-auto-aviso { font-size:13px; color:var(--amber); margin:0 0 8px; }
+  .gt-co-plano .gt-co-perm { border:none; padding:0; }
+  .gt-co-plano .gt-provas-filters { margin:0; flex-wrap:nowrap; }
   .gt-ps-check { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:14px; margin:4px 0 2px; cursor:pointer; }
-  .gt-ps-check input { accent-color:var(--accent); width:18px; height:18px; }
+  .gt-ps-check input { accent-color:var(--accent); width:18px; height:18px; margin:0; }
   .gt-ps-check small { flex-basis:100%; font-size:12px; color:var(--text-muted); padding-left:26px; }
   .gt-ps-fixa-nota { font-size:12px; color:var(--text-muted); margin:-4px 0 8px; }
   .gt-guiado-toggle { background:none; border:1px solid var(--border); color:var(--text-muted); font-size:12px; padding:5px 10px; border-radius:20px; cursor:pointer; white-space:nowrap; }
@@ -7092,7 +7103,7 @@ function planoSessoesDoDia(planos, iso) {
 const PLANO_ORIGENS = { meu: "Meu plano", modelo: "Modelo do Movo", ia: "Feito com IA", treinador: "Do treinador" };
 function planoEhSemanas(p) { return !!p && p.tipo === "semanas"; }
 // Nome da fase na tela do plano de semanas (o dado guarda o nome técnico).
-const PLANO_FASE_NOME = { Descarga: "Semana leve", "Específico": "Pico", Polimento: "Semana final leve" };
+const PLANO_FASE_NOME = { Descarga: "Semana leve", "Específico": "Pico", Polimento: "Final leve" };
 function planoFaseNome(f) { return PLANO_FASE_NOME[f] || f || ""; }
 function planoSemanaNumero(p, iso) { return Math.floor((Date.parse(iso + "T12:00:00Z") - Date.parse(p.inicio + "T12:00:00Z")) / (7 * 86400000)) + 1; }
 function planoFimSemanas(p) { return p.encerradoEm || addDays(p.inicio, p.semanas * 7 - 1); }
@@ -7106,12 +7117,26 @@ function planoSemanasAtual(planos, hoje) {
 function agendaEntradaDoTreinador(it) {
   return !!it && ((it.tipo === "treino" && /^c-[0-9a-z]{1,8}-/.test(String(it.id))) || (typeof it.origem === "string" && !!it.origem));
 }
+// O que da semana fixa sai e o que continua enquanto um plano dura. nomeDe(it) devolve o nome
+// (ou null para descanso/desconhecido). Plano do treinador tira também o que veio dele.
+function planoSaiFica(schedule, nomeDe, doTreinador) {
+  const sai = [], fica = [];
+  PLANO_ORDEM_SEMANA.forEach((dow) => ((schedule && schedule[dow]) || []).forEach((it) => {
+    const nome = nomeDe(it);
+    if (!nome) return;
+    const ocupa = it.tipo === "treino" || (it.tipo === "atividade" && it.id === "corrida");
+    if (ocupa && (doTreinador || !agendaEntradaDoTreinador(it))) sai.push(`${it.id === "corrida" ? "Corrida" : nome} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`);
+    else if (!ocupa && !fica.includes(nome)) fica.push(nome);
+  }));
+  return { sai, fica };
+}
 // O que está marcado para uma data: a semana fixa, ou o plano de semanas quando ele cobre a data.
 function agendaDoDia(schedule, planos, iso) {
   const fixos = (schedule && schedule[weekdayOf(iso)]) || [];
   const pl = planoSemanasAtivo(planos, iso);
   if (!pl) return fixos;
-  const mantidos = fixos.filter((it) => agendaEntradaDoTreinador(it) || !(it.tipo === "treino" || (it.tipo === "atividade" && it.id === "corrida")));
+  // Plano próprio mantém o que veio do treinador; plano do treinador ocupa também as fichas e a corrida dele.
+  const mantidos = fixos.filter((it) => !(it.tipo === "treino" || (it.tipo === "atividade" && it.id === "corrida")) || (pl.origem !== "treinador" && agendaEntradaDoTreinador(it)));
   const doPlano = [];
   (pl.sessoes || []).forEach((s) => {
     if (s.data !== iso || s.tipo !== "treino" || !s.ref) return;
@@ -7196,7 +7221,7 @@ const PLANO_MODELOS = [
     },
   },
   {
-    id: "hyrox", grupo: "hibrido", nome: "HYROX", foco: "Funcional / HYROX", desc: "Força, funcional e 2 corridas por semana", icone: "raio", semanas: 8,
+    id: "hyrox", grupo: "hibrido", nome: "HYROX", foco: "Funcional / HYROX", desc: "Para quem treina sozinho: força, funcional e 2 corridas por semana", icone: "raio", semanas: 8,
     fichas: () => ({ F: planoFichaHyroxForca(), U: planoFichaHyroxFuncional(), M: planoFichaSimulacao(true), S: planoFichaSimulacao(false) }),
     semana: (w, fase, nivel, n, opts) => {
       const base = { iniciante: [3, 5], intermediario: [5, 8], avancado: [6, 10] }[nivel] || [5, 8];
@@ -10889,6 +10914,45 @@ function coachAplicarSemana(payload, meta, estado, dowsAceitos) {
   return { treinos, schedule, atividades };
 }
 
+// Plano do treinador: a semana que ele montou, repetida por N semanas com fases. Com progressão,
+// a corrida de modelo conhecido cresce aos poucos (e cai nas semanas leves); senão fica igual.
+function coachPlanoNorm(p) {
+  if (!p || typeof p !== "object" || !p.semana || typeof p.semana.dias !== "object") return null;
+  const n = Math.max(1, Math.min(24, Math.round(Number(p.semanas) || 0)));
+  if (!n || !/^\d{4}-\d{2}-\d{2}$/.test(String(p.inicio || ""))) return null;
+  return { semana: { dias: p.semana.dias || {}, fichas: p.semana.fichas || {} }, semanas: n, inicio: planoSemanaChave(p.inicio), nome: String(p.nome || "").trim().slice(0, 60), progressao: p.progressao !== false };
+}
+function coachCorridaTipo(c) {
+  const g = c.modelo && c.distanciaKm ? planoGerarTreinoCorrida(c.modelo, c.distanciaKm, "intermediario", 0) : null;
+  return g && g.ok ? g.treino.tipo : "rodagem";
+}
+function coachPlanoSessoes(payload, linkId) {
+  const p = coachPlanoNorm(payload);
+  if (!p) return null;
+  const sessoes = [];
+  for (let w = 0; w < p.semanas; w++) {
+    const fase = planoFaseDaSemana(w, p.semanas);
+    const nota = fase === "Descarga" ? "Semana leve: uma série a menos em cada exercício e carga confortável." : fase === "Polimento" ? "Semana final leve: mantenha a carga e faça menos séries." : "";
+    for (let dow = 0; dow < 7; dow++) {
+      const data = addDays(p.inicio, w * 7 + planoOrdemDia(dow));
+      ((p.semana.dias[dow]) || []).forEach((it) => {
+        if (it.tipo === "treino" && p.semana.fichas[it.ref]) {
+          sessoes.push({ data, tipo: "treino", ref: coachFichaLocalId(linkId, it.ref), titulo: p.semana.fichas[it.ref].nome || "Treino", fase, cid: planoCid(), ...(nota ? { nota } : {}) });
+          return;
+        }
+        const c = it.tipo === "atividade" ? coachCorridaNorm(it.corrida) : null;
+        if (!c) return;
+        const km = p.progressao && c.distanciaKm ? planoKmDaSemana(c.distanciaKm, w, fase, false) : c.distanciaKm;
+        const g = c.modelo && km !== c.distanciaKm ? planoGerarTreinoCorrida(c.modelo, km, "intermediario", 0) : null;
+        const t = g && g.ok ? g.treino : null;
+        sessoes.push({ data, tipo: t ? t.tipo : coachCorridaTipo(c), fase, titulo: t ? t.titulo : c.titulo, distanciaKm: t ? t.distanciaKm : c.distanciaKm, duracaoMin: t ? (t.duracaoMin || 0) : c.duracaoMin, esforco: (t && t.esforco) || c.esforco || "", pace: c.pace || "", detalhes: (t && t.detalhes) || c.detalhes || "", etapas: t ? (t.etapas || []) : c.etapas, modelo: c.modelo || "", cid: planoCid() });
+      });
+    }
+  }
+  sessoes.sort((a, b) => a.data.localeCompare(b.data));
+  return { ...p, sessoes };
+}
+
 // Última carga que o aluno usou em cada exercício (por nome), a partir do detalhe do aluno.
 function coachUltimasCargas(detalhe) {
   const porId = {};
@@ -10974,10 +11038,10 @@ function coachDataCurta(iso) {
 function coachFilaLer() { try { return JSON.parse(localStorage.getItem("treino-app:coachFila") || "[]"); } catch (e) { return []; } }
 function coachFilaSalvar(f) { try { localStorage.setItem("treino-app:coachFila", JSON.stringify(f)); } catch (e) {} }
 
-function CoachSwitch({ checked, onChange, label, descricao }) {
+function CoachSwitch({ checked, onChange, label, descricao, semTexto }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`gt-co-sw ${checked ? "on" : ""}`} onClick={() => onChange(!checked)}>
-      <span className="gt-co-sw-t">{checked ? "Ligado" : "Desligado"}</span><i />
+      {!semTexto && <span className="gt-co-sw-t">{checked ? "Ligado" : "Desligado"}</span>}<i />
     </button>
   );
 }
@@ -11090,6 +11154,14 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
     if (!r.ok) { setPerms({ ...perms, [link.link_id]: antes }); showToast(r.erro); return; }
     reload();
   }
+  const [auto, setAuto] = useState(null);
+  const autoLigado = link ? (auto != null ? auto : !!link.aceite_auto) : false;
+  async function mudarAuto(on) {
+    setAuto(on);
+    const r = await coachCall("coach_set_aceite_auto", { p_link: link.link_id, p_on: on });
+    if (!r.ok) { setAuto(!on); showToast(r.erro); return; }
+    showToast(on ? "Aceite automático ligado" : "Aceite automático desligado"); reload();
+  }
   async function status(s, msg) {
     setBusy(true);
     const r = await coachCall("coach_set_status", { p_link: link.link_id, p_status: s });
@@ -11132,6 +11204,13 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
             {link.coach_bio && <div className="gt-co-bio">{link.coach_bio}</div>}
             <div className="gt-co-sec">O QUE ELE PODE VER</div>
             <CoachPermLista perms={atual} onChange={mudarPerms} flags={flags} />
+            {link.aceite_auto !== undefined && (<>
+            <div className="gt-co-sec">ACEITE AUTOMÁTICO</div>
+            <div className="gt-co-perms"><div className="gt-co-perm">
+              <div className="tx"><div className="t">Aplicar direto o que {link.coach_nome} mandar</div><div className="d">Semanas e planos de {link.coach_nome} entram direto. Você vê um aviso no Hoje e pode desfazer por lá.</div></div>
+              <CoachSwitch checked={autoLigado} onChange={mudarAuto} label="Aceite automático" semTexto />
+            </div></div>
+            </>)}
             <div className="gt-modal-actions gt-modal-actions-col" style={{ marginTop: 12 }}>
               {link.status === "ativo" && <button type="button" className="gt-btn secondary" disabled={busy} onClick={() => status("pausado", "Compartilhamento pausado")}>Pausar compartilhamento</button>}
               {link.status === "pausado" && <button type="button" className="gt-btn" disabled={busy} onClick={() => status("ativo", "Compartilhamento retomado")}>Retomar compartilhamento</button>}
@@ -11371,6 +11450,74 @@ function CoachRecebidoCard({ ass, diff, onAceitarTudo, onRevisar, busy }) {
       <div className="gt-co-recebido-acoes">
         <button type="button" className="gt-btn" disabled={busy} onClick={onAceitarTudo}>{busy ? "Aplicando…" : "Aceitar tudo"}</button>
         <button type="button" className="gt-btn secondary" disabled={busy} onClick={onRevisar}>Revisar</button>
+      </div>
+    </div>
+  );
+}
+// Aluno: plano de várias semanas que chegou do treinador (só entra se o aluno aceitar).
+function CoachPlanoRecebidoCard({ ass, onVer, busy }) {
+  const p = coachPlanoNorm(ass.payload);
+  if (!p) return null;
+  return (
+    <div className="gt-co-recebido" role="region" aria-label={`Plano de ${ass.coach_nome}`}>
+      <div className="gt-co-recebido-head">
+        <div className="gt-co-avatar" style={{ background: coachCor(ass.coach_nome) }}>{coachIniciais(ass.coach_nome)}</div>
+        <div className="tx"><div className="t">Plano de {p.semanas} semanas</div><div className="d">{ass.coach_nome} enviou · começa {planoDataCurta(p.inicio).toLowerCase()} · até {planoDataCurta(addDays(p.inicio, p.semanas * 7 - 1)).slice(4)}</div></div>
+      </div>
+      {ass.mensagem && <div className="gt-co-msg">“{ass.mensagem}”</div>}
+      <div className="gt-co-recebido-note">Seu treino não muda até você aceitar.</div>
+      <div className="gt-co-recebido-acoes">
+        <button type="button" className="gt-btn" disabled={busy} onClick={onVer}>Ver e decidir</button>
+      </div>
+    </div>
+  );
+}
+function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, onClose, busy }) {
+  const pl = useMemo(() => coachPlanoSessoes(ass.payload, ass.link_id), [ass]);
+  const [recusar, setRecusar] = useState(null);
+  if (!pl) return null;
+  const sem = planoSemanasLista({ ...pl, sessoes: pl.sessoes });
+  const nomeFicha = (it) => (pl.semana.fichas[it.ref] || {}).nome || "Treino";
+  return (
+    <div className="gt-modal-backdrop" onClick={onClose}>
+      <div className="gt-modal gt-ps-modal" role="dialog" aria-modal="true" aria-label={`Plano de ${ass.coach_nome}`} onClick={(e) => e.stopPropagation()}>
+        <div className="gt-provas-head">
+          <h3>{pl.nome || `Plano de ${ass.coach_nome}`}</h3>
+          <button type="button" className="gt-provas-close" aria-label="Fechar" onClick={onClose}>✕</button>
+        </div>
+        <p className="gt-ps-intro">{pl.semanas} semanas, de {planoDataCurta(pl.inicio).toLowerCase()} a {planoDataCurta(addDays(pl.inicio, pl.semanas * 7 - 1)).toLowerCase()}.</p>
+        {(() => {
+          const { sai, fica } = planoSaiFica(schedule, nomeDe, true);
+          return (sai.length > 0 || fica.length > 0) && (
+            <div className="gt-ps-saifica">
+              {sai.length > 0 && <div><b>Sai até {planoDataCurta(addDays(pl.inicio, pl.semanas * 7 - 1)).slice(4)}:</b> {sai.join(", ")}.</div>}
+              {fica.length > 0 && <div><b>Continua:</b> {fica.join(", ")}.</div>}
+            </div>
+          );
+        })()}
+        {ass.mensagem && <div className="gt-co-msg">“{ass.mensagem}”</div>}
+        <div className="gt-field-label">As fases</div>
+        <ol className="gt-ps-fases" aria-hidden="true">
+          {sem.map((w) => <li key={w.n} className={planoFaseClasse(w.fase)}><span>{w.n}</span></li>)}
+        </ol>
+        <PlanoFasesLegenda semanas={sem} />
+        <div className="gt-field-label">Toda semana</div>
+        <ul className="gt-ps-prev-lista">
+          {COACH_ORDEM_DIAS.flatMap((dow) => ((pl.semana.dias[dow]) || []).map((it, i) => (
+            <li key={`${dow}-${i}`}><span className="d">{i === 0 ? PLANO_DIAS_CURTO[dow] : ""}</span><Ei e={it.tipo === "treino" ? "🏋" : it.corrida ? "🏃" : "🏅"} /><span>{it.tipo === "treino" ? nomeFicha(it) : (coachCorridaNorm(it.corrida) || {}).titulo || it.nome || it.id}</span></li>
+          )))}
+        </ul>
+        {recusar != null ? (
+          <div className="gt-co-confirma" role="alert">
+            <textarea className="gt-input" rows={2} maxLength={200} placeholder={`Motivo para ${ass.coach_nome} (opcional)`} aria-label="Motivo" value={recusar} onChange={(e) => setRecusar(e.target.value)} />
+            <div className="gt-modal-actions"><button type="button" className="gt-btn gt-btn-danger" disabled={busy} onClick={() => onRecusar(recusar.trim())}>Recusar plano</button><button type="button" className="gt-btn secondary" onClick={() => setRecusar(null)}>Voltar</button></div>
+          </div>
+        ) : (
+          <div className="gt-ps-rodape">
+            <button type="button" className="gt-btn" disabled={busy} onClick={onAceitar}>{busy ? "Aplicando…" : "Aceitar plano"}</button>
+            <button type="button" className="gt-btn secondary" style={{ width: "100%", marginTop: 8 }} disabled={busy} onClick={() => setRecusar("")}>Recusar</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -11798,8 +11945,23 @@ function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
 }
 
 // ---------- Treinador: montar e enviar a semana ----------
-function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent }) {
+function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent, planoLiberado }) {
   const ehModelo = !!modelo;
+  // Enviar como plano: a semana repetida por N semanas, com fases (fase 2, flag "plano").
+  const segundaEsta = planoSemanaChave(todayISO());
+  const segundaQueVem = addDays(segundaEsta, 7);
+  const [comoPlano, setComoPlano] = useState(false);
+  const [plSemanas, setPlSemanas] = useState(8);
+  const [plInicio, setPlInicio] = useState(weekdayOf(todayISO()) === 1 ? segundaEsta : segundaQueVem);
+  const [plProgressao, setPlProgressao] = useState(true);
+  // O aluno aplica automaticamente? (aviso antes de enviar)
+  const [alunoAuto, setAlunoAuto] = useState(false);
+  useEffect(() => {
+    if (ehModelo || aluno.status !== "ativo") return;
+    let vivo = true;
+    coachCall("coach_link_aceite_auto", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok) setAlunoAuto(r.data === true); });
+    return () => { vivo = false; };
+  }, [aluno.link_id]);
   const chaveRasc = `treino-app:coachRascunho:${aluno.link_id}`;
   const [sem, setSem] = useState(coachSemanaVazia);
   const [msg, setMsg] = useState("");
@@ -11823,7 +11985,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     (async () => {
       const pays = [];
       try { const { data } = await supabaseClient.from("coach_templates").select("*").order("created_at", { ascending: false }); (data || []).forEach((m) => m.payload && pays.push(m.payload)); } catch (e) {}
-      if (!ehModelo) { const e = await coachCall("coach_list_assignments", { p_link: aluno.link_id }); if (e.ok) (e.data || []).filter((x) => x.tipo === "semana").forEach((x) => x.payload && pays.push(x.payload)); }
+      if (!ehModelo) { const e = await coachCall("coach_list_assignments", { p_link: aluno.link_id }); if (e.ok) (e.data || []).forEach((x) => { if (x.tipo === "semana" && x.payload) pays.push(x.payload); else if (x.tipo === "plano" && x.payload && x.payload.semana) pays.push(x.payload.semana); }); }
       const vistos = new Set(); const out = [];
       pays.forEach((pl) => Object.values(pl.fichas || {}).forEach((f) => { const k = normalizeSearch(f.nome || ""); if (f.nome && !vistos.has(k)) { vistos.add(k); out.push(f); } }));
       if (vivo) setSalvas(out);
@@ -11921,13 +12083,15 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   async function enviar() {
     if (ehModelo) return salvarComoModeloAtual();
     setEnviando(true);
-    const item = { link_id: aluno.link_id, nome: aluno.nome, payload: sem, mensagem: msg.trim() || null, criado: Date.now() };
-    const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: "semana", p_payload: item.payload, p_mensagem: item.mensagem });
+    const plano = comoPlano && planoLiberado;
+    const payload = plano ? { semana: sem, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao } : sem;
+    const item = { link_id: aluno.link_id, nome: aluno.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
+    const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
     setEnviando(false);
     if (r.ok) {
       try { localStorage.removeItem(chaveRasc); } catch (e) {}
-      logEvent("coach_semana_enviada");
-      showToast(aluno.status === "pendente" ? `Semana guardada: chega pra ${primeiroNome} quando ele aceitar` : `Semana da ${primeiroNome} enviada`);
+      logEvent(plano ? "coach_plano_enviado" : "coach_semana_enviada");
+      showToast(aluno.status === "pendente" ? `${plano ? "Plano guardado" : "Semana guardada"}: chega pra ${primeiroNome} quando ele aceitar` : plano ? `Plano de ${plSemanas} semanas enviado para ${primeiroNome}` : `Semana da ${primeiroNome} enviada`);
       onEnviado(); onClose();
       return;
     }
@@ -12021,9 +12185,35 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       </div>
       <div className="gt-focus-footer gt-co-footer">
         <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
+        {!ehModelo && planoLiberado && (
+          <div className="gt-co-plano">
+            <div className="gt-co-perm">
+              <div className="tx"><div className="t">Enviar como plano</div><div className="d">Repetir por várias semanas. A cada 4 semanas, uma semana mais leve.</div></div>
+              <CoachSwitch checked={comoPlano} onChange={setComoPlano} label="Enviar como plano" semTexto />
+            </div>
+            {comoPlano && (() => {
+              const fases = Array.from({ length: plSemanas }, (_, w) => planoFaseDaSemana(w, plSemanas));
+              const dc = (d) => planoDataCurta(d).toLowerCase();
+              const sobem = COACH_ORDEM_DIAS.flatMap((dow) => (sem.dias[dow] || []).map((it) => (it.tipo === "atividade" ? coachCorridaNorm(it.corrida) : null)).filter((c) => c && c.modelo && c.distanciaKm).map((c) => `${c.titulo} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`));
+              return (
+                <>
+                  <div className="gt-field-label">Duração</div>
+                  <div className="gt-provas-filters" role="group" aria-label="Duração">{[4, 6, 8, 12].map((n) => <button key={n} type="button" className={`gt-provas-pill ${plSemanas === n ? "on" : ""}`} aria-pressed={plSemanas === n} onClick={() => setPlSemanas(n)}>{n} sem.</button>)}</div>
+                  <div className="gt-field-label">Início</div>
+                  <div className="gt-provas-filters" role="group" aria-label="Início">{[segundaEsta, segundaQueVem].map((d) => <button key={d} type="button" className={`gt-provas-pill ${plInicio === d ? "on" : ""}`} aria-pressed={plInicio === d} onClick={() => setPlInicio(d)}>{d === segundaEsta ? `Nesta semana (${dc(d)})` : `Na próxima (${dc(d)})`}</button>)}</div>
+                  <ol className="gt-ps-fases" aria-hidden="true">{fases.map((f, i) => <li key={i} className={planoFaseClasse(f)}><span>{i + 1}</span></li>)}</ol>
+                  <PlanoFasesLegenda semanas={fases.map((f) => ({ fase: f }))} />
+                  <div className="gt-co-plano-fim">Até {dc(addDays(plInicio, plSemanas * 7 - 1))}</div>
+                  {sobem.length > 0 && <label className="gt-ps-check"><input type="checkbox" checked={plProgressao} onChange={(e) => setPlProgressao(e.target.checked)} /> Corrida aumenta ~8% por semana <small>Aumentam: {sobem.join(", ")}. As outras corridas ficam iguais.</small></label>}
+                </>
+              );
+            })()}
+          </div>
+        )}
         {!ehModelo && <textarea className="gt-input" aria-label={`Mensagem para ${primeiroNome} (opcional)`} placeholder={`Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
+        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
-        <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
+        <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
       </div>
 
       {diaAberto != null && (
@@ -13626,7 +13816,7 @@ function CoachAgendaJanela({ janela, duracao, showToast, onClose, onSalvo }) {
   );
 }
 
-function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treinosProprios, atividadesProprias, showToast, logEvent, onInfo, onTrocar, onConfig, onSair, onAjuda, onFeedback, ativ, onAtivVisto, onNovosPendentes }) {
+function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treinosProprios, atividadesProprias, showToast, logEvent, onInfo, onTrocar, onConfig, onSair, onAjuda, onFeedback, ativ, onAtivVisto, onNovosPendentes, planoLiberado }) {
   const status = coachInfo.status || (coachInfo.liberado ? "ativo" : "suspenso");
   const ativo = status === "ativo";
   const [aba, setAba] = useState(() => (ativo ? "alunos" : "perfil"));
@@ -13661,7 +13851,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
     if (!fila.length || !ativo) return;
     const resto = [];
     for (const it of fila) {
-      const r = await coachCall("coach_send_assignment", { p_link: it.link_id, p_tipo: "semana", p_payload: it.payload, p_mensagem: it.mensagem });
+      const r = await coachCall("coach_send_assignment", { p_link: it.link_id, p_tipo: it.tipo || "semana", p_payload: it.payload, p_mensagem: it.mensagem });
       if (r.ok) showToast(`Semana da ${String(it.nome).split(" ")[0]} enviada`);
       else if (coachEhErroDeRede(r.raw)) resto.push(it);
       else showToast(`Não consegui enviar a semana de ${String(it.nome).split(" ")[0]}: ${r.erro}`);
@@ -13781,7 +13971,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
           onClose={() => { setAberto(null); carregar(); }} onMontar={() => setMontando(aberto)} />
       )}
       {montando && (
-        <CoachComposer aluno={{ ...montando, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
+        <CoachComposer planoLiberado={planoLiberado} aluno={{ ...montando, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
           onClose={() => setMontando(null)} onEnviado={() => { setFilaN(coachFilaLer().length); setRefreshKey((k) => k + 1); carregar(); }} />
       )}
       {modeloEd && (
@@ -15353,13 +15543,14 @@ function App() {
   // --- Plano de semanas (fase 2) ---
   const [planoNovoAberto, setPlanoNovoAberto] = useState(false);
   const planoSemanas = planoSemanasAtual(planos, todayISO());
+  const semanaPausada = planoSemanasAtivo(planos, todayISO());
   // Uma sessão de força conta como feita quando algum exercício da ficha foi feito naquele dia.
   function sessaoPlanoFeita(sx) {
     if (sx.tipo !== "treino") return sx.status === "feito";
     const l = (((sessions[sx.data] || {}).log) || {})[`treino:${sx.ref}`] || {};
     return Object.values(l).some((e) => e && e.status === "feito");
   }
-  function criarPlanoSemanas(plano, fichasNovas) {
+  function criarPlanoSemanas(plano, fichasNovas, opts) {
     const hoje = todayISO();
     // Só um plano de semanas por vez: o atual termina na véspera do novo (ou some, se nem começou).
     const outros = planos.flatMap((p) => {
@@ -15371,7 +15562,7 @@ function App() {
     savePlanos([...outros, plano]);
     setPlanoNovoAberto(false);
     logEvent(`plano_semanas_criado_${plano.origem}${plano.modelo ? "_" + plano.modelo : ""}`);
-    showToast(plano.inicio > hoje ? `Plano criado: começa ${planoDataCurta(plano.inicio)}` : "Plano criado");
+    if (!(opts && opts.silencioso)) showToast(plano.inicio > hoje ? `Plano criado: começa ${planoDataCurta(plano.inicio)}` : "Plano criado");
   }
   function mudarSessoesPlano(planoId, fn) {
     savePlanos(planos.map((p) => (p.id !== planoId ? p : { ...p, sessoes: fn(p.sessoes).slice().sort((a, b) => a.data.localeCompare(b.data)) })));
@@ -15622,6 +15813,7 @@ function App() {
 
   const treinoById = useCallback((id) => treinos.find((t) => t.id === id), [treinos]);
   const atividadeById = useCallback((id) => atividades.find((a) => a.id === id), [atividades]);
+  const nomeNaAgenda = useCallback((it) => { if (it.tipo === "treino") return (treinoById(it.id) || {}).nome || null; const a = atividadeById(it.id); return a && !a.descanso ? a.nome : null; }, [treinoById, atividadeById]);
 
   // --- Desafios: lista, check-ins automáticos e convite por link ---
   const desafioHoje = (() => {
@@ -15739,8 +15931,13 @@ function App() {
   const [coachConvite, setCoachConvite] = useState(() => { try { return localStorage.getItem("treino-app:coachInvite") || null; } catch (e) { return null; } });
   const [meuTreinadorOpen, setMeuTreinadorOpen] = useState(false);
   const [coachRevisao, setCoachRevisao] = useState(false);
+  const [coachPlanoAberto, setCoachPlanoAberto] = useState(false);
   const [coachBusy, setCoachBusy] = useState(false);
-  const [coachUndo, setCoachUndo] = useState(null);
+  // Desfazer: o manual some em 45 s; o do aceite automático fica no Hoje até o aluno tocar.
+  const [coachUndo, setCoachUndo] = useState(() => {
+    try { const u = JSON.parse(localStorage.getItem("treino-app:coachAvisoAuto") || "null"); return u && u.auto && Date.now() - u.em < 14 * 86400000 ? u : null; } catch (e) { return null; }
+  });
+  const [verSemanaFixa, setVerSemanaFixa] = useState(false);
   const coachVistos = useRef(new Set());
   const coachFlagsAtuais = coachFlags();
   const coachTem = !!coachInfo;
@@ -15803,12 +16000,70 @@ function App() {
     const abertos = coachAss.filter((s) => (s.status === "enviado" || s.status === "visto") && !ja.includes(s.id) && s.tipo === "semana");
     return abertos.slice(0, 1);
   }, [coachAss, coachUndo]);
+  // Plano de várias semanas do treinador (envio tipo "plano"): um por vez, o mais recente.
+  const coachPendPlano = useMemo(() => {
+    const ja = coachAplicadosLer();
+    return coachAss.find((s) => (s.status === "enviado" || s.status === "visto") && !ja.includes(s.id) && s.tipo === "plano" && coachPlanoNorm(s.payload)) || null;
+  }, [coachAss, coachUndo]);
   const coachPendDiff = useMemo(() => (coachPend[0] ? coachDiffSemana(coachPend[0].payload, treinos, schedule, coachPend[0].link_id, atividades) : null), [coachPend, treinos, schedule, atividades]);
   useEffect(() => {
     const s = coachPend[0];
     if (s && s.status === "enviado" && !coachVistos.current.has(s.id)) { coachVistos.current.add(s.id); coachCall("coach_decide_assignment", { p_id: s.id, p_status: "visto" }); }
   }, [coachPend]);
-  async function coachAplicar(ass, diff, dows, motivo, nRecusados) {
+  useEffect(() => {
+    const s = coachPendPlano;
+    if (s && s.status === "enviado" && !coachVistos.current.has(s.id)) { coachVistos.current.add(s.id); coachCall("coach_decide_assignment", { p_id: s.id, p_status: "visto" }); }
+  }, [coachPendPlano]);
+  // Aceitar o plano do treinador: as fichas e a semana dele entram como sempre (e ficam quando o
+  // plano acabar) e o plano de semanas passa a mandar nas datas.
+  async function coachAceitarPlano(ass, auto) {
+    const pl = coachPlanoSessoes(ass.payload, ass.link_id);
+    if (!pl) { showToast("Esse plano veio com um problema. Peça para o treinador enviar de novo."); return; }
+    setCoachBusy(true);
+    const antes = { treinos, schedule, atividades, planos };
+    const novo = coachAplicarSemana(pl.semana, { linkId: ass.link_id, assignmentId: ass.id, versao: ass.versao, coachNome: ass.coach_nome }, antes);
+    setTreinos(novo.treinos); persist("treinos", novo.treinos);
+    setSchedule(novo.schedule); persist("schedule", novo.schedule);
+    if (novo.atividades.length !== atividades.length) { setAtividades(novo.atividades); persist("atividades", novo.atividades); }
+    const nome = pl.nome || `Plano de ${ass.coach_nome}`;
+    criarPlanoSemanas({ id: planoIdNovo(), tipo: "semanas", versao: 2, nome, provaNome: nome, origem: "treinador", coachNome: ass.coach_nome, linkId: ass.link_id, assignmentId: ass.id, nivel: "intermediario", inicio: pl.inicio, semanas: pl.semanas, criadoEm: new Date().toISOString(), sessoes: pl.sessoes }, [], { silencioso: true });
+    try { localStorage.setItem("treino-app:coachAplicados", JSON.stringify([...coachAplicadosLer(), ass.id].slice(-50))); } catch (e) {}
+    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aceito", p_motivo: auto ? "Aceite automático" : null });
+    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aplicado" });
+    setCoachBusy(false); setCoachPlanoAberto(false);
+    logEvent(auto ? "coach_plano_aceito_auto" : "coach_plano_aceito");
+    coachGuardarUndo({ antes, ass: coachAssResumo(ass), em: Date.now(), auto: !!auto, semanas: pl.semanas, fim: addDays(pl.inicio, pl.semanas * 7 - 1) });
+    showToast(`Plano de ${ass.coach_nome} aplicado`);
+    setCoachAss((l) => l.map((s) => (s.id === ass.id ? { ...s, status: "aplicado" } : s)));
+  }
+  async function coachRecusarPlano(ass, motivo) {
+    setCoachBusy(true);
+    try { localStorage.setItem("treino-app:coachAplicados", JSON.stringify([...coachAplicadosLer(), ass.id].slice(-50))); } catch (e) {}
+    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "recusado", p_motivo: motivo || null });
+    setCoachBusy(false); setCoachPlanoAberto(false);
+    logEvent("coach_plano_recusado");
+    showToast("Plano recusado. Seu treino continua como estava");
+    setCoachAss((l) => l.map((s) => (s.id === ass.id ? { ...s, status: "recusado" } : s)));
+  }
+  // Aceite automático (opção do aluno no vínculo): aplica o que chegar, com aviso e "Desfazer".
+  const coachAutoFeito = useRef(new Set());
+  useEffect(() => {
+    const link = (coachLinks || [])[0];
+    if (!link || !link.aceite_auto || link.status !== "ativo" || coachBusy) return;
+    const plano = coachPendPlano && coachPendPlano.link_id === link.link_id ? coachPendPlano : null;
+    const semana = coachPend[0] && coachPend[0].link_id === link.link_id ? coachPend[0] : null;
+    const alvo = plano || semana;
+    if (!alvo || coachAutoFeito.current.has(alvo.id)) return;
+    coachAutoFeito.current.add(alvo.id);
+    if (plano) coachAceitarPlano(plano, true);
+    else if (coachPendDiff) coachAplicar(semana, coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0, true);
+  }, [coachLinks, coachPendPlano, coachPend, coachPendDiff, coachBusy]);
+  function coachAssResumo(ass) { return { id: ass.id, tipo: ass.tipo, coach_nome: ass.coach_nome, link_id: ass.link_id }; }
+  function coachGuardarUndo(u) {
+    setCoachUndo(u);
+    try { if (u && u.auto) localStorage.setItem("treino-app:coachAvisoAuto", JSON.stringify(u)); else localStorage.removeItem("treino-app:coachAvisoAuto"); } catch (e) {}
+  }
+  async function coachAplicar(ass, diff, dows, motivo, nRecusados, auto) {
     setCoachBusy(true);
     const mudaDows = diff.grupos.filter((g) => g.mudou).map((g) => g.dow);
     const aceitosMud = dows.filter((d) => mudaDows.includes(d));
@@ -15825,18 +16080,19 @@ function App() {
     if (aplicar) await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aplicado" });
     setCoachBusy(false); setCoachRevisao(false);
     logEvent(aplicar ? "coach_semana_aceita" : "coach_semana_recusada");
-    if (aplicar) { setCoachUndo({ antes, ass, em: Date.now() }); showToast(`Semana de ${ass.coach_nome} aplicada`); } else showToast("Atualização recusada. Seu treino continua como estava");
+    if (aplicar) { coachGuardarUndo({ antes, ass: coachAssResumo(ass), em: Date.now(), auto: !!auto }); showToast(`Semana de ${ass.coach_nome} aplicada`); } else showToast("Atualização recusada. Seu treino continua como estava");
     setCoachAss((l) => l.map((s) => (s.id === ass.id ? { ...s, status: aplicar ? "aplicado" : "recusado" } : s)));
   }
   async function coachDesfazer() {
     if (!coachUndo) return;
     updateTreinos(coachUndo.antes.treinos); updateSchedule(coachUndo.antes.schedule); updateAtividades(coachUndo.antes.atividades);
+    if (coachUndo.antes.planos) savePlanos(coachUndo.antes.planos);
     await coachCall("coach_decide_assignment", { p_id: coachUndo.ass.id, p_status: "recusado", p_motivo: "Desfeito pelo aluno" });
     try { localStorage.setItem("treino-app:coachAplicados", JSON.stringify(coachAplicadosLer().filter((x) => x !== coachUndo.ass.id))); } catch (e) {}
-    setCoachUndo(null); showToast("Mudanças desfeitas"); carregarCoachAluno();
+    coachGuardarUndo(null); showToast("Mudanças desfeitas"); carregarCoachAluno();
   }
   useEffect(() => {
-    if (!coachUndo) return;
+    if (!coachUndo || coachUndo.auto) return;
     const t = setTimeout(() => setCoachUndo(null), 45000);
     return () => clearTimeout(t);
   }, [coachUndo]);
@@ -16862,7 +17118,7 @@ function App() {
       )}
 
       {modoCoach && (
-        <CoachApp onAtualizar={() => Promise.all([carregarAtiv(), recarregarCoachInfo()])} nomePessoal={displayName} onNome={handleSaveDisplayName} coachInfo={coachInfo} session={session} treinosProprios={treinos} atividadesProprias={atividades} showToast={showToast} logEvent={logEvent}
+        <CoachApp planoLiberado={planoLiberado} onAtualizar={() => Promise.all([carregarAtiv(), recarregarCoachInfo()])} nomePessoal={displayName} onNome={handleSaveDisplayName} coachInfo={coachInfo} session={session} treinosProprios={treinos} atividadesProprias={atividades} showToast={showToast} logEvent={logEvent}
           onInfo={(d) => setCoachInfo(d)} onTrocar={() => setModo("aluno")} onConfig={() => setSettingsOpen(true)} onSair={handleLogout} onAjuda={() => setHelpOpen(true)} onFeedback={() => setFeedbackOpen(true)}
           ativ={{ itens: ativItens || [], carregando: ativItens === null && coachAtivo, offline: ativOff, visto: ativVisto, n: ativN }} onAtivVisto={ativMarcarVisto} />
       )}
@@ -16894,8 +17150,17 @@ function App() {
               </div>
             ))}
             {coachUndo && (
-              <div className="gt-co-desfazer" role="status"><span>Semana de {coachUndo.ass.coach_nome} aplicada.</span><button type="button" className="gt-co-mini" onClick={coachDesfazer}>Desfazer</button></div>
+              <div className="gt-co-desfazer" role="status">
+                <span>{coachUndo.auto
+                  ? (coachUndo.ass.tipo === "plano" ? `${coachUndo.ass.coach_nome} mudou seu treino: plano de ${coachUndo.semanas} semanas, até ${planoDataCurta(coachUndo.fim).slice(4)}.` : `${coachUndo.ass.coach_nome} mudou sua semana.`)
+                  : `${coachUndo.ass.tipo === "plano" ? "Plano" : "Semana"} de ${coachUndo.ass.coach_nome} aplicad${coachUndo.ass.tipo === "plano" ? "o" : "a"}.`}</span>
+                <span className="ac">
+                  {coachUndo.auto && <button type="button" className="gt-co-mini" onClick={() => { coachGuardarUndo(null); setTab("treinos"); }}>Ver</button>}
+                  <button type="button" className="gt-co-mini" onClick={coachDesfazer}>Desfazer</button>
+                </span>
+              </div>
             )}
+            {coachPendPlano && <CoachPlanoRecebidoCard ass={coachPendPlano} busy={coachBusy} onVer={() => setCoachPlanoAberto(true)} />}
             {coachPend[0] && coachPendDiff && (
               <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
@@ -17301,7 +17566,7 @@ function App() {
 
         {tab === "treinos" && (
           <div>
-            {planoLiberado && (
+            {(planoLiberado || planoSemanas) && (
               <>
                 <div className="gt-section-title">MEU PLANO</div>
                 {planoSemanas ? (
@@ -17324,15 +17589,25 @@ function App() {
                 )}
               </>
             )}
-            <div className="gt-section-title">{planoLiberado && planoSemanasAtivo(planos, todayISO()) ? `SUA SEMANA · PAUSADA ATÉ ${planoDataCurta(planoFimSemanas(planoSemanasAtivo(planos, todayISO()))).slice(4)}` : "SUA SEMANA"}</div>
-            {planoLiberado && planoSemanasAtivo(planos, todayISO()) && <div className="gt-ps-fixa-nota">Enquanto o plano dura, as fichas e a corrida daqui ficam de lado. Voltam sozinhas quando ele acabar; outras atividades continuam.</div>}
-            {DIAS.map((dia, idx) => {
+            <div className="gt-section-title">SUA SEMANA</div>
+            {semanaPausada && (() => {
+              const { fica } = planoSaiFica(schedule, nomeNaAgenda, semanaPausada.origem === "treinador");
+              return (
+                <div className="gt-card gt-ps-fixa-nota">
+                  <div className="gt-ps-fixa-fechada">
+                    <span>Sua semana volta em {planoDataCurta(addDays(planoFimSemanas(semanaPausada), 1)).slice(4)}.{fica.length ? ` Continua: ${fica.join(", ")}.` : ""}</span>
+                    <button type="button" className="gt-link-btn" aria-expanded={verSemanaFixa} onClick={() => setVerSemanaFixa(!verSemanaFixa)}>{verSemanaFixa ? "Esconder ▾" : "Ver como era ▸"}</button>
+                  </div>
+                </div>
+              );
+            })()}
+            {(!semanaPausada || verSemanaFixa) && DIAS.map((dia, idx) => {
               const itens = (schedule[idx] || []).map((it) => ({ it, nome: it.tipo === "treino" ? treinoById(it.id)?.nome : atividadeById(it.id)?.nome, descanso: it.tipo === "atividade" && !!atividadeById(it.id)?.descanso })).filter((x) => x.nome);
                             return (
                 <div className={`gt-card gt-ag-card ${itens.length === 0 ? "vazio" : ""} ${idx === weekdayOf(todayISO()) ? "hoje" : ""}`} key={idx}>
                   <div className="gt-ag-head">
                     <span className="day-lbl">{dia}{idx === weekdayOf(todayISO()) && <span className="gt-hoje-pill">HOJE</span>}{itens.length === 0 && <span className="gt-ag-empty-inline">Descanso</span>}</span>
-                    <button type="button" className="gt-ag-add" aria-label={`Adicionar em ${dia}`} onClick={() => { setSheetDay(idx); setSheetBusca(""); setSheetNova(null); }}>＋</button>
+                    {!semanaPausada && <button type="button" className="gt-ag-add" aria-label={`Adicionar em ${dia}`} onClick={() => { setSheetDay(idx); setSheetBusca(""); setSheetNova(null); }}>＋</button>}
                   </div>
                                     {itens.map(({ it, nome, descanso }) => {
                     const k = `${idx}:${it.tipo}:${it.id}`;
@@ -17348,7 +17623,7 @@ function App() {
                             ? <span className="gt-ag-sub">{doPlano.sessao.titulo} · {prox.slice(8, 10)}/{prox.slice(5, 7)} · do plano</span>
                             : <span className="gt-ag-sub">Corrida livre · <button type="button" className="gt-ag-link" onClick={() => setTreinoCorrida({ data: prox })}>Planejar</button></span>)}
                         </span>
-                        {agMenu === k
+                        {semanaPausada ? null : agMenu === k
                           ? <><button type="button" className="gt-ag-rm" onClick={() => { removeFromAgenda(idx, it); setAgMenu(null); showToast(`${nome} saiu de ${dia}`); }}>Remover</button><button type="button" className="gt-ag-more" aria-label="Cancelar" onClick={() => setAgMenu(null)}>✕</button></>
                           : <button type="button" className="gt-ag-more" aria-label={`Opções de ${nome}`} onClick={() => setAgMenu(k)}>⋯</button>}
                       </div>
@@ -17813,6 +18088,9 @@ function App() {
       )}
       {coachRevisao && coachPend[0] && coachPendDiff && (
         <CoachRevisaoModal ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onClose={() => setCoachRevisao(false)} onConfirmar={(dows, motivo, nRec) => coachAplicar(coachPend[0], coachPendDiff, dows, motivo, nRec)} />
+      )}
+      {coachPlanoAberto && coachPendPlano && (
+        <CoachPlanoRevisaoModal ass={coachPendPlano} schedule={schedule} nomeDe={nomeNaAgenda} busy={coachBusy} onClose={() => setCoachPlanoAberto(false)} onAceitar={() => coachAceitarPlano(coachPendPlano)} onRecusar={(m) => coachRecusarPlano(coachPendPlano, m)} />
       )}
 
       {toast && <div className="gt-toast" role="status" aria-live="polite">{toast}</div>}
@@ -20154,7 +20432,7 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
       <div className="gt-ps-top">
         <div>
           <div className="gt-ps-nome">{plano.nome}</div>
-          <div className="gt-ps-sub">{plano.semanas} semanas · {hoje < plano.inicio ? `começa ${planoDataCurta(plano.inicio)}` : `até ${planoDataCurta(fim)}`}</div>
+          <div className="gt-ps-sub">{plano.origem === "treinador" && plano.coachNome && !String(plano.nome).includes(plano.coachNome) ? `De ${plano.coachNome} · ` : ""}{hoje < plano.inicio ? `Começa ${planoDataCurta(plano.inicio).toLowerCase()} · até ${planoDataCurta(fim).slice(4)}` : `${plano.semanas} semanas · até ${planoDataCurta(fim).toLowerCase()}`}</div>
         </div>
         <button type="button" className="gt-ps-mais" aria-label="Opções do plano" aria-expanded={acoes} onClick={() => setAcoes(!acoes)}>⋯</button>
       </div>
@@ -20187,10 +20465,10 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
             <li key={k} className={`${x.feito ? "feito" : ""} ${x.data === hoje ? "hoje" : ""}`}>
               {x.tipo === "treino"
                 ? <button type="button" className="linha" onClick={() => onAbrirFicha(x)}>{nome}<span className="seta" aria-hidden="true">›</span></button>
-                : <div className="linha">{nome}</div>}
+                : <div className="linha">{nome}<span className="seta" aria-hidden="true" /></div>}
               {x.feito ? <span className="st ok" aria-label="feito">✓</span>
                 : x.status === "pulou" ? <span className="st pulou">pulou</span>
-                : passou ? <span className="st" aria-label="não feito">–</span>
+                : passou ? <span className="st">Passou</span>
                 : <button type="button" className="gt-ag-more" aria-label={`Opções de ${x.titulo}`} onClick={() => setMenu(menu === k ? null : k)}>⋯</button>}
               {menu === k && (
                 <div className="gt-ps-menu">

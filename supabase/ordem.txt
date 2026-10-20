@@ -69,3 +69,4 @@ client_errors_revisao.sql
 admin_m_relatos.sql
 painel_gestao.sql
 recado_email.sql
+coach_plano.sql
