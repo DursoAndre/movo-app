@@ -2164,113 +2164,133 @@ function logExercicioLivre(nome, origem) {
   } catch (e) {}
 }
 
-function ExercisePickerModal({ search, setSearch, grupo, setGrupo, isAdded, onAdd, canRemove, onRemove, onClose }) {
-  const q = normalizeSearch(search);
-  const filtered = EXERCISE_CATALOG_FLAT.filter((ex) => (q
-    ? exercicioCombinaBusca(ex.nome, search)
-    : ex.grupo === grupo));
-  const porNome = q ? EXERCISE_CATALOG_FLAT.filter((ex) => normalizeSearch(ex.nome).includes(q.trim())) : [];
-  const termoLivre = search.trim().replace(/\s+/g, " ").slice(0, 60);
-  const podeCriarLivre = !!termoLivre && !EXERCISE_CATALOG_FLAT.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(termoLivre));
-  const nomeLivre = termoLivre.charAt(0).toUpperCase() + termoLivre.slice(1);
+// Seletor de exercícios em tela cheia. Com onConfirm, é em lote: tocar marca, tocar de novo
+// desmarca, o número é a ordem em que entram, e nada vai para a ficha até "Adicionar N".
+// Sem onConfirm (treino de hoje, treinador), cada toque adiciona na hora, como antes.
+function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, canRemove, onRemove, onClose, titulo }) {
+  const lote = typeof onConfirm === "function";
+  const [filtro, setFiltro] = useState("Todos");
+  const [sel, setSel] = useState([]);
   const [okLivre, setOkLivre] = useState("");
-  const livreJaAdicionado = podeCriarLivre && isAdded({ nome: nomeLivre });
+  const chipsRef = useRef(null);
+  const q = normalizeSearch(search).trim();
+  const grupos = CATALOG_GRUPOS.filter((g) => EXERCISE_CATALOG_FLAT.some((e) => e.grupo === g.label));
+  const visiveis = q ? EXERCISE_CATALOG_FLAT.filter((ex) => exercicioCombinaBusca(ex.nome, search))
+    : filtro === "Todos" ? EXERCISE_CATALOG_FLAT : EXERCISE_CATALOG_FLAT.filter((ex) => ex.grupo === filtro);
+  // Na busca, quem começa com o termo vem primeiro, depois quem contém, depois sinônimos.
+  const lista = q ? visiveis.map((ex, i) => { const n = normalizeSearch(ex.nome); return { ex, r: n.startsWith(q) ? 0 : n.includes(q) ? 1 : 2, i }; }).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.ex) : visiveis;
+  const termoLivre = search.trim().replace(/\s+/g, " ").slice(0, 60);
+  const nomeLivre = termoLivre.charAt(0).toUpperCase() + termoLivre.slice(1);
+  const podeCriarLivre = !!termoLivre && !EXERCISE_CATALOG_FLAT.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(termoLivre));
+  const chave = (ex) => normalizeSearch(ex.nome);
+  const posSel = (ex) => sel.findIndex((s) => chave(s) === chave(ex));
+  const livreObj = { nome: nomeLivre, series: 3, repeticoes: "10-12", grupo: "Outros", descricao: "", videoUrl: "", livre: true };
+  const livreJa = podeCriarLivre && (isAdded({ nome: nomeLivre }) || posSel(livreObj) >= 0);
 
-  // Cria o exercício com o nome digitado (vale pelo botão e pelo "OK"/Enter do teclado).
-  function adicionarLivre() {
-    if (!podeCriarLivre || livreJaAdicionado) return;
+  function alternar(ex) {
+    const i = posSel(ex);
+    if (i >= 0) setSel(sel.filter((_, k) => k !== i));
+    else setSel([...sel, ex]);
+  }
+  function tocar(ex) {
+    const added = isAdded(ex);
+    if (lote) { if (!added) alternar(ex); return; }
+    const removable = added && canRemove && canRemove(ex);
+    if (removable) onRemove(ex); else if (!added) onAdd(ex);
+  }
+  function criarLivre() {
+    if (!podeCriarLivre || livreJa) return;
     logExercicioLivre(nomeLivre);
-    onAdd({ nome: nomeLivre, series: 3, repeticoes: "10-12", grupo: "Outros", descricao: "", videoUrl: "" });
-    setOkLivre(nomeLivre);
+    if (lote) setSel([...sel, livreObj]);
+    else { onAdd(livreObj); setOkLivre(nomeLivre); }
     setSearch("");
   }
-  function aoTeclar(e) {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    // "OK" do teclado: se só um exercício do catálogo tem esse nome, adiciona ele; se nenhum tem
-    // (resultados só por sinônimo não contam), cria o exercício com o que foi digitado.
-    if (!q.trim()) return;
-    if (porNome.length === 1) { if (!isAdded(porNome[0])) onAdd(porNome[0]); setSearch(""); return; }
-    if (porNome.length === 0) adicionarLivre();
+  function sair() {
+    if (lote && sel.length && !confirm(`Descartar ${sel.length === 1 ? "1 exercício escolhido" : `${sel.length} exercícios escolhidos`}?`)) return;
+    onClose();
+  }
+  function escolherFiltro(label, el) {
+    setFiltro(label);
+    try { el.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch (e) { /* ignore */ }
   }
 
-  function renderChips(grupos) {
+  function linha(ex, i, comGrupo) {
+    const added = isAdded(ex);
+    const pos = posSel(ex);
+    const removable = !lote && added && canRemove && canRemove(ex);
+    const meta = [comGrupo ? ex.grupo : "", /cada (perna|lado|bra)/i.test(ex.repeticoes || "") ? (ex.repeticoes.match(/cada \S+/i) || [""])[0] : ""].filter(Boolean).join(" · ");
     return (
-      <div className="gt-grupo-chips">
-        {grupos.map((g) => (
-          <button
-            key={g.key}
-            type="button"
-            className={`gt-grupo-chip ${grupo === g.label ? "active" : ""}`}
-            onClick={() => setGrupo(g.label)}
-          >
-            {g.label} <span className="gt-grupo-chip-count">{CATALOG_GRUPO_COUNTS[g.label] || 0}</span>
-          </button>
-        ))}
-      </div>
+      <button type="button" key={`${ex.nome}-${i}`} className={`gt-xp-row ${pos >= 0 ? "sel" : ""} ${added ? "na-ficha" : ""}`}
+        aria-pressed={lote ? pos >= 0 : undefined} disabled={added && !removable} onClick={() => tocar(ex)}>
+        <span className="gt-xp-row-main">
+          <span className="gt-xp-row-nome">{ex.nome}</span>
+          {meta && <span className="gt-xp-row-meta">{meta}</span>}
+        </span>
+        {added ? <span className="gt-xp-tag">{removable ? "Tirar" : lote ? "NA FICHA" : "✓"}</span>
+          : <span className={`gt-xp-marca ${pos >= 0 ? "on" : ""}`} aria-hidden="true">{pos >= 0 ? pos + 1 : "+"}</span>}
+      </button>
     );
   }
 
-  return (
-    <div className="gt-modal-backdrop" onClick={onClose}>
-      <div className="gt-modal gt-exercise-picker" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h3>Adicionar exercício</h3>
-        <input
-          className="gt-input"
-          placeholder="Buscar exercício…"
-          value={search}
-          enterKeyHint={porNome.length === 0 && podeCriarLivre ? "done" : "search"}
-          onChange={(e) => { setSearch(e.target.value); if (okLivre) setOkLivre(""); }}
-          onKeyDown={aoTeclar}
-        />
-        {okLivre && !search.trim() && <div className="gt-exercise-ok">✓ "{okLivre}" adicionado ao treino</div>}
+  let corpo;
+  if (q) {
+    corpo = (
+      <>
+        {lista.map((ex, i) => linha(ex, i, true))}
+        {lista.length === 0 && podeCriarLivre && <div className="gt-xp-vazio">Nada com "{termoLivre}". Crie com esse nome:</div>}
+        {lista.length === 0 && !podeCriarLivre && <div className="gt-xp-vazio">Nada encontrado.</div>}
         {podeCriarLivre && (
-          <button type="button" className="gt-exercise-row gt-exercise-row-livre" onClick={adicionarLivre} disabled={livreJaAdicionado}>
-            <div className="gt-exercise-row-main">
-              <div className="gt-exercise-row-nome">{livreJaAdicionado ? `✓ "${nomeLivre}" já está no treino` : `+ Adicionar "${termoLivre}" como novo exercício`}</div>
-              <div className="gt-exercise-row-meta">{filtered.length === 0 ? "Não está no catálogo. " : ""}Cria um exercício livre · 3x 10-12 (dá pra mudar depois)</div>
-            </div>
+          <button type="button" className="gt-xp-row gt-xp-livre" disabled={livreJa} onClick={criarLivre}>
+            <span className="gt-xp-row-main">
+              <span className="gt-xp-row-nome">{livreJa ? `"${nomeLivre}" já escolhido` : `Criar "${nomeLivre}"`}</span>
+              <span className="gt-xp-row-meta">Exercício seu · 3x 10-12</span>
+            </span>
+            <span className="gt-xp-marca" aria-hidden="true">+</span>
           </button>
         )}
-        {!search.trim() && (
-          <>
-            <div className="gt-grupo-chips-label">GRUPO MUSCULAR</div>
-            {renderChips(CATALOG_GRUPOS_MUSCULARES)}
-            <div className="gt-grupo-chips-label">OUTRAS CATEGORIAS</div>
-            {renderChips(CATALOG_GRUPOS_OUTROS)}
-          </>
+      </>
+    );
+  } else if (filtro === "Todos") {
+    corpo = grupos.map((g) => (
+      <section key={g.key} className="gt-xp-sec">
+        <div className="gt-xp-sec-hd">{g.label.toUpperCase()}</div>
+        {EXERCISE_CATALOG_FLAT.filter((e) => e.grupo === g.label).map((ex, i) => linha(ex, i, false))}
+      </section>
+    ));
+  } else {
+    corpo = lista.map((ex, i) => linha(ex, i, false));
+  }
+
+  return (
+    <div className="gt-focus gt-xp" role="dialog" aria-modal="true" aria-label={titulo || "Adicionar exercícios"}>
+      <div className="gt-focus-header">
+        <button className="gt-focus-close" aria-label="Voltar" onClick={sair}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">{titulo || "Adicionar exercícios"}</div></div>
+      </div>
+      <div className="gt-xp-topo">
+        <div className="gt-xp-busca">
+          <input className="gt-input" type="search" placeholder="Buscar exercício" aria-label="Buscar exercício" value={search} enterKeyHint="search"
+            onChange={(e) => { setSearch(e.target.value); if (okLivre) setOkLivre(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }} />
+          {search && <button type="button" className="gt-xp-limpar" aria-label="Limpar busca" onClick={() => setSearch("")}>✕</button>}
+        </div>
+        {!q && (
+          <div className="gt-xp-chips" ref={chipsRef} role="tablist" aria-label="Filtrar por grupo">
+            {["Todos", ...grupos.map((g) => g.label)].map((l) => (
+              <button key={l} type="button" role="tab" aria-selected={filtro === l} className={`gt-xp-chip ${filtro === l ? "on" : ""}`} onClick={(e) => escolherFiltro(l, e.currentTarget)}>{l}</button>
+            ))}
+          </div>
         )}
-        <div className="gt-exercise-list">
-          {filtered.length === 0 && (
-            <div className="gt-empty">
-              Nenhum exercício encontrado{search.trim() ? ` pra "${search.trim()}"` : ""}. Tenta outro termo ou escolhe um grupo acima.
-            </div>
-          )}
-          {filtered.map((ex, i) => {
-            const added = isAdded(ex);
-            // Exercício adicionado agora há pouco (só no treino de hoje) dá
-            // pra desfazer tocando de novo — quem errou o toque na busca
-            // resolve ali mesmo, sem procurar o botão dentro do exercício.
-            const removable = added && canRemove && canRemove(ex);
-            return (
-              <button
-                type="button"
-                key={`${ex.nome}-${i}`}
-                className={`gt-exercise-row ${added ? "added" : ""}`}
-                onClick={() => (removable ? onRemove(ex) : added ? null : onAdd(ex))}
-              >
-                <div className="gt-exercise-row-main">
-                  <div className="gt-exercise-row-nome">{ex.nome}</div>
-                  <div className="gt-exercise-row-meta">{ex.grupo} · {ex.series}x {ex.repeticoes}{ex.videoUrl ? <> · <Ei e="🎥" /></> : ""}{removable ? " · toque pra remover" : ""}</div>
-                </div>
-                <div className="gt-exercise-row-add">{removable ? "✕" : added ? "✓" : "+"}</div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="gt-modal-actions">
-          <button className="gt-btn" onClick={onClose}>Concluir</button>
-        </div>
+      </div>
+      <div className="gt-focus-body gt-xp-lista">
+        {okLivre && !q && <div className="gt-exercise-ok">✓ "{okLivre}" adicionado</div>}
+        {corpo}
+        <div style={{ height: 24 }} />
+      </div>
+      <div className="gt-focus-footer">
+        {lote
+          ? <button className="gt-btn" disabled={!sel.length} onClick={() => onConfirm(sel)}>{!sel.length ? "Escolha os exercícios" : sel.length === 1 ? "Adicionar 1 exercício" : `Adicionar ${sel.length} exercícios`}</button>
+          : <button className="gt-btn" onClick={onClose}>Concluir</button>}
       </div>
     </div>
   );
@@ -3020,6 +3040,49 @@ const APP_CSS = `
 
   /* Seletor de exercícios do catálogo */
   .gt-exercise-picker { max-height:88vh; display:flex; flex-direction:column; }
+  .gt-xp { z-index:60; }
+  .gt-fx-lista { display:flex; flex-direction:column; }
+  .gt-fx-ex { border-bottom:1px solid var(--border); }
+  .gt-fx-linha { display:flex; align-items:center; gap:8px; min-height:56px; }
+  .gt-fx-num { width:22px; flex-shrink:0; font-family:'Roboto Mono',monospace; font-size:13px; color:var(--accent); text-align:center; }
+  .gt-fx-nome { flex:1; min-width:0; background:none; border:none; color:var(--text); font-family:inherit; font-size:15px; line-height:1.3; text-align:left; padding:8px 0; cursor:pointer; }
+  .gt-fx-linha .gt-bl-rx { width:92px; flex-shrink:0; min-height:40px; padding:6px 8px; text-align:center; font-family:'Roboto Mono',monospace; font-size:13px; margin:0; }
+  .gt-fx-mais { width:40px; height:44px; flex-shrink:0; background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; }
+  .gt-fx-menu { display:flex; flex-wrap:wrap; gap:8px; padding:0 0 12px 30px; }
+  .gt-fx-menu button { min-height:40px; padding:8px 14px; border-radius:20px; background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-family:inherit; font-size:14px; cursor:pointer; }
+  .gt-fx-menu button:disabled { opacity:0.4; cursor:default; }
+  .gt-fx-menu button.perigo { color:var(--danger, #ff6b5b); }
+  .gt-fx-biset { border-left:2px solid var(--accent); margin:6px 0; padding-left:8px; }
+  .gt-fx-biset-hd { display:flex; align-items:center; justify-content:space-between; font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.04em; color:var(--accent); text-transform:uppercase; padding-top:6px; }
+  .gt-fx-biset-hd button { background:none; border:none; color:var(--text-muted); font-family:inherit; font-size:12px; text-transform:uppercase; min-height:36px; cursor:pointer; }
+  .gt-fx-desfazer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0; padding:8px 8px 8px 12px; border-radius:var(--radius); background:var(--surface-2); border:1px solid var(--border); font-size:14px; }
+  .gt-fx-desfazer button { background:none; border:none; color:var(--accent); font-family:'Oswald',sans-serif; font-size:14px; min-height:36px; padding:0 8px; cursor:pointer; }
+  .gt-fx .gt-add-extra-card { margin-top:14px; }
+  .gt-fx-mais-opcoes { display:block; margin:14px 0 4px; background:none; border:none; color:var(--text-muted); font-family:'Roboto Mono',monospace; font-size:13px; padding:8px 0; min-height:40px; cursor:pointer; }
+  .gt-fx-opcoes { padding:4px 0 8px; }
+  .gt-fx-opcoes .gt-bl-param { margin-bottom:14px; }
+  .gt-xp-topo { padding:0 14px 6px; flex-shrink:0; }
+  .gt-xp-busca { position:relative; }
+  .gt-xp-busca .gt-input { padding-right:44px; }
+  .gt-xp-busca input::-webkit-search-cancel-button { display:none; }
+  .gt-xp-limpar { position:absolute; right:4px; top:50%; transform:translateY(-50%); width:40px; height:40px; background:none; border:none; color:var(--text-muted); font-size:15px; cursor:pointer; }
+  .gt-xp-chips { display:flex; gap:8px; overflow-x:auto; margin:10px -14px 0; padding:0 14px 4px; scrollbar-width:none; }
+  .gt-xp-chips::-webkit-scrollbar { display:none; }
+  .gt-xp-chip { flex-shrink:0; min-height:40px; padding:8px 14px; border-radius:20px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); font-family:'Roboto Mono',monospace; font-size:13px; white-space:nowrap; cursor:pointer; }
+  .gt-xp-chip.on { border-color:var(--accent); color:var(--accent); background:rgba(198,241,53,0.08); }
+  .gt-xp-lista { padding:0 14px; }
+  .gt-xp-sec-hd { position:sticky; top:0; z-index:1; background:var(--bg); font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.06em; color:var(--text-muted); padding:14px 0 6px; }
+  .gt-xp-row { display:flex; align-items:center; gap:12px; width:100%; min-height:56px; padding:8px 2px; background:none; border:none; border-bottom:1px solid var(--border); color:var(--text); font-family:inherit; text-align:left; cursor:pointer; }
+  .gt-xp-row:disabled { cursor:default; }
+  .gt-xp-row-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .gt-xp-row-nome { font-size:15px; line-height:1.3; }
+  .gt-xp-row-meta { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); }
+  .gt-xp-marca { flex-shrink:0; width:28px; height:28px; border-radius:50%; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:16px; }
+  .gt-xp-marca.on { background:var(--accent); border-color:var(--accent); color:#14161A; font-family:'Roboto Mono',monospace; font-size:13px; font-weight:700; }
+  .gt-xp-tag { flex-shrink:0; font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:0.04em; color:var(--text-muted); }
+  .gt-xp-row.na-ficha .gt-xp-row-nome { color:var(--text-muted); }
+  .gt-xp-livre .gt-xp-row-nome { color:var(--accent); }
+  .gt-xp-vazio { color:var(--text-muted); font-size:14px; padding:16px 2px 4px; }
   .gt-grupo-chips-label { font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.04em; color:var(--text-muted); margin:10px 0 4px; }
   .gt-grupo-chips-label:first-of-type { margin-top:10px; }
   .gt-grupo-chips { display:flex; gap:6px; overflow-x:auto; margin:0 0 4px; padding-bottom:2px; }
@@ -15925,7 +15988,7 @@ function App() {
     }, 300);
   }, [showToast, syncMarcarMudanca]);
 
-  const updateTreinos = (next) => { setTreinos(next); persist("treinos", next, "Treino salvo"); };
+  const updateTreinos = (next) => { setTreinos(next); persist("treinos", next, "Ficha salva"); };
 
   // Catálogo do banco mudou (admin aprovou algo): re-renderiza e aplica o backfill nas fichas da pessoa.
   const [catalogoTick, setCatalogoTick] = useState(0);
@@ -16823,7 +16886,7 @@ function App() {
   function startManualBuilderBlank() {
     setNovoTreinoChooserOpen(false);
     setBuilderEditingId(null);
-    const inicial = [{ nome: "", duracaoMin: null, notas: "", blocos: [] }];
+    const inicial = [{ nome: "", nomeAuto: true, duracaoMin: null, notas: "", blocos: [] }];
     setBuilderTreinos(inicial);
     setBuilderSnapshot(JSON.stringify(inicial));
     setBuilderIndex(0);
@@ -16939,7 +17002,7 @@ function App() {
   }
 
   function builderValidate() {
-    const semNome = builderTreinos.findIndex((t) => !t.nome || !t.nome.trim());
+    const semNome = builderTreinos.findIndex((t) => !t.nomeAuto && (!t.nome || !t.nome.trim()));
     if (semNome !== -1) return `Dá um nome pro treino ${builderTreinos.length > 1 ? `#${semNome + 1}` : ""}`.trim();
     const semExercicio = builderTreinos.findIndex((t) => t.blocos.every(blocoVazio));
     if (semExercicio !== -1) return `Adiciona pelo menos um exercício no treino "${builderTreinos[semExercicio].nome}"`;
@@ -16949,14 +17012,14 @@ function App() {
   function builderSave() {
     const erro = builderValidate();
     if (erro) { showToast(erro); return; }
-    const prontos = builderTreinos.map((t) => ({ ...t, blocos: t.blocos.filter((b) => !blocoVazio(b)) }));
+    const prontos = builderTreinos.map(({ nomeAuto, ...t }) => ({ ...t, nome: nomeAuto || !String(t.nome || "").trim() ? fichaNomeSugerido(t.blocos, treinos) : t.nome, blocos: t.blocos.filter((b) => !blocoVazio(b)) }));
     if (builderEditingId) {
       const normalized = normalizeImportedTreino(prontos[0], treinos.filter((t) => t.id !== builderEditingId).map((t) => t.id));
       updateTreinos(treinos.map((t) => (t.id === builderEditingId ? { ...normalized, id: builderEditingId } : t)));
-      showToast("Treino atualizado");
+      showToast("Ficha atualizada");
     } else {
       const novos = commitTreinosBatch(prontos);
-      showToast(novos.length > 1 ? `${novos.length} treinos criados` : "Treino criado");
+      showToast(novos.length > 1 ? `${novos.length} fichas criadas` : "Ficha criada");
     }
     closeBuilder(true);
   }
@@ -17864,7 +17927,7 @@ function App() {
                 </div>
               ) : (
                 <>
-                  <button className="gt-btn secondary" onClick={openNovoTreinoChooser}>＋ Nova ficha de academia</button>
+                  <button className="gt-btn secondary" onClick={openNovoTreinoChooser}>＋ Nova ficha</button>
                   <button className="gt-btn secondary" onClick={() => setNovaAtividadeAberta(true)}>＋ Nova atividade (vôlei, natação, descanso…)</button>
                 </>
               )}
@@ -18293,13 +18356,13 @@ function App() {
       {novoTreinoChooserOpen && (
         <div className="gt-modal-backdrop" onClick={() => setNovoTreinoChooserOpen(false)}>
           <div className="gt-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h3>Novo treino</h3>
+            <h3>Nova ficha</h3>
             <p>Como você quer criar essa ficha?</p>
             <div className="gt-choice-cards">
               <button type="button" className="gt-choice-card" onClick={startManualBuilderBlank}>
                 <div className="gt-choice-icon"><Ei e="🏋️" /></div>
-                <div className="gt-choice-title">Montar manualmente</div>
-                <div className="gt-choice-desc">Escolha exercícios de um catálogo e monte a ficha do seu jeito.</div>
+                <div className="gt-choice-title">Montar do zero</div>
+                <div className="gt-choice-desc">Escolha os exercícios e ajuste as séries.</div>
               </button>
               <button type="button" className="gt-choice-card" onClick={openTemplates}>
                 <div className="gt-choice-icon"><Ei e="📋" /></div>
@@ -18349,7 +18412,18 @@ function App() {
           <div className="gt-focus-header">
             <button className="gt-focus-close" aria-label="Voltar" onClick={closeBuilder}><IconVoltar /></button>
             <div className="gt-focus-title-wrap">
-              <div className="gt-focus-title">{builderTreinos.length > 1 ? `Treino ${builderIndex + 1} de ${builderTreinos.length}` : (builderEditingId ? "Editar treino" : "Novo treino")}</div>
+              {builderTreinos.length > 1 ? <div className="gt-focus-title">Ficha {builderIndex + 1} de {builderTreinos.length}</div> : (() => {
+                const t = builderTreinos[0];
+                const sug = fichaNomeSugerido(t.blocos, treinos);
+                const nEx = t.blocos.reduce((a, b) => a + b.exercicios.length, 0);
+                return (
+                  <>
+                    <input className="gt-focus-title gt-focus-title-input" aria-label="Nome da ficha" placeholder="Nome da ficha" maxLength={60}
+                      value={t.nomeAuto ? sug : t.nome} onChange={(e) => updateBuilderCurrent((x) => ({ ...x, nome: e.target.value, nomeAuto: false }))} />
+                    <div className="gt-focus-title-hint">{nEx === 1 ? "1 exercício" : `${nEx} exercícios`}</div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
@@ -18369,26 +18443,28 @@ function App() {
           )}
 
           <div className="gt-focus-body gt-builder-body">
-            <div className="gt-field-label">NOME DO TREINO</div>
-            <input
-              className="gt-input"
-              placeholder="Ex: Treino de Pernas"
-              value={builderTreinos[builderIndex].nome}
-              onChange={(e) => builderSetNome(e.target.value)}
-            />
-            <div className="gt-field-label" style={{ marginTop: 14 }}>DURAÇÃO ESTIMADA (MIN, OPCIONAL)</div>
-            <input
-              className="gt-input"
-              type="number"
-              inputMode="numeric"
-              placeholder="Ex: 50"
-              value={builderTreinos[builderIndex].duracaoMin ?? ""}
-              onChange={(e) => builderSetDuracao(e.target.value ? Number(e.target.value) : null)}
-            />
-
-            <div className="gt-field-label" style={{ marginTop: 18 }}>EXERCÍCIOS</div>
+            {(builderTreinos.length > 1 || !blocosLiberado) && (
+              <>
+                <div className="gt-field-label">NOME DA FICHA</div>
+                <input
+                  className="gt-input"
+                  placeholder="Ex: Treino de Pernas"
+                  value={builderTreinos[builderIndex].nome}
+                  onChange={(e) => builderSetNome(e.target.value)}
+                />
+                <div className="gt-field-label" style={{ marginTop: 18 }}>EXERCÍCIOS</div>
+              </>
+            )}
             {blocosLiberado ? (
-              <BlocosEditor blocos={builderTreinos[builderIndex].blocos} onChange={(blocos) => updateBuilderCurrent((t) => ({ ...t, blocos }))} />
+              <BlocosEditor key={builderIndex} simples abrirSeletor={!!builderTreinos[builderIndex].nomeAuto && builderTreinos[builderIndex].blocos.length === 0}
+                blocos={builderTreinos[builderIndex].blocos} onChange={(blocos) => updateBuilderCurrent((t) => ({ ...t, blocos }))}
+                maisOpcoes={(
+                  <label className="gt-bl-param wide">Duração (min, opcional)
+                    <input className="gt-input" type="number" inputMode="numeric" placeholder="Ex: 50"
+                      value={builderTreinos[builderIndex].duracaoMin ?? ""}
+                      onChange={(e) => builderSetDuracao(e.target.value ? Number(e.target.value) : null)} />
+                  </label>
+                )} />
             ) : (
               <>
                 {builderTreinos[builderIndex].blocos.length === 0 && (
@@ -18428,8 +18504,8 @@ function App() {
           <div className="gt-focus-footer gt-builder-footer">
             {builderIndex > 0 && <button className="gt-btn secondary" onClick={builderGoPrev}>◀ Anterior</button>}
             {builderIndex < builderTreinos.length - 1
-              ? <button className="gt-btn" onClick={builderGoNext}>Próximo treino ▶</button>
-              : <button className="gt-btn" onClick={builderSave}>{builderTreinos.length > 1 ? `Salvar ${builderTreinos.length} treinos` : (builderEditingId ? "Salvar alterações" : "Salvar treino")}</button>}
+              ? <button className="gt-btn" onClick={builderGoNext}>Próxima ficha ▶</button>
+              : <button className="gt-btn" onClick={builderSave}>{builderTreinos.length > 1 ? `Salvar ${builderTreinos.length} fichas` : (builderEditingId ? "Salvar alterações" : "Salvar ficha")}</button>}
           </div>
 
           {exercisePickerOpen && (
@@ -19504,6 +19580,22 @@ function blocoSimulacaoHyrox() {
   });
   return { id: blocoNovoId(), nome: "Simulação HYROX", tipo: "hyrox", formato: "fortime", rodadas: 1, exercicios };
 }
+// Nome sugerido da ficha nova: os grupos dos exercícios ("Peito e quadríceps") ou "Treino A".
+function fichaNomeSugerido(blocos, treinos) {
+  const grupos = [];
+  let n = 0;
+  (blocos || []).forEach((b) => (b.exercicios || []).forEach((ex) => {
+    n += 1;
+    const c = EXERCISE_CATALOG_FLAT.find((e) => normalizeSearch(e.nome) === normalizeSearch(ex.nome));
+    if (c && c.grupo && !grupos.includes(c.grupo)) grupos.push(c.grupo);
+  }));
+  if (!n) return "";
+  if (grupos.length === 1) return grupos[0];
+  if (grupos.length === 2) return `${grupos[0]} e ${grupos[1].toLowerCase()}`;
+  const usados = new Set((treinos || []).map((t) => normalizeSearch(t.nome || "")));
+  const letra = "ABCDEFGHIJKL".split("").find((l) => !usados.has(normalizeSearch(`Treino ${l}`)));
+  return letra ? `Treino ${letra}` : "Nova ficha";
+}
 function exercicioNovo(cat) {
   return { id: coachSlug(cat.nome) + "-" + coachNovoId().slice(0, 3), nome: cat.nome, series: cat.series || 3, repeticoes: cat.repeticoes != null ? cat.repeticoes : "10-12", descricao: cat.descricao || "", observacoes: cat.observacoes || "", videoUrl: cat.videoUrl || "", ...Object.fromEntries(RX_CAMPOS.filter((k) => k !== "series" && k !== "repeticoes" && cat[k] != null).map((k) => [k, cat[k]])) };
 }
@@ -19579,13 +19671,19 @@ function BlocoParam({ label, value, onChange, max, sufixo }) {
   );
 }
 
-function BlocosEditor({ blocos, onChange, ultimas }) {
+// simples (ficha nova no builder): lista numerada única, sem um bloco por grupo muscular;
+// subir, descer, bi-set e remover ficam no ⋮ de cada exercício.
+function BlocosEditor({ blocos, onChange, ultimas, simples, abrirSeletor, maisOpcoes }) {
   const [picker, setPicker] = useState(null); // índice do bloco que recebe o exercício do catálogo
   const [busca, setBusca] = useState("");
   const [grupo, setGrupo] = useState(CATALOG_GRUPOS[0].label);
   const [obsAberta, setObsAberta] = useState({});
   const [cfg, setCfg] = useState({}); // blocos com o tipo/formato aberto para editar
-  const [pickerGeral, setPickerGeral] = useState(false);
+  const [pickerGeral, setPickerGeral] = useState(!!abrirSeletor);
+  const [menuEx, setMenuEx] = useState(null); // "i-j" do exercício com o ⋮ aberto
+  const [desfazer, setDesfazer] = useState(null); // { lista, nome } do último removido
+  const [mais, setMais] = useState(false);
+  useEffect(() => { if (!desfazer) return undefined; const t = setTimeout(() => setDesfazer(null), 6000); return () => clearTimeout(t); }, [desfazer]);
   const lista = blocos || [];
   const setBloco = (i, b) => onChange(lista.map((x, k) => (k === i ? b : x)));
   const mover = (i, d) => { const j = i + d; if (j < 0 || j >= lista.length) return; const n = lista.slice(); [n[i], n[j]] = [n[j], n[i]]; onChange(n); };
@@ -19618,6 +19716,48 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
     if (i >= 0) addEx(i, exercicioNovo(cat));
     else onChange([...lista, { nome: nomeBloco, exercicios: [exercicioNovo(cat)] }]);
   }
+  // Fichas antigas (um bloco por grupo muscular) continuam agrupando; as novas são uma lista só.
+  const agrupado = lista.some((b) => blocoTipo(b) === "forca" && !["Exercícios", "Bi-set"].includes(b.nome));
+  function addLote(cats) {
+    let n = lista.map((b) => ({ ...b, exercicios: b.exercicios.slice() }));
+    cats.forEach((cat) => {
+      const ex = exercicioNovo(cat);
+      const nomeBloco = agrupado ? (cat.grupo || "Exercícios") : null;
+      let i = -1;
+      n.forEach((b, k) => { if (blocoTipo(b) === "forca" && blocoFormato(b) === "normal" && (!nomeBloco || b.nome === nomeBloco)) i = k; });
+      if (i >= 0) n[i].exercicios.push(ex);
+      else n.push({ nome: nomeBloco || "Exercícios", exercicios: [ex] });
+    });
+    onChange(n);
+    setPickerGeral(false);
+  }
+  const forcaSimples = (b) => blocoTipo(b) === "forca" && blocoFormato(b) === "normal";
+  // Junta blocos de força normais vizinhos e tira os vazios (depois de remover ou separar um bi-set).
+  function normalizar(l) {
+    const out = [];
+    l.forEach((b) => {
+      if (forcaSimples(b) && !b.exercicios.length) return;
+      const ant = out[out.length - 1];
+      if (ant && forcaSimples(ant) && forcaSimples(b)) out[out.length - 1] = { ...ant, exercicios: [...ant.exercicios, ...b.exercicios] };
+      else out.push(b);
+    });
+    return out;
+  }
+  function removerEx(i, j) {
+    const ex = lista[i].exercicios[j];
+    setDesfazer({ lista, nome: ex.nome });
+    setMenuEx(null);
+    onChange(normalizar(lista.map((b, k) => (k === i ? { ...b, exercicios: b.exercicios.filter((_, m) => m !== j) } : b))));
+  }
+  function juntarBiset(i, j) {
+    const b = lista[i];
+    const antes = { ...b, exercicios: b.exercicios.slice(0, j) };
+    const bi = { id: blocoNovoId(), nome: "Bi-set", tipo: "forca", formato: "biset", exercicios: b.exercicios.slice(j, j + 2) };
+    const depois = { ...b, id: undefined, exercicios: b.exercicios.slice(j + 2) };
+    setMenuEx(null);
+    onChange(normalizar([...lista.slice(0, i), antes, bi, depois, ...lista.slice(i + 1)]));
+  }
+  function separar(i) { onChange(normalizar(lista.map((b, k) => (k === i ? { ...b, formato: "normal", nome: "Exercícios" } : b)))); }
   const novoBloco = (b) => { setCfg({ ...cfg, [b.id]: true }); onChange([...lista, b]); };
   function trocarTipo(i, tipo) {
     const b = lista[i];
@@ -19625,10 +19765,7 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
     const nomePadrao = BLOCO_TIPOS_ORDEM.some((t) => blocoNovo(t).nome === b.nome);
     setBloco(i, { ...b, tipo, formato: base.formato, nome: nomePadrao ? base.nome : b.nome, ...(tipo === "corrida" && !b.corrida ? { corrida: base.corrida } : {}), ...(base.duracaoMin && !b.duracaoMin ? { duracaoMin: base.duracaoMin } : {}) });
   }
-  return (
-    <div className="gt-bl-ed">
-      {lista.length === 0 && <div className="gt-empty">Nenhum exercício ainda. Adicione pelo catálogo ou escreva direto, como "Agachamento 4x8 60kg".</div>}
-      {lista.map((b, i) => {
+  function renderBloco(b, i) {
         const tipo = blocoTipo(b), formato = blocoFormato(b);
         const p = (k, v) => setBloco(i, { ...b, [k]: v });
         const lim = blocoLimite(b), faltam = lim ? lim - b.exercicios.length : 0;
@@ -19697,7 +19834,101 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
             )}
           </div>
         );
-      })}
+  }
+
+  const pickers = (
+    <>
+      {pickerGeral && (
+        <ExercisePickerModal search={busca} setSearch={setBusca}
+          isAdded={(cat) => lista.some((b) => b.exercicios.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(cat.nome)))}
+          onConfirm={addLote} onClose={() => setPickerGeral(false)} />
+      )}
+      {picker != null && lista[picker] && (
+        <ExercisePickerModal search={busca} setSearch={setBusca}
+          isAdded={(cat) => lista[picker].exercicios.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(cat.nome))}
+          onConfirm={(cats) => { const lim = blocoLimite(lista[picker]); const cabe = lim ? Math.max(0, lim - lista[picker].exercicios.length) : cats.length; setBloco(picker, { ...lista[picker], exercicios: [...lista[picker].exercicios, ...cats.slice(0, cabe).map(exercicioNovo)] }); setPicker(null); }}
+          onClose={() => setPicker(null)} />
+      )}
+    </>
+  );
+  const outrosTipos = (
+    <div className="gt-bl-novos">
+      {BLOCO_TIPOS_ORDEM.filter((t) => t !== "forca").map((t) => (
+        <button key={t} type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS[t].cor }} onClick={() => novoBloco(blocoNovo(t))}>＋ {BLOCO_TIPOS[t].label}</button>
+      ))}
+      <button type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS.hyrox.cor }} onClick={() => novoBloco(blocoSimulacaoHyrox())}>＋ Simulação HYROX</button>
+    </div>
+  );
+
+  if (simples && !agrupado) {
+    let num = 0;
+    const linhaEx = (b, i, ex, j) => {
+      num += 1;
+      const k = `${i}-${j}`;
+      const ult = ultimas && ultimas[normalizeSearch(ex.nome)];
+      const bi = blocoFormato(b) !== "normal";
+      return (
+        <div key={ex.id || k} className="gt-fx-ex">
+          <div className="gt-fx-linha">
+            <span className="gt-fx-num">{num}</span>
+            <button type="button" className="gt-fx-nome" onClick={() => setObsAberta({ ...obsAberta, [k]: !obsAberta[k] })}>{ex.nome}</button>
+            <RxInput ex={ex} label={`Séries e repetições de ${ex.nome}`} onCommit={(nx) => setEx(i, j, nx)} />
+            <button type="button" className="gt-fx-mais" aria-label={`Opções de ${ex.nome}`} aria-expanded={menuEx === k} onClick={() => setMenuEx(menuEx === k ? null : k)}>⋮</button>
+          </div>
+          {menuEx === k && (
+            <div className="gt-fx-menu">
+              <button type="button" disabled={j === 0} onClick={() => { moverEx(i, j, -1); setMenuEx(null); }}>Subir</button>
+              <button type="button" disabled={j === b.exercicios.length - 1} onClick={() => { moverEx(i, j, 1); setMenuEx(null); }}>Descer</button>
+              {!bi && j < b.exercicios.length - 1 && <button type="button" onClick={() => juntarBiset(i, j)}>Bi-set com o próximo</button>}
+              <button type="button" className="perigo" onClick={() => removerEx(i, j)}>Remover</button>
+            </div>
+          )}
+          {ult && <div className="gt-co-ex-ult">Última do aluno: {ult.kg} kg ({coachDataCurta(ult.data)})</div>}
+          {(obsAberta[k] || ex.observacoes) && <input className="gt-input gt-bl-obs" aria-label={`Observação de ${ex.nome}`} placeholder="Observação (opcional)" maxLength={120} value={ex.observacoes || ""} onChange={(e) => setEx(i, j, { ...ex, observacoes: e.target.value })} />}
+        </div>
+      );
+    };
+    return (
+      <div className="gt-bl-ed gt-fx">
+        {lista.length === 0 && <div className="gt-empty">Sua ficha está vazia.</div>}
+        {lista.map((b, i) => {
+          if (forcaSimples(b)) return <div key={b.id || i} className="gt-fx-lista">{b.exercicios.map((ex, j) => linhaEx(b, i, ex, j))}</div>;
+          if (blocoTipo(b) === "forca" && blocoFormato(b) === "biset") {
+            return (
+              <div key={b.id || i} className="gt-fx-biset">
+                <div className="gt-fx-biset-hd"><span>Bi-set{b.exercicios.length < 2 ? " · falta 1" : ""}</span><button type="button" onClick={() => separar(i)}>Separar</button></div>
+                {b.exercicios.map((ex, j) => linhaEx(b, i, ex, j))}
+              </div>
+            );
+          }
+          return renderBloco(b, i);
+        })}
+        {desfazer && (
+          <div className="gt-fx-desfazer" role="status">
+            <span>{desfazer.nome} removido</span>
+            <button type="button" onClick={() => { onChange(desfazer.lista); setDesfazer(null); }}>Desfazer</button>
+          </div>
+        )}
+        <button className="gt-add-extra-card" type="button" onClick={() => setPickerGeral(true)}>
+          <span className="plus">+</span> Adicionar exercícios
+        </button>
+        <EntradaRapida label="Escrever exercício" placeholder="Ex.: Agachamento 4x6 80kg rir2" onAdd={(ex) => addLote([ex])} />
+        <button type="button" className="gt-fx-mais-opcoes" aria-expanded={mais} onClick={() => setMais(!mais)}>Mais opções <span aria-hidden="true">{mais ? "▴" : "▾"}</span></button>
+        {mais && (
+          <div className="gt-fx-opcoes">
+            {maisOpcoes}
+            <div className="gt-bl-novos-lbl">Outro tipo de treino na mesma sessão:</div>
+            {outrosTipos}
+          </div>
+        )}
+        {pickers}
+      </div>
+    );
+  }
+  return (
+    <div className="gt-bl-ed">
+      {lista.length === 0 && <div className="gt-empty">Nenhum exercício ainda. Adicione pelo catálogo ou escreva direto, como "Agachamento 4x8 60kg".</div>}
+      {lista.map((b, i) => renderBloco(b, i))}
       {!lista.some((b) => blocoTipo(b) !== "corrida") && (
         <EntradaRapida label="Escrever exercício" placeholder="Ex.: Agachamento 4x6 80kg rir2"
           onAdd={(ex) => onChange([...lista, { nome: "Exercícios", exercicios: [exercicioNovo(ex)] }])} />
@@ -19706,22 +19937,8 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
         <span className="plus">+</span> Adicionar exercício
       </button>
       <div className="gt-bl-novos-lbl">Outro tipo de treino na mesma sessão:</div>
-      <div className="gt-bl-novos">
-        {BLOCO_TIPOS_ORDEM.filter((t) => t !== "forca").map((t) => (
-          <button key={t} type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS[t].cor }} onClick={() => novoBloco(blocoNovo(t))}>＋ {BLOCO_TIPOS[t].label}</button>
-        ))}
-        <button type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS.hyrox.cor }} onClick={() => novoBloco(blocoSimulacaoHyrox())}>＋ Simulação HYROX</button>
-      </div>
-      {pickerGeral && (
-        <ExercisePickerModal search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo}
-          isAdded={(cat) => lista.some((b) => b.exercicios.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(cat.nome)))}
-          onAdd={addPorGrupo} onClose={() => setPickerGeral(false)} />
-      )}
-      {picker != null && lista[picker] && (
-        <ExercisePickerModal search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo}
-          isAdded={(cat) => lista[picker].exercicios.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(cat.nome))}
-          onAdd={(cat) => addEx(picker, exercicioNovo(cat))} onClose={() => setPicker(null)} />
-      )}
+      {outrosTipos}
+      {pickers}
     </div>
   );
 }
