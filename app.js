@@ -20603,7 +20603,11 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
   const [menu, setMenu] = useState(null);
   const [acoes, setAcoes] = useState(false);
   const sem = semanas[Math.min(w, semanas.length - 1)];
+  // Dias de antes de a pessoa começar o plano (aceitou no meio da semana) não contam como falta.
+  const comecou = plano.criadoEm ? isoFromDate(new Date(plano.criadoEm)) : plano.inicio;
+  const antes = (x) => !x.feito && x.data < comecou;
   const feitas = sem.sessoes.filter((x) => x.feito).length;
+  const contam = sem.sessoes.filter((x) => !antes(x)).length;
   const fim = planoFimSemanas(plano);
   const irPara = (i) => { setW(i); setMenu(null); };
   return (
@@ -20628,7 +20632,7 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
       <div className="gt-ps-semana-hd">
         <div>
           <span className="rot">Semana {sem.n} de {semanas.length} · {planoFaseNome(sem.fase)}</span>
-          <span className="res">{planoDataCurta(sem.inicio)} a {planoDataCurta(sem.fim)} · {sem.sessoes.length ? `${feitas} de ${sem.sessoes.length} feitos` : "sem treinos"}</span>
+          <span className="res">{planoDataCurta(sem.inicio)} a {planoDataCurta(sem.fim)} · {!sem.sessoes.length ? "sem treinos" : contam ? `${feitas} de ${contam} feitos` : "antes do seu início"}</span>
         </div>
         <button type="button" className="gt-ps-nav" aria-label="Semana anterior" disabled={w === 0} onClick={() => irPara(w - 1)}>‹</button>
         <button type="button" className="gt-ps-nav" aria-label="Próxima semana" disabled={w >= semanas.length - 1} onClick={() => irPara(w + 1)}>›</button>
@@ -20647,6 +20651,7 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
                 : <div className="linha">{nome}<span className="seta" aria-hidden="true" /></div>}
               {x.feito ? <span className="st ok" aria-label="feito">✓</span>
                 : x.status === "pulou" ? <span className="st pulou">pulou</span>
+                : antes(x) ? <span className="st" title="Antes de você começar o plano">Antes</span>
                 : passou ? <span className="st">Passou</span>
                 : <button type="button" className="gt-ag-more" aria-label={`Opções de ${x.titulo}`} onClick={() => setMenu(menu === k ? null : k)}>⋯</button>}
               {menu === k && (
