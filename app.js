@@ -3752,56 +3752,77 @@ const APP_CSS = `
   .gt-bt-res label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
   .gt-bt-res input { width:96px; text-align:center; font-size:20px; }
   .gt-bt-acoes { display:flex; gap:8px; }
-  .gt-pl-card { --pl-base:#5A8DEE; --pl-cons:var(--accent); --pl-esp:var(--amber); --pl-desc:var(--text-muted); --pl-pol:var(--success); }
-  .gt-pl-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
-  .gt-pl-nome { font-family:'Oswald',sans-serif; font-size:20px; line-height:1.2; }
-  .gt-pl-sub { font-size:12px; color:var(--text-muted); margin-top:2px; }
-  .gt-pl-feito { display:flex; flex-direction:column; align-items:flex-end; font-size:11px; color:var(--text-muted); }
-  .gt-pl-feito b { font-family:'Oswald',sans-serif; font-size:20px; color:var(--text); font-weight:600; }
-  .gt-pl-fases { list-style:none; display:flex; gap:3px; margin:12px 0 10px; padding:0; }
-  .gt-pl-fases li { flex:1; height:22px; border-radius:4px; background:var(--pl-base, #5A8DEE); opacity:.55; display:flex; }
-  .gt-pl-fases li span, .gt-pl-fases li button { flex:1; background:none; border:none; padding:0; font-family:'Roboto Mono',monospace; font-size:10px; color:#14161A; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  .gt-pl-fases li.f-base { background:#5A8DEE; } .gt-pl-fases li.f-construcao { background:var(--accent); } .gt-pl-fases li.f-especifico { background:var(--amber); }
-  .gt-pl-fases li.f-descarga { background:#6B7280; } .gt-pl-fases li.f-polimento { background:var(--success); }
-  .gt-pl-fases li.sel { opacity:1; outline:2px solid var(--text); outline-offset:1px; }
-  .gt-pl-fases li.hoje { opacity:1; }
-  .gt-pl-legenda { font-size:11px; color:var(--text-muted); margin-top:-4px; }
-  .gt-pl-semana-hd { display:flex; align-items:center; gap:8px; }
-  .gt-pl-semana-hd > div { flex:1; display:flex; flex-direction:column; text-align:center; }
-  .gt-pl-semana-hd b { font-size:14px; } .gt-pl-semana-hd span { font-size:12px; color:var(--text-muted); }
-  .gt-pl-nav { background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:8px; width:36px; height:36px; font-size:18px; cursor:pointer; }
-  .gt-pl-nav:disabled { opacity:.35; cursor:default; }
-  .gt-pl-nota { font-size:12px; color:var(--text-muted); background:var(--surface-2); border-radius:6px; padding:8px 10px; margin-top:10px; }
-  .gt-pl-lista { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; }
-  .gt-pl-lista li { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:9px 0; border-top:1px solid var(--border); font-size:14px; }
-  .gt-pl-lista li:first-child { border-top:none; }
-  .gt-pl-lista li.hoje .d { color:var(--accent); }
-  .gt-pl-lista li.feito .nm { color:var(--text-muted); }
-  .gt-pl-lista li.vazio { color:var(--text-muted); font-size:13px; }
-  .gt-pl-lista .d { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); width:74px; flex-shrink:0; }
-  .gt-pl-lista .nm { flex:1; min-width:0; }
-  .gt-pl-lista .nm .gt-ag-link { font-size:14px; text-align:left; }
-  .gt-pl-lista .st { font-size:13px; color:var(--success); }
-  .gt-pl-menu { width:100%; padding:4px 0 2px 82px; font-size:12px; color:var(--text-muted); }
-  .gt-pl-menu .gt-provas-filters { margin:6px 0; }
-  .gt-pl-encerrar { background:none; border:none; color:var(--text-muted); font-size:12px; text-decoration:underline; cursor:pointer; padding:10px 0 0; }
-  .gt-pl-vazio .tt { font-family:'Oswald',sans-serif; font-size:18px; }
-  .gt-pl-vazio .sb { font-size:13px; color:var(--text-muted); margin:4px 0 12px; line-height:1.45; }
-  .gt-pl-modal { max-height:92vh; }
-  .gt-pl-origem { display:flex; flex-direction:column; gap:3px; width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:8px; color:var(--text); cursor:pointer; font-family:'Inter',sans-serif; }
-  .gt-pl-origem:disabled { cursor:default; opacity:.6; }
-  .gt-pl-origem .tt { font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px; }
-  .gt-pl-origem .sb { font-size:12px; color:var(--text-muted); line-height:1.4; }
-  .gt-pl-tag { font-size:10px; font-family:'Roboto Mono',monospace; text-transform:uppercase; letter-spacing:.04em; border:1px solid var(--border); border-radius:10px; padding:1px 6px; color:var(--text-muted); font-weight:400; }
-  .gt-pl-modelos { display:flex; flex-direction:column; gap:8px; margin:6px 0 4px; }
-  .gt-pl-modelo { display:flex; gap:10px; align-items:flex-start; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; cursor:pointer; }
-  .gt-pl-modelo.on { border-color:var(--accent); }
-  .gt-pl-modelo input { margin-top:3px; accent-color:var(--accent); }
-  .gt-pl-modelo b { display:block; font-size:14px; } .gt-pl-modelo small { display:block; font-size:12px; color:var(--text-muted); line-height:1.4; margin-top:2px; }
-  .gt-pl-previa { margin-top:4px; }
-  .gt-pl-aviso { color:var(--amber) !important; }
-  .gt-pl-outro { display:block; margin:-4px 0 4px auto; font-size:12px; }
-  .gt-pl-fixa-nota { font-size:12px; color:var(--text-muted); margin:-4px 0 8px; }
+  .gt-ps-card { padding:16px; }
+  .gt-ps-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .gt-ps-nome { font-family:'Oswald',sans-serif; font-size:20px; line-height:1.2; }
+  .gt-ps-sub { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-ps-mais { background:none; border:none; color:var(--text-muted); font-size:20px; line-height:1; padding:2px 6px; cursor:pointer; }
+  .gt-ps-acoes { display:flex; gap:16px; justify-content:flex-end; margin-top:6px; }
+  .gt-ps-acoes button { background:none; border:none; font-size:13px; color:var(--text); cursor:pointer; padding:4px 0; font-family:inherit; }
+  .gt-ps-acoes button.warn { color:var(--warn, #F26B5B); }
+  .gt-ps-fases { list-style:none; display:flex; gap:3px; margin:14px 0 4px; padding:0; }
+  .gt-ps-fases li { flex:1; height:20px; border-radius:4px; display:flex; position:relative; background:color-mix(in srgb, var(--accent) 30%, transparent); }
+  .gt-ps-fases li span, .gt-ps-fases li button { flex:1; background:none; border:none; padding:0; font-family:'Roboto Mono',monospace; font-size:10px; color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .gt-ps-fases li.f-construcao { background:color-mix(in srgb, var(--accent) 60%, transparent); }
+  .gt-ps-fases li.f-especifico { background:var(--accent); } .gt-ps-fases li.f-especifico span, .gt-ps-fases li.f-especifico button { color:#14161A; }
+  .gt-ps-fases li.f-polimento { background:var(--success); } .gt-ps-fases li.f-polimento span, .gt-ps-fases li.f-polimento button { color:#14161A; }
+  .gt-ps-fases li.f-descarga { background:none; border:1px dashed var(--text-muted); }
+  .gt-ps-fases li.sel { box-shadow:0 0 0 2px var(--bg, #14161A), 0 0 0 4px var(--accent); }
+  .gt-ps-fases li.hoje::before { content:""; position:absolute; top:-7px; left:50%; width:4px; height:4px; margin-left:-2px; border-radius:50%; background:var(--accent); }
+  .gt-ps-legenda { display:flex; flex-wrap:wrap; gap:4px 12px; font-family:'Roboto Mono',monospace; font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; margin:6px 0 12px; }
+  .gt-ps-legenda i { display:inline-block; width:10px; height:8px; border-radius:2px; margin-right:5px; vertical-align:0; background:color-mix(in srgb, var(--accent) 30%, transparent); }
+  .gt-ps-legenda i.f-construcao { background:color-mix(in srgb, var(--accent) 60%, transparent); } .gt-ps-legenda i.f-especifico { background:var(--accent); }
+  .gt-ps-legenda i.f-polimento { background:var(--success); } .gt-ps-legenda i.f-descarga { background:none; border:1px dashed var(--text-muted); }
+  .gt-ps-semana-hd { display:flex; align-items:center; gap:8px; }
+  .gt-ps-semana-hd > div { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .gt-ps-semana-hd .rot { font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--text); }
+  .gt-ps-semana-hd .res { font-size:13px; color:var(--text-muted); }
+  .gt-ps-nav { background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:8px; width:32px; height:32px; font-size:18px; cursor:pointer; flex-shrink:0; }
+  .gt-ps-nav:disabled { visibility:hidden; }
+  .gt-ps-nota { font-size:12px; color:var(--text-muted); background:var(--surface-2); border-radius:6px; padding:8px 10px; margin-top:10px; }
+  .gt-ps-lista { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; }
+  .gt-ps-lista li { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-top:1px solid var(--border); font-size:14px; }
+  .gt-ps-lista li:first-child { border-top:none; }
+  .gt-ps-lista .linha { flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:10px 0; background:none; border:none; color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+  .gt-ps-lista div.linha { cursor:default; }
+  .gt-ps-lista .linha .gt-ico-inl { color:var(--text-muted); flex-shrink:0; }
+  .gt-ps-lista .linha .seta { color:var(--text-muted); margin-left:auto; }
+  .gt-ps-lista li.hoje .d { color:var(--accent); }
+  .gt-ps-lista li.feito .nm { color:var(--text-muted); }
+  .gt-ps-lista li.vazio { color:var(--text-muted); font-size:13px; padding:10px 0; }
+  .gt-ps-lista .d { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); width:70px; flex-shrink:0; }
+  .gt-ps-lista .nm { flex:1; min-width:0; }
+  .gt-ps-lista .st { width:44px; text-align:center; font-size:13px; color:var(--text-muted); flex-shrink:0; }
+  .gt-ps-lista .st.ok { color:var(--success); } .gt-ps-lista .st.pulou { color:var(--amber); font-size:11px; }
+  .gt-ps-lista .gt-ag-more { width:44px; flex-shrink:0; }
+  .gt-ps-menu { width:100%; padding:0 0 10px 78px; font-size:12px; color:var(--text-muted); }
+  .gt-ps-menu .gt-provas-filters { margin:6px 0; }
+  .gt-ps-tirar { background:none; border:none; color:var(--warn, #F26B5B); font-size:13px; padding:4px 0; cursor:pointer; font-family:inherit; }
+  .gt-ps-vazio .tt { font-family:'Oswald',sans-serif; font-size:18px; }
+  .gt-ps-vazio .sb { font-size:13px; color:var(--text-muted); margin:4px 0 12px; line-height:1.45; }
+  .gt-ps-modal { max-height:92vh; overflow-y:auto; }
+  .gt-ps-modal .gt-field-label { font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:14px 0 6px; }
+  .gt-ps-intro { font-size:13px; color:var(--text-muted); margin:0 0 12px; }
+  .gt-ps-obj { display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin-bottom:8px; color:var(--text); cursor:pointer; font-family:'Inter',sans-serif; }
+  .gt-ps-obj .ic { width:32px; height:32px; border-radius:8px; background:var(--surface); display:flex; align-items:center; justify-content:center; color:var(--accent); flex-shrink:0; }
+  .gt-ps-obj .tx { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .gt-ps-obj .tt { font-weight:600; font-size:16px; }
+  .gt-ps-obj .sb { font-size:13px; color:var(--text-muted); line-height:1.35; }
+  .gt-ps-obj .seta { color:var(--text-muted); font-size:20px; }
+  .gt-ps-repetir { display:block; width:100%; text-align:left; background:none; border:none; border-top:1px solid var(--border); margin-top:8px; padding:12px 2px 2px; color:var(--text); cursor:pointer; font-family:inherit; }
+  .gt-ps-repetir b { font-size:14px; font-weight:600; color:var(--accent); } .gt-ps-repetir span { display:block; font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-ps-voltar { background:none; border:none; color:var(--text); font-size:22px; padding:0 8px 0 0; cursor:pointer; }
+  .gt-ps-prev-lista { list-style:none; margin:0; padding:0; }
+  .gt-ps-prev-lista li { display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--border); font-size:14px; }
+  .gt-ps-prev-lista li:first-child { border-top:none; }
+  .gt-ps-prev-lista .d { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); width:36px; }
+  .gt-ps-prev-lista .gt-ico-inl { color:var(--text-muted); }
+  .gt-ps-fichas { font-size:12px; color:var(--text-muted); margin:10px 0 0; }
+  .gt-ps-fichas summary { cursor:pointer; }
+  .gt-ps-aviso { font-size:12px; color:var(--amber); margin:8px 0 0; }
+  .gt-ps-rodape { position:sticky; bottom:-1px; background:var(--surface); padding:12px 0 2px; margin-top:12px; }
+  .gt-ps-rodape .gt-btn { width:100%; }
+  .gt-ps-fixa-nota { font-size:12px; color:var(--text-muted); margin:-4px 0 8px; }
   .gt-guiado-toggle { background:none; border:1px solid var(--border); color:var(--text-muted); font-size:12px; padding:5px 10px; border-radius:20px; cursor:pointer; white-space:nowrap; }
   .gt-guiado-toggle.on { border-color:var(--accent-dim); color:var(--accent); }
   .gt-guiado { display:flex; flex-direction:column; gap:12px; }
@@ -7067,6 +7088,10 @@ function planoSessoesDoDia(planos, iso) {
 // corrida" da semana fixa; as outras atividades (vôlei, descanso) e o que veio do treinador ficam.
 const PLANO_ORIGENS = { meu: "Meu plano", modelo: "Modelo do Movo", ia: "Feito com IA", treinador: "Do treinador" };
 function planoEhSemanas(p) { return !!p && p.tipo === "semanas"; }
+// Nome da fase na tela do plano de semanas (o dado guarda o nome técnico).
+const PLANO_FASE_NOME = { Descarga: "Semana leve", "Específico": "Pico", Polimento: "Semana final leve" };
+function planoFaseNome(f) { return PLANO_FASE_NOME[f] || f || ""; }
+function planoSemanaNumero(p, iso) { return Math.floor((Date.parse(iso + "T12:00:00Z") - Date.parse(p.inicio + "T12:00:00Z")) / (7 * 86400000)) + 1; }
 function planoFimSemanas(p) { return p.encerradoEm || addDays(p.inicio, p.semanas * 7 - 1); }
 function planoSemanasAtivo(planos, iso) {
   return (planos || []).find((p) => planoEhSemanas(p) && iso >= p.inicio && iso <= planoFimSemanas(p)) || null;
@@ -7149,7 +7174,7 @@ function planoFichaSimulacao(meia) {
 }
 const PLANO_MODELOS = [
   {
-    id: "hibrido", nome: "Híbrido: força e corrida", desc: "3 treinos de força e 2 corridas por semana, com a corrida crescendo aos poucos.", semanas: 8,
+    id: "hibrido", nome: "Força e corrida", desc: "3 treinos de força e 2 corridas por semana", icone: "treinos", semanas: 8,
     fichas: () => {
       const ul = TEMPLATE_ROUTINES.find((r) => r.id === "upper-lower").treinos;
       const fb = TEMPLATE_ROUTINES.find((r) => r.id === "full-body").treinos[0];
@@ -7165,7 +7190,7 @@ const PLANO_MODELOS = [
     },
   },
   {
-    id: "hyrox", nome: "HYROX", desc: "Força, funcional simples e corrida. Meia simulação no meio do plano e simulação completa no fim.", semanas: 8,
+    id: "hyrox", nome: "HYROX", desc: "Força, funcional e corrida, com simulados", icone: "raio", semanas: 8,
     fichas: () => ({ F: planoFichaHyroxForca(), U: planoFichaHyroxFuncional(), M: planoFichaSimulacao(true), S: planoFichaSimulacao(false) }),
     semana: (w, fase, nivel, n) => {
       const base = { iniciante: [3, 5], intermediario: [5, 8], avancado: [6, 10] }[nivel] || [5, 8];
@@ -7179,7 +7204,7 @@ const PLANO_MODELOS = [
     },
   },
   {
-    id: "forca", nome: "Força 3x por semana", desc: "Empurrar, puxar e pernas, com uma corrida leve opcional para o fôlego.", semanas: 6,
+    id: "forca", nome: "Força", titulo: "Só força", desc: "3 treinos por semana: empurrar, puxar e pernas", icone: "treinos", semanas: 6,
     fichas: () => { const t = buildMusculacaoSplit(3); return { A: t[0], B: t[1], C: t[2] }; },
     semana: (w, fase, nivel) => [
       { dia: 1, ficha: "A" }, { dia: 3, ficha: "B" }, { dia: 5, ficha: "C" },
@@ -7215,7 +7240,7 @@ function planoDeModelo(modeloId, opts, treinosAtuais) {
     const fase = planoFaseDaSemana(w, n);
     m.semana(w, fase, nivel, n).forEach((it) => {
       const data = addDays(inicio, w * 7 + planoOrdemDia(it.dia));
-      const nota = fase === "Descarga" ? "Semana de descarga: uma série a menos em cada exercício e carga confortável." : fase === "Polimento" ? "Polimento: mantenha a carga e faça menos séries." : "";
+      const nota = fase === "Descarga" ? "Semana leve: uma série a menos em cada exercício e carga confortável." : fase === "Polimento" ? "Semana final leve: mantenha a carga e faça menos séries." : "";
       if (it.ficha) { sessoes.push({ data, tipo: "treino", ref: ids[it.ficha].id, titulo: ids[it.ficha].nome, fase, cid: planoCid(), ...(nota ? { nota } : {}) }); return; }
       const km = planoKmDaSemana(it.km, w, fase, it.longo);
       // Treino de qualidade curto demais para a distância da semana vira rodagem.
@@ -17014,7 +17039,7 @@ function App() {
                 <div className="gt-plano-hoje" key={`${plano.id}-${idx}`}>
                   <div className="gt-plano-row" onClick={() => setExpandedItem(aberto ? null : chave)}>
                     <div className="gt-plano-main">
-                      <div className="hd"><Ei e="🏃" /> {plano.tipo === "avulso" ? "Treino de corrida" : `Plano · ${plano.provaNome || plano.nome || ""}`}{sessao.fase ? ` · ${sessao.fase}` : ""}{sessao.ajuste ? " · ↻ ajustado" : ""}</div>
+                      <div className="hd"><Ei e="🏃" /> {plano.tipo === "avulso" ? "Treino de corrida" : planoEhSemanas(plano) ? `${plano.nome} · Semana ${planoSemanaNumero(plano, sessao.data)} de ${plano.semanas}` : `Plano · ${plano.provaNome}`}{sessao.fase && !planoEhSemanas(plano) ? ` · ${sessao.fase}` : ""}{sessao.ajuste ? " · ↻ ajustado" : ""}</div>
                       <div className="ti"><Ei e={t.emoji} /> {sessao.titulo}</div>
                       {meta && <div className="mt">{meta}</div>}
                     </div>
@@ -17249,19 +17274,19 @@ function App() {
                     onMover={(idx, data) => { mudarSessoesPlano(planoSemanas.id, (ss) => ss.map((x, i) => (i === idx ? { ...x, data } : x))); showToast(`Movido para ${planoDataCurta(data)}`); }}
                     onRemover={(idx) => { mudarSessoesPlano(planoSemanas.id, (ss) => ss.filter((_, i) => i !== idx)); showToast("Sessão tirada desta semana"); }}
                     onEncerrar={() => encerrarPlanoSemanas(planoSemanas)}
+                    onTrocar={() => setPlanoNovoAberto(true)}
                   />
                 ) : (
-                  <div className="gt-card gt-pl-vazio">
-                    <div className="tt">Organize suas próximas semanas</div>
-                    <div className="sb">Força e corrida no mesmo plano, com fases e semanas mais leves. Comece por um modelo do Movo ou pela sua semana de hoje.</div>
+                  <div className="gt-card gt-ps-vazio">
+                    <div className="tt">Treinar com um plano</div>
+                    <div className="sb">Semanas com data, que ficam mais puxadas aos poucos e têm semanas leves para recuperar.</div>
                     <button type="button" className="gt-btn" onClick={() => setPlanoNovoAberto(true)}>Montar plano</button>
                   </div>
                 )}
-                {planoSemanas && <button type="button" className="gt-ag-link gt-pl-outro" onClick={() => setPlanoNovoAberto(true)}>Montar outro plano</button>}
               </>
             )}
-            <div className="gt-section-title">{planoLiberado && planoSemanasAtivo(planos, todayISO()) ? "SUA SEMANA FIXA" : "SUA SEMANA"}</div>
-            {planoLiberado && planoSemanasAtivo(planos, todayISO()) && <div className="gt-pl-fixa-nota">Até {planoDataCurta(planoFimSemanas(planoSemanasAtivo(planos, todayISO())))}, o plano ocupa o lugar das fichas e do dia de corrida. As outras atividades continuam.</div>}
+            <div className="gt-section-title">{planoLiberado && planoSemanasAtivo(planos, todayISO()) ? `SUA SEMANA · PAUSADA ATÉ ${planoDataCurta(planoFimSemanas(planoSemanasAtivo(planos, todayISO()))).slice(4)}` : "SUA SEMANA"}</div>
+            {planoLiberado && planoSemanasAtivo(planos, todayISO()) && <div className="gt-ps-fixa-nota">Enquanto o plano dura, as fichas e a corrida daqui ficam de lado. Voltam sozinhas quando ele acabar; outras atividades continuam.</div>}
             {DIAS.map((dia, idx) => {
               const itens = (schedule[idx] || []).map((it) => ({ it, nome: it.tipo === "treino" ? treinoById(it.id)?.nome : atividadeById(it.id)?.nome, descanso: it.tipo === "atividade" && !!atividadeById(it.id)?.descanso })).filter((x) => x.nome);
                             return (
@@ -19941,13 +19966,15 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
 
 // --- Plano de semanas (fase 2): criar e acompanhar, na aba Treinos ---
 function planoDataCurta(iso) { return `${PLANO_DIAS_CURTO[weekdayOf(iso)]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`; }
-function planoResumoSemana(sessoes) {
-  const f = sessoes.filter((x) => x.tipo === "treino").length;
-  const c = sessoes.filter((x) => x.tipo !== "treino");
-  const km = Math.round(c.reduce((t, x) => t + (x.distanciaKm || 0), 0) * 10) / 10;
-  return [f ? `${f} de força` : "", c.length ? `${c.length} corrida${c.length > 1 ? "s" : ""} · ${rxNum(km)} km` : ""].filter(Boolean).join(" · ");
+
+// Barra de fases + legenda (mesma na prévia e no card do plano).
+function planoFaseClasse(f) { return `f-${String(f || "").normalize("NFD").replace(/[^a-zA-Z]/g, "").toLowerCase()}`; }
+function PlanoFasesLegenda({ semanas }) {
+  const fases = Array.from(new Set(semanas.map((w) => w.fase)));
+  return <div className="gt-ps-legenda">{fases.map((f) => <span key={f}><i className={planoFaseClasse(f)} />{planoFaseNome(f)}</span>)}</div>;
 }
 
+// Criar plano: começa pelo objetivo (modelos do Movo e prova); "repetir minha semana" fica no rodapé.
 function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, onProva, onClose }) {
   const [passo, setPasso] = useState("origem");
   const [modelo, setModelo] = useState(PLANO_MODELOS[0].id);
@@ -19963,71 +19990,80 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
     return null;
   }, [passo, modelo, semanas, nivel, inicio, treinos, schedule]);
   const sem = previa ? planoSemanasLista(previa.plano) : [];
+  const m = PLANO_MODELOS.find((x) => x.id === modelo);
+  const temCorrida = sem.some((w) => w.sessoes.some((x) => x.tipo !== "treino"));
   const opcoes = (lista, valor, set, fmt) => (
     <div className="gt-provas-filters">
       {lista.map((v) => <button key={v} type="button" className={`gt-provas-pill ${valor === v ? "on" : ""}`} aria-pressed={valor === v} onClick={() => set(v)}>{fmt ? fmt(v) : v}</button>)}
     </div>
   );
-  const origem = (titulo, texto, onClick, extra) => (
-    <button type="button" className="gt-pl-origem" onClick={onClick} disabled={!onClick}>
-      <span className="tt">{titulo}{extra && <span className="gt-pl-tag">{extra}</span>}</span>
-      <span className="sb">{texto}</span>
+  const objetivo = (key, icone, titulo, texto, onClick) => (
+    <button key={key} type="button" className="gt-ps-obj" onClick={onClick}>
+      <span className="ic"><Icon name={icone} weight="duotone" size={20} /></span>
+      <span className="tx"><span className="tt">{titulo}</span><span className="sb">{texto}</span></span>
+      <span className="seta" aria-hidden="true">›</span>
     </button>
   );
+  const titulo = passo === "origem" ? "O que você quer treinar?" : passo === "modelo" ? (m.titulo || m.nome) : "Repetir minha semana";
   return (
     <div className="gt-modal-backdrop" onClick={onClose}>
-      <div className="gt-modal gt-pl-modal" role="dialog" aria-modal="true" aria-label="Montar plano" onClick={(e) => e.stopPropagation()}>
+      <div className="gt-modal gt-ps-modal" role="dialog" aria-modal="true" aria-label="Montar plano" onClick={(e) => e.stopPropagation()}>
         <div className="gt-provas-head">
-          <h3>{passo === "origem" ? "Montar um plano" : passo === "modelo" ? "Modelo do Movo" : "Do meu jeito"}</h3>
+          <h3>{passo !== "origem" && <button type="button" className="gt-ps-voltar" aria-label="Voltar" onClick={() => setPasso("origem")}>‹</button>}{titulo}</h3>
           <button type="button" className="gt-provas-close" aria-label="Fechar" onClick={onClose}>✕</button>
         </div>
         {passo === "origem" && (
           <>
-            <p>Um plano organiza suas semanas com data: força e corrida juntas, com fases e semanas mais leves. Você pode mexer em uma semana sem mexer nas outras.</p>
-            {origem("Modelo do Movo", "Híbrido, HYROX ou Força. Escolha o nível e quantas semanas.", () => { setPasso("modelo"); setSemanas(PLANO_MODELOS.find((m) => m.id === modelo).semanas); })}
-            {origem("Do meu jeito", temSemanaFixa ? "Sua semana de hoje vira um plano de várias semanas, com a corrida crescendo aos poucos." : "Monte primeiro sua semana em \"Sua semana\" e volte aqui.", temSemanaFixa ? () => { setPasso("meu"); setSemanas(8); } : null)}
-            {origem("Para uma prova de corrida", "A IA monta o plano até o dia da prova.", onProva)}
-            {origem("Com IA, força e corrida", "A IA monta um plano híbrido para o seu objetivo.", null, "em breve")}
-            {origem("Do treinador", "Quando seu treinador enviar um plano, ele aparece aqui.", null)}
+            <p className="gt-ps-intro">O Movo organiza suas próximas semanas, com semanas leves para recuperar.</p>
+            {PLANO_MODELOS.map((x) => objetivo(x.id, x.icone || "treinos", x.titulo || x.nome, x.desc, () => { setModelo(x.id); setSemanas(x.semanas); setPasso("modelo"); }))}
+            {objetivo("prova", "provas", "Uma prova de corrida", "Escolha a prova e a data. A IA monta o plano até o dia.", onProva)}
+            {temSemanaFixa && (
+              <button type="button" className="gt-ps-repetir" onClick={() => { setPasso("meu"); setSemanas(8); }}>
+                <b>Repetir minha semana atual ›</b>
+                <span>Por várias semanas, com a corrida aumentando aos poucos.</span>
+              </button>
+            )}
           </>
         )}
         {passo !== "origem" && (
           <>
-            {passo === "modelo" && (
-              <div className="gt-pl-modelos">
-                {PLANO_MODELOS.map((m) => (
-                  <label key={m.id} className={`gt-pl-modelo ${modelo === m.id ? "on" : ""}`}>
-                    <input type="radio" name="pl-modelo" checked={modelo === m.id} onChange={() => { setModelo(m.id); setSemanas(m.semanas); }} />
-                    <span><b>{m.nome}</b><small>{m.desc}</small></span>
-                  </label>
-                ))}
-              </div>
-            )}
-            <div className="gt-field-label">SEMANAS</div>
+            {passo === "modelo" && <p className="gt-ps-intro">{m.desc}.</p>}
+            <div className="gt-field-label">Semanas</div>
             {opcoes([4, 6, 8, 12], semanas, setSemanas)}
-            <div className="gt-field-label">NÍVEL NA CORRIDA</div>
-            {opcoes(Object.keys(TREINOS_CORRIDA_NIVEIS), nivel, setNivel, (v) => TREINOS_CORRIDA_NIVEIS[v])}
-            <div className="gt-field-label">COMEÇA</div>
+            {(temCorrida || passo === "meu") && (
+              <>
+                <div className="gt-field-label">Nível na corrida</div>
+                {opcoes(Object.keys(TREINOS_CORRIDA_NIVEIS), nivel, setNivel, (v) => TREINOS_CORRIDA_NIVEIS[v])}
+              </>
+            )}
+            <div className="gt-field-label">Começa</div>
             {opcoes([estaSegunda, addDays(estaSegunda, 7)], inicio, setInicio, (v) => (v === estaSegunda ? `Esta semana (${planoDataCurta(v)})` : `Próxima (${planoDataCurta(v)})`))}
             {previa && (
-              <div className="gt-pl-previa">
-                <div className="gt-field-label">COMO FICA</div>
-                <ol className="gt-pl-fases">
-                  {sem.map((w) => <li key={w.n} className={`f-${w.fase.normalize("NFD").replace(/[^a-zA-Z]/g, "").toLowerCase()}`} title={`Semana ${w.n}: ${w.fase}`}><span>{w.n}</span></li>)}
+              <>
+                <div className="gt-field-label">As fases</div>
+                <ol className="gt-ps-fases" aria-hidden="true">
+                  {sem.map((w) => <li key={w.n} className={planoFaseClasse(w.fase)}><span>{w.n}</span></li>)}
                 </ol>
-                <div className="gt-pl-legenda">{Array.from(new Set(sem.map((w) => w.fase))).join(" → ")}</div>
+                <PlanoFasesLegenda semanas={sem} />
                 {sem[0] && (
-                  <ul className="gt-pl-lista">
-                    {sem[0].sessoes.map((x, i) => <li key={i}><span className="d">{PLANO_DIAS_CURTO[weekdayOf(x.data)]}</span><span className="nm">{x.tipo === "treino" ? "🏋️" : "🏃"} {x.titulo}{x.tipo !== "treino" && x.distanciaKm && !/km/.test(x.titulo || "") ? ` · ${rxNum(x.distanciaKm)} km` : ""}</span></li>)}
-                  </ul>
+                  <>
+                    <div className="gt-field-label">Sua 1ª semana</div>
+                    <ul className="gt-ps-prev-lista">
+                      {sem[0].sessoes.map((x, i) => <li key={i}><span className="d">{PLANO_DIAS_CURTO[weekdayOf(x.data)]}</span><Ei e={x.tipo === "treino" ? "🏋" : "🏃"} /><span>{x.titulo}{x.tipo !== "treino" && x.distanciaKm && !/km/.test(x.titulo || "") ? ` · ${rxNum(x.distanciaKm)} km` : ""}</span></li>)}
+                    </ul>
+                  </>
                 )}
-                {previa.fichasNovas.length > 0 && <p>Entram {previa.fichasNovas.length} fichas novas em "Meus treinos": {previa.fichasNovas.map((f) => f.nome).join(", ")}. Você pode editar como qualquer ficha.</p>}
-                {planoAtual && <p className="gt-pl-aviso">Você já tem o plano "{planoAtual.nome}". Ele termina quando este começar.</p>}
-              </div>
+                {previa.fichasNovas.length > 0 && (
+                  <details className="gt-ps-fichas">
+                    <summary>Vamos adicionar {previa.fichasNovas.length} treinos em Meus treinos</summary>
+                    {previa.fichasNovas.map((f) => f.nome).join(", ")}. Você pode editar quando quiser.
+                  </details>
+                )}
+                {planoAtual && <p className="gt-ps-aviso">Seu plano "{planoAtual.nome}" termina quando este começar.</p>}
+              </>
             )}
-            <div className="gt-modal-actions">
-              <button type="button" className="gt-btn" disabled={!previa || !previa.plano.sessoes.length} onClick={() => onCriar(previa.plano, previa.fichasNovas)}>Criar plano</button>
-              <button type="button" className="gt-btn secondary" onClick={() => setPasso("origem")}>Voltar</button>
+            <div className="gt-ps-rodape">
+              <button type="button" className="gt-btn" disabled={!previa || !previa.plano.sessoes.length} onClick={() => onCriar(previa.plano, previa.fichasNovas)}>Começar plano</button>
             </div>
           </>
         )}
@@ -20036,65 +20072,75 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
   );
 }
 
-function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onAbrirFicha }) {
+function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTrocar, onAbrirFicha }) {
   const hoje = todayISO();
   const semanas = planoSemanasLista(plano, feitoFn);
   const atual = Math.max(0, semanas.findIndex((w) => hoje >= w.inicio && hoje <= w.fim));
   const [w, setW] = useState(hoje < plano.inicio ? 0 : atual);
   const [menu, setMenu] = useState(null);
+  const [acoes, setAcoes] = useState(false);
   const sem = semanas[Math.min(w, semanas.length - 1)];
-  const ate = semanas.filter((x) => x.inicio <= hoje).flatMap((x) => x.sessoes).filter((x) => x.data <= hoje);
-  const feitas = ate.filter((x) => x.feito).length;
+  const feitas = sem.sessoes.filter((x) => x.feito).length;
   const fim = planoFimSemanas(plano);
+  const irPara = (i) => { setW(i); setMenu(null); };
   return (
-    <div className="gt-card gt-pl-card">
-      <div className="gt-pl-top">
+    <div className="gt-card gt-ps-card">
+      <div className="gt-ps-top">
         <div>
-          <div className="gt-pl-nome">{plano.nome}</div>
-          <div className="gt-pl-sub">{PLANO_ORIGENS[plano.origem] || "Plano"} · {hoje < plano.inicio ? `começa ${planoDataCurta(plano.inicio)}` : `até ${planoDataCurta(fim)}`}</div>
+          <div className="gt-ps-nome">{plano.nome}</div>
+          <div className="gt-ps-sub">{plano.semanas} semanas · {hoje < plano.inicio ? `começa ${planoDataCurta(plano.inicio)}` : `até ${planoDataCurta(fim)}`}</div>
         </div>
-        {ate.length > 0 && <div className="gt-pl-feito"><b>{feitas}/{ate.length}</b><span>feitas</span></div>}
+        <button type="button" className="gt-ps-mais" aria-label="Opções do plano" aria-expanded={acoes} onClick={() => setAcoes(!acoes)}>⋯</button>
       </div>
-      <ol className="gt-pl-fases" aria-label="Semanas do plano">
-        {semanas.map((x, i) => <li key={x.n} className={`f-${x.fase.normalize("NFD").replace(/[^a-zA-Z]/g, "").toLowerCase()} ${i === w ? "sel" : ""} ${i === atual && hoje >= plano.inicio ? "hoje" : ""}`}><button type="button" aria-label={`Semana ${x.n}, ${x.fase}`} onClick={() => { setW(i); setMenu(null); }}>{x.n}</button></li>)}
+      {acoes && (
+        <div className="gt-ps-acoes">
+          <button type="button" onClick={() => { setAcoes(false); onTrocar(); }}>Trocar de plano</button>
+          <button type="button" className="warn" onClick={() => { setAcoes(false); onEncerrar(); }}>{hoje < plano.inicio ? "Excluir plano" : "Encerrar plano"}</button>
+        </div>
+      )}
+      <ol className="gt-ps-fases" aria-label="Semanas do plano">
+        {semanas.map((x, i) => <li key={x.n} className={`${planoFaseClasse(x.fase)} ${i === w ? "sel" : ""} ${i === atual && hoje >= plano.inicio ? "hoje" : ""}`}><button type="button" aria-label={`Semana ${x.n}, ${planoFaseNome(x.fase)}`} aria-current={i === w} onClick={() => irPara(i)}>{x.n}</button></li>)}
       </ol>
-      <div className="gt-pl-semana-hd">
-        <button type="button" className="gt-pl-nav" aria-label="Semana anterior" disabled={w === 0} onClick={() => { setW(w - 1); setMenu(null); }}>‹</button>
-        <div><b>Semana {sem.n} de {semanas.length} · {sem.fase}</b><span>{planoDataCurta(sem.inicio)} a {planoDataCurta(sem.fim)} · {planoResumoSemana(sem.sessoes)}</span></div>
-        <button type="button" className="gt-pl-nav" aria-label="Próxima semana" disabled={w >= semanas.length - 1} onClick={() => { setW(w + 1); setMenu(null); }}>›</button>
+      <PlanoFasesLegenda semanas={semanas} />
+      <div className="gt-ps-semana-hd">
+        <div>
+          <span className="rot">Semana {sem.n} de {semanas.length} · {planoFaseNome(sem.fase)}</span>
+          <span className="res">{planoDataCurta(sem.inicio)} a {planoDataCurta(sem.fim)} · {sem.sessoes.length ? `${feitas} de ${sem.sessoes.length} feitos` : "sem treinos"}</span>
+        </div>
+        <button type="button" className="gt-ps-nav" aria-label="Semana anterior" disabled={w === 0} onClick={() => irPara(w - 1)}>‹</button>
+        <button type="button" className="gt-ps-nav" aria-label="Próxima semana" disabled={w >= semanas.length - 1} onClick={() => irPara(w + 1)}>›</button>
       </div>
-      {sem.sessoes.some((x) => x.nota) && <div className="gt-pl-nota">{sem.sessoes.find((x) => x.nota).nota}</div>}
-      <ul className="gt-pl-lista">
-        {sem.sessoes.length === 0 && <li className="vazio">Semana sem sessões.</li>}
+      {sem.sessoes.some((x) => x.nota) && <div className="gt-ps-nota">{sem.sessoes.find((x) => x.nota).nota}</div>}
+      <ul className="gt-ps-lista">
+        {sem.sessoes.length === 0 && <li className="vazio">Semana sem treinos.</li>}
         {sem.sessoes.map((x) => {
           const k = x.cid || x.idx;
           const passou = x.data < hoje;
+          const nome = <><span className="d">{planoDataCurta(x.data)}</span><Ei e={x.tipo === "treino" ? "🏋" : "🏃"} /><span className="nm">{x.titulo}{x.tipo !== "treino" && x.distanciaKm && !/km/.test(x.titulo || "") ? ` · ${rxNum(x.distanciaKm)} km` : ""}</span></>;
           return (
             <li key={k} className={`${x.feito ? "feito" : ""} ${x.data === hoje ? "hoje" : ""}`}>
-              <span className="d">{planoDataCurta(x.data)}</span>
-              <span className="nm">
-                {x.tipo === "treino"
-                  ? <button type="button" className="gt-ag-link" onClick={() => onAbrirFicha(x)}>🏋️ {x.titulo}</button>
-                  : <>🏃 {x.titulo}{x.distanciaKm && !/km/.test(x.titulo || "") ? ` · ${rxNum(x.distanciaKm)} km` : ""}</>}
-              </span>
-              <span className="st">{x.feito ? "✓" : x.status === "pulou" ? "pulou" : passou ? "–" : ""}</span>
-              {!x.feito && !passou && <button type="button" className="gt-ag-more" aria-label={`Opções de ${x.titulo}`} onClick={() => setMenu(menu === k ? null : k)}>⋯</button>}
+              {x.tipo === "treino"
+                ? <button type="button" className="linha" onClick={() => onAbrirFicha(x)}>{nome}<span className="seta" aria-hidden="true">›</span></button>
+                : <div className="linha">{nome}</div>}
+              {x.feito ? <span className="st ok" aria-label="feito">✓</span>
+                : x.status === "pulou" ? <span className="st pulou">pulou</span>
+                : passou ? <span className="st" aria-label="não feito">–</span>
+                : <button type="button" className="gt-ag-more" aria-label={`Opções de ${x.titulo}`} onClick={() => setMenu(menu === k ? null : k)}>⋯</button>}
               {menu === k && (
-                <div className="gt-pl-menu">
+                <div className="gt-ps-menu">
                   <span>Mover para</span>
                   <div className="gt-provas-filters">
                     {Array.from({ length: 7 }, (_, i) => addDays(sem.inicio, i)).filter((d) => d >= hoje && d !== x.data).map((d) => (
                       <button key={d} type="button" className="gt-provas-pill" onClick={() => { onMover(x.idx, d); setMenu(null); }}>{planoDataCurta(d)}</button>
                     ))}
                   </div>
-                  <button type="button" className="gt-ag-rm" onClick={() => { onRemover(x.idx); setMenu(null); }}>Tirar desta semana</button>
+                  <button type="button" className="gt-ps-tirar" onClick={() => { onRemover(x.idx); setMenu(null); }}>Tirar desta semana</button>
                 </div>
               )}
             </li>
           );
         })}
       </ul>
-      <button type="button" className="gt-pl-encerrar" onClick={onEncerrar}>{hoje < plano.inicio ? "Excluir plano" : "Encerrar plano"}</button>
     </div>
   );
 }
