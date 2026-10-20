@@ -3826,17 +3826,22 @@ const APP_CSS = `
   .gt-co-plano { background:var(--surface-2); border-radius:var(--radius); padding:12px; margin-bottom:8px; }
   .gt-co-plano .gt-field-label { font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin:12px 0 6px; }
   .gt-co-plano .gt-ps-fases { margin-top:12px; }
-  .gt-ps-saifica { background:var(--surface-2); border-radius:var(--radius); padding:10px 12px; font-size:13px; line-height:1.45; margin:8px 0 4px; display:flex; flex-direction:column; gap:4px; }
-  .gt-ps-fixa-fechada { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; } .gt-ps-fixa-fechada .gt-link-btn { white-space:nowrap; flex-shrink:0; }
+  .gt-ps-saifica { background:var(--surface-2); border-radius:var(--radius); padding:10px 12px; font-size:13px; line-height:1.45; margin:0 0 4px; display:flex; flex-direction:column; gap:4px; }
+  .gt-ps-saifica b, .gt-ps-fixa-fechada b { font-weight:600; color:var(--text); }
+  .gt-ps-saifica .gt-ps-check { margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
+  .gt-ps-fixa-fechada { display:flex; flex-direction:column; align-items:flex-start; gap:4px; font-size:13px; line-height:1.45; color:var(--text-muted); } .gt-ps-fixa-fechada .gt-link-btn { margin-top:6px; font-size:13px; }
   .gt-ps-lista .st { width:44px; text-align:center; flex-shrink:0; font-size:12px; color:var(--text-muted); }
   .gt-co-plano-fim { font-size:12px; color:var(--text-muted); margin-top:4px; }
   .gt-co-auto-aviso { font-size:13px; color:var(--amber); margin:0 0 8px; }
   .gt-co-plano .gt-co-perm { border:none; padding:0; }
   .gt-co-plano .gt-provas-filters { margin:0; flex-wrap:nowrap; }
   .gt-ps-check { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:14px; margin:4px 0 2px; cursor:pointer; }
-  .gt-ps-check input { accent-color:var(--accent); width:18px; height:18px; margin:0; }
+  .gt-ps-check input { appearance:none; -webkit-appearance:none; width:18px; height:18px; margin:0; flex-shrink:0; border:1.5px solid var(--text-muted); border-radius:4px; background:transparent; display:grid; place-content:center; cursor:pointer; }
+  .gt-ps-check input:checked { background:var(--accent); border-color:var(--accent); }
+  .gt-ps-check input:checked::after { content:""; width:5px; height:9px; border:solid var(--bg); border-width:0 2px 2px 0; transform:rotate(45deg) translate(-1px,-1px); }
+  .gt-ps-check input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .gt-ps-check small { flex-basis:100%; font-size:12px; color:var(--text-muted); padding-left:26px; }
-  .gt-ps-fixa-nota { font-size:12px; color:var(--text-muted); margin:-4px 0 8px; }
+  .gt-ps-fixa-nota { margin:0 0 12px; }
   .gt-guiado-toggle { background:none; border:1px solid var(--border); color:var(--text-muted); font-size:12px; padding:5px 10px; border-radius:20px; cursor:pointer; white-space:nowrap; }
   .gt-guiado-toggle.on { border-color:var(--accent-dim); color:var(--accent); }
   .gt-guiado { display:flex; flex-direction:column; gap:12px; }
@@ -7117,26 +7122,46 @@ function planoSemanasAtual(planos, hoje) {
 function agendaEntradaDoTreinador(it) {
   return !!it && ((it.tipo === "treino" && /^c-[0-9a-z]{1,8}-/.test(String(it.id))) || (typeof it.origem === "string" && !!it.origem));
 }
-// O que da semana fixa sai e o que continua enquanto um plano dura. nomeDe(it) devolve o nome
-// (ou null para descanso/desconhecido). Plano do treinador tira também o que veio dele.
-function planoSaiFica(schedule, nomeDe, doTreinador) {
+// O plano só ocupa o tipo que ele tem: com sessão de força, sai a academia da semana fixa; com
+// corrida, sai o "Dia de corrida". Outras atividades (vôlei, CrossFit) ficam sempre. Com
+// pl.somar (escolha do aluno), nada da semana dele sai e o plano entra junto.
+function planoOcupa(pl) {
+  const ss = (pl && pl.sessoes) || [];
+  if (!pl || pl.somar) return { forca: false, corrida: false };
+  return { forca: ss.some((s) => s.tipo === "treino"), corrida: ss.some((s) => s.tipo !== "treino") };
+}
+// A entrada da semana fixa sai enquanto o plano cobre a data? A semana que veio do treinador sai
+// num plano do treinador (o plano é ela repetida) e fica num plano próprio.
+function agendaPlanoTira(it, pl, oc) {
+  const forca = it.tipo === "treino", corrida = it.tipo === "atividade" && it.id === "corrida";
+  if (!forca && !corrida) return false;
+  if (agendaEntradaDoTreinador(it)) return pl.origem === "treinador";
+  return forca ? oc.forca : oc.corrida;
+}
+// O que da semana fixa sai e o que continua enquanto o plano dura. nomeDe(it) devolve o nome
+// (ou null para descanso/desconhecido). A semana do treinador num plano dele não entra na lista.
+function planoSaiFica(schedule, nomeDe, pl) {
   const sai = [], fica = [];
+  let saiForca = 0, saiCorrida = 0;
+  const oc = planoOcupa(pl);
   PLANO_ORDEM_SEMANA.forEach((dow) => ((schedule && schedule[dow]) || []).forEach((it) => {
     const nome = nomeDe(it);
     if (!nome) return;
-    const ocupa = it.tipo === "treino" || (it.tipo === "atividade" && it.id === "corrida");
-    if (ocupa && (doTreinador || !agendaEntradaDoTreinador(it))) sai.push(`${it.id === "corrida" ? "Corrida" : nome} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`);
-    else if (!ocupa && !fica.includes(nome)) fica.push(nome);
+    if (pl.origem === "treinador" && agendaEntradaDoTreinador(it)) return;
+    if (agendaPlanoTira(it, pl, oc)) {
+      sai.push(`${it.id === "corrida" ? "Corrida" : nome} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`);
+      if (it.tipo === "treino") saiForca++; else saiCorrida++;
+    } else if (!fica.includes(nome)) fica.push(nome);
   }));
-  return { sai, fica };
+  return { sai, fica, saiForca, saiCorrida };
 }
 // O que está marcado para uma data: a semana fixa, ou o plano de semanas quando ele cobre a data.
 function agendaDoDia(schedule, planos, iso) {
   const fixos = (schedule && schedule[weekdayOf(iso)]) || [];
   const pl = planoSemanasAtivo(planos, iso);
   if (!pl) return fixos;
-  // Plano próprio mantém o que veio do treinador; plano do treinador ocupa também as fichas e a corrida dele.
-  const mantidos = fixos.filter((it) => !(it.tipo === "treino" || (it.tipo === "atividade" && it.id === "corrida")) || (pl.origem !== "treinador" && agendaEntradaDoTreinador(it)));
+  const oc = planoOcupa(pl);
+  const mantidos = fixos.filter((it) => !agendaPlanoTira(it, pl, oc));
   const doPlano = [];
   (pl.sessoes || []).forEach((s) => {
     if (s.data !== iso || s.tipo !== "treino" || !s.ref) return;
@@ -11454,6 +11479,34 @@ function CoachRecebidoCard({ ass, diff, onAceitarTudo, onRevisar, busy }) {
     </div>
   );
 }
+// O que sai e o que continua da semana do aluno, com a opção de manter tudo e somar o plano.
+function planoListaE(l) { return l.length < 2 ? l.join("") : `${l.slice(0, -1).join(", ")} e ${l[l.length - 1]}`; }
+function PlanoSaiFicaBox({ schedule, nomeDe, plano, somar, setSomar }) {
+  const fimIso = planoFimSemanas(plano);
+  const base = planoSaiFica(schedule, nomeDe, { ...plano, somar: false });
+  const { sai, fica } = somar ? { sai: [], fica: planoSaiFica(schedule, nomeDe, { ...plano, somar: true }).fica } : base;
+  if (!base.sai.length && !fica.length) return null;
+  // Com "manter tudo", quanto fica na semana do tipo que coincide (1ª semana do plano + a semana fixa).
+  const sem1 = (plano.sessoes || []).filter((x) => x.data < addDays(plano.inicio, 7));
+  const total = [
+    base.saiCorrida ? `${sem1.filter((x) => x.tipo !== "treino").length + base.saiCorrida} corridas` : "",
+    base.saiForca ? `${sem1.filter((x) => x.tipo === "treino").length + base.saiForca} treinos de academia` : "",
+  ].filter(Boolean);
+  return (
+    <>
+      <div className="gt-field-label">Na sua semana</div>
+      <div className="gt-ps-saifica">
+        {sai.length > 0 && <div><b>Pausado até {planoDataCurta(fimIso).slice(4)}:</b> {sai.join(", ")}. Volta em {planoDataCurta(addDays(fimIso, 1)).slice(4)}.</div>}
+        {fica.length > 0 && <div><b>Continua:</b> {fica.join(", ")}.</div>}
+        {base.sai.length > 0 && (
+          <label className="gt-ps-check"><input type="checkbox" checked={somar} onChange={(e) => setSomar(e.target.checked)} /> Manter tudo da minha semana
+            <small>{somar ? `Você vai ter ${planoListaE(total)} na semana.` : `${planoListaE(base.sai)} ${base.sai.length > 1 ? "continuam" : "continua"} e o plano entra junto.`}</small>
+          </label>
+        )}
+      </div>
+    </>
+  );
+}
 // Aluno: plano de várias semanas que chegou do treinador (só entra se o aluno aceitar).
 function CoachPlanoRecebidoCard({ ass, onVer, busy }) {
   const p = coachPlanoNorm(ass.payload);
@@ -11475,6 +11528,7 @@ function CoachPlanoRecebidoCard({ ass, onVer, busy }) {
 function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, onClose, busy }) {
   const pl = useMemo(() => coachPlanoSessoes(ass.payload, ass.link_id), [ass]);
   const [recusar, setRecusar] = useState(null);
+  const [somar, setSomar] = useState(false);
   if (!pl) return null;
   const sem = planoSemanasLista({ ...pl, sessoes: pl.sessoes });
   const nomeFicha = (it) => (pl.semana.fichas[it.ref] || {}).nome || "Treino";
@@ -11486,15 +11540,6 @@ function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, o
           <button type="button" className="gt-provas-close" aria-label="Fechar" onClick={onClose}>✕</button>
         </div>
         <p className="gt-ps-intro">{pl.semanas} semanas, de {planoDataCurta(pl.inicio).toLowerCase()} a {planoDataCurta(addDays(pl.inicio, pl.semanas * 7 - 1)).toLowerCase()}.</p>
-        {(() => {
-          const { sai, fica } = planoSaiFica(schedule, nomeDe, true);
-          return (sai.length > 0 || fica.length > 0) && (
-            <div className="gt-ps-saifica">
-              {sai.length > 0 && <div><b>Sai até {planoDataCurta(addDays(pl.inicio, pl.semanas * 7 - 1)).slice(4)}:</b> {sai.join(", ")}.</div>}
-              {fica.length > 0 && <div><b>Continua:</b> {fica.join(", ")}.</div>}
-            </div>
-          );
-        })()}
         {ass.mensagem && <div className="gt-co-msg">“{ass.mensagem}”</div>}
         <div className="gt-field-label">As fases</div>
         <ol className="gt-ps-fases" aria-hidden="true">
@@ -11507,6 +11552,7 @@ function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, o
             <li key={`${dow}-${i}`}><span className="d">{i === 0 ? PLANO_DIAS_CURTO[dow] : ""}</span><Ei e={it.tipo === "treino" ? "🏋" : it.corrida ? "🏃" : "🏅"} /><span>{it.tipo === "treino" ? nomeFicha(it) : (coachCorridaNorm(it.corrida) || {}).titulo || it.nome || it.id}</span></li>
           )))}
         </ul>
+        <PlanoSaiFicaBox schedule={schedule} nomeDe={nomeDe} plano={{ ...pl, origem: "treinador" }} somar={somar} setSomar={setSomar} />
         {recusar != null ? (
           <div className="gt-co-confirma" role="alert">
             <textarea className="gt-input" rows={2} maxLength={200} placeholder={`Motivo para ${ass.coach_nome} (opcional)`} aria-label="Motivo" value={recusar} onChange={(e) => setRecusar(e.target.value)} />
@@ -11514,7 +11560,7 @@ function CoachPlanoRevisaoModal({ ass, schedule, nomeDe, onAceitar, onRecusar, o
           </div>
         ) : (
           <div className="gt-ps-rodape">
-            <button type="button" className="gt-btn" disabled={busy} onClick={onAceitar}>{busy ? "Aplicando…" : "Aceitar plano"}</button>
+            <button type="button" className="gt-btn" disabled={busy} onClick={() => onAceitar(somar)}>{busy ? "Aplicando…" : "Aceitar plano"}</button>
             <button type="button" className="gt-btn secondary" style={{ width: "100%", marginTop: 8 }} disabled={busy} onClick={() => setRecusar("")}>Recusar</button>
           </div>
         )}
@@ -15543,7 +15589,7 @@ function App() {
   // --- Plano de semanas (fase 2) ---
   const [planoNovoAberto, setPlanoNovoAberto] = useState(false);
   const planoSemanas = planoSemanasAtual(planos, todayISO());
-  const semanaPausada = planoSemanasAtivo(planos, todayISO());
+  const planoAtivoHoje = planoSemanasAtivo(planos, todayISO());
   // Uma sessão de força conta como feita quando algum exercício da ficha foi feito naquele dia.
   function sessaoPlanoFeita(sx) {
     if (sx.tipo !== "treino") return sx.status === "feito";
@@ -15814,6 +15860,8 @@ function App() {
   const treinoById = useCallback((id) => treinos.find((t) => t.id === id), [treinos]);
   const atividadeById = useCallback((id) => atividades.find((a) => a.id === id), [atividades]);
   const nomeNaAgenda = useCallback((it) => { if (it.tipo === "treino") return (treinoById(it.id) || {}).nome || null; const a = atividadeById(it.id); return a && !a.descanso ? a.nome : null; }, [treinoById, atividadeById]);
+  const semanaSaiFica = planoAtivoHoje ? planoSaiFica(schedule, nomeNaAgenda, planoAtivoHoje) : null;
+  const semanaRecolhida = !!(semanaSaiFica && semanaSaiFica.sai.length);
 
   // --- Desafios: lista, check-ins automáticos e convite por link ---
   const desafioHoje = (() => {
@@ -16016,7 +16064,7 @@ function App() {
   }, [coachPendPlano]);
   // Aceitar o plano do treinador: as fichas e a semana dele entram como sempre (e ficam quando o
   // plano acabar) e o plano de semanas passa a mandar nas datas.
-  async function coachAceitarPlano(ass, auto) {
+  async function coachAceitarPlano(ass, auto, somar) {
     const pl = coachPlanoSessoes(ass.payload, ass.link_id);
     if (!pl) { showToast("Esse plano veio com um problema. Peça para o treinador enviar de novo."); return; }
     setCoachBusy(true);
@@ -16026,9 +16074,10 @@ function App() {
     setSchedule(novo.schedule); persist("schedule", novo.schedule);
     if (novo.atividades.length !== atividades.length) { setAtividades(novo.atividades); persist("atividades", novo.atividades); }
     const nome = pl.nome || `Plano de ${ass.coach_nome}`;
-    criarPlanoSemanas({ id: planoIdNovo(), tipo: "semanas", versao: 2, nome, provaNome: nome, origem: "treinador", coachNome: ass.coach_nome, linkId: ass.link_id, assignmentId: ass.id, nivel: "intermediario", inicio: pl.inicio, semanas: pl.semanas, criadoEm: new Date().toISOString(), sessoes: pl.sessoes }, [], { silencioso: true });
+    criarPlanoSemanas({ id: planoIdNovo(), tipo: "semanas", versao: 2, nome, provaNome: nome, origem: "treinador", coachNome: ass.coach_nome, linkId: ass.link_id, assignmentId: ass.id, ...(somar ? { somar: true } : {}), nivel: "intermediario", inicio: pl.inicio, semanas: pl.semanas, criadoEm: new Date().toISOString(), sessoes: pl.sessoes }, [], { silencioso: true });
     try { localStorage.setItem("treino-app:coachAplicados", JSON.stringify([...coachAplicadosLer(), ass.id].slice(-50))); } catch (e) {}
-    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aceito", p_motivo: auto ? "Aceite automático" : null });
+    const mantidos = somar ? planoSaiFica(antes.schedule, nomeNaAgenda, { ...pl, origem: "treinador" }).sai : [];
+    await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aceito", p_motivo: auto ? "Aceite automático" : mantidos.length ? `Aceitou mantendo a semana dele: ${mantidos.join(", ")}` : null });
     await coachCall("coach_decide_assignment", { p_id: ass.id, p_status: "aplicado" });
     setCoachBusy(false); setCoachPlanoAberto(false);
     logEvent(auto ? "coach_plano_aceito_auto" : "coach_plano_aceito");
@@ -17579,6 +17628,12 @@ function App() {
                     onRemover={(idx) => { mudarSessoesPlano(planoSemanas.id, (ss) => ss.filter((_, i) => i !== idx)); showToast("Sessão tirada desta semana"); }}
                     onEncerrar={() => encerrarPlanoSemanas(planoSemanas)}
                     onTrocar={() => setPlanoNovoAberto(true)}
+                    podeSomar={planoSaiFica(schedule, nomeNaAgenda, { ...planoSemanas, somar: false }).sai.length > 0}
+                    onSomar={(v) => {
+                      const sai = planoSaiFica(schedule, nomeNaAgenda, { ...planoSemanas, somar: false }).sai;
+                      savePlanos(planos.map((p) => (p.id !== planoSemanas.id ? p : { ...p, somar: v })));
+                      showToast(v ? "Sua semana volta inteira. O plano continua junto" : `${planoListaE(sai)} ${sai.length > 1 ? "ficam pausados" : "fica pausado"} até ${planoDataCurta(planoFimSemanas(planoSemanas)).slice(4)}`);
+                    }}
                   />
                 ) : (
                   <div className="gt-card gt-ps-vazio">
@@ -17590,24 +17645,22 @@ function App() {
               </>
             )}
             <div className="gt-section-title">SUA SEMANA</div>
-            {semanaPausada && (() => {
-              const { fica } = planoSaiFica(schedule, nomeNaAgenda, semanaPausada.origem === "treinador");
-              return (
-                <div className="gt-card gt-ps-fixa-nota">
-                  <div className="gt-ps-fixa-fechada">
-                    <span>Sua semana volta em {planoDataCurta(addDays(planoFimSemanas(semanaPausada), 1)).slice(4)}.{fica.length ? ` Continua: ${fica.join(", ")}.` : ""}</span>
-                    <button type="button" className="gt-link-btn" aria-expanded={verSemanaFixa} onClick={() => setVerSemanaFixa(!verSemanaFixa)}>{verSemanaFixa ? "Esconder ▾" : "Ver como era ▸"}</button>
-                  </div>
+            {semanaRecolhida && (
+              <div className="gt-card gt-ps-fixa-nota">
+                <div className="gt-ps-fixa-fechada">
+                  <div><b>Pausado até {planoDataCurta(planoFimSemanas(planoAtivoHoje)).slice(4)}:</b> {semanaSaiFica.sai.join(", ")}. Volta em {planoDataCurta(addDays(planoFimSemanas(planoAtivoHoje), 1)).slice(4)}.</div>
+                  {semanaSaiFica.fica.length > 0 && <div><b>Continua:</b> {semanaSaiFica.fica.join(", ")}.</div>}
+                  <button type="button" className="gt-link-btn" aria-expanded={verSemanaFixa} onClick={() => setVerSemanaFixa(!verSemanaFixa)}>{verSemanaFixa ? "Esconder semana ▾" : "Ver semana ▸"}</button>
                 </div>
-              );
-            })()}
-            {(!semanaPausada || verSemanaFixa) && DIAS.map((dia, idx) => {
+              </div>
+            )}
+            {(!semanaRecolhida || verSemanaFixa) && DIAS.map((dia, idx) => {
               const itens = (schedule[idx] || []).map((it) => ({ it, nome: it.tipo === "treino" ? treinoById(it.id)?.nome : atividadeById(it.id)?.nome, descanso: it.tipo === "atividade" && !!atividadeById(it.id)?.descanso })).filter((x) => x.nome);
                             return (
                 <div className={`gt-card gt-ag-card ${itens.length === 0 ? "vazio" : ""} ${idx === weekdayOf(todayISO()) ? "hoje" : ""}`} key={idx}>
                   <div className="gt-ag-head">
                     <span className="day-lbl">{dia}{idx === weekdayOf(todayISO()) && <span className="gt-hoje-pill">HOJE</span>}{itens.length === 0 && <span className="gt-ag-empty-inline">Descanso</span>}</span>
-                    {!semanaPausada && <button type="button" className="gt-ag-add" aria-label={`Adicionar em ${dia}`} onClick={() => { setSheetDay(idx); setSheetBusca(""); setSheetNova(null); }}>＋</button>}
+                    <button type="button" className="gt-ag-add" aria-label={`Adicionar em ${dia}`} onClick={() => { setSheetDay(idx); setSheetBusca(""); setSheetNova(null); }}>＋</button>
                   </div>
                                     {itens.map(({ it, nome, descanso }) => {
                     const k = `${idx}:${it.tipo}:${it.id}`;
@@ -17623,7 +17676,7 @@ function App() {
                             ? <span className="gt-ag-sub">{doPlano.sessao.titulo} · {prox.slice(8, 10)}/{prox.slice(5, 7)} · do plano</span>
                             : <span className="gt-ag-sub">Corrida livre · <button type="button" className="gt-ag-link" onClick={() => setTreinoCorrida({ data: prox })}>Planejar</button></span>)}
                         </span>
-                        {semanaPausada ? null : agMenu === k
+                        {agMenu === k
                           ? <><button type="button" className="gt-ag-rm" onClick={() => { removeFromAgenda(idx, it); setAgMenu(null); showToast(`${nome} saiu de ${dia}`); }}>Remover</button><button type="button" className="gt-ag-more" aria-label="Cancelar" onClick={() => setAgMenu(null)}>✕</button></>
                           : <button type="button" className="gt-ag-more" aria-label={`Opções de ${nome}`} onClick={() => setAgMenu(k)}>⋯</button>}
                       </div>
@@ -18090,7 +18143,7 @@ function App() {
         <CoachRevisaoModal ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onClose={() => setCoachRevisao(false)} onConfirmar={(dows, motivo, nRec) => coachAplicar(coachPend[0], coachPendDiff, dows, motivo, nRec)} />
       )}
       {coachPlanoAberto && coachPendPlano && (
-        <CoachPlanoRevisaoModal ass={coachPendPlano} schedule={schedule} nomeDe={nomeNaAgenda} busy={coachBusy} onClose={() => setCoachPlanoAberto(false)} onAceitar={() => coachAceitarPlano(coachPendPlano)} onRecusar={(m) => coachRecusarPlano(coachPendPlano, m)} />
+        <CoachPlanoRevisaoModal ass={coachPendPlano} schedule={schedule} nomeDe={nomeNaAgenda} busy={coachBusy} onClose={() => setCoachPlanoAberto(false)} onAceitar={(somar) => coachAceitarPlano(coachPendPlano, false, somar)} onRecusar={(m) => coachRecusarPlano(coachPendPlano, m)} />
       )}
 
       {toast && <div className="gt-toast" role="status" aria-live="polite">{toast}</div>}
@@ -18353,6 +18406,7 @@ function App() {
           treinoById={treinoById}
           planoAtual={planoSemanas}
           onCriar={criarPlanoSemanas}
+          nomeDe={nomeNaAgenda}
           onProva={() => { setPlanoNovoAberto(false); openProvas(); }}
           onClose={() => setPlanoNovoAberto(false)}
         />
@@ -20292,7 +20346,8 @@ function PlanoFasesLegenda({ semanas }) {
 }
 
 // Criar plano: começa pelo objetivo (modelos do Movo e prova); "repetir minha semana" fica no rodapé.
-function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, onProva, onClose }) {
+function PlanoSemanasNovo({ treinos, schedule, treinoById, nomeDe, planoAtual, onCriar, onProva, onClose }) {
+  const [somar, setSomar] = useState(false);
   const [passo, setPasso] = useState("origem");
   const [modelo, setModelo] = useState(PLANO_MODELOS[0].id);
   const [semanas, setSemanas] = useState(PLANO_MODELOS[0].semanas);
@@ -20403,11 +20458,12 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
                     {previa.fichasNovas.map((f) => f.nome).join(", ")}. Você pode editar quando quiser.
                   </details>
                 )}
+                {passo === "modelo" && nomeDe && <PlanoSaiFicaBox schedule={schedule} nomeDe={nomeDe} plano={previa.plano} somar={somar} setSomar={setSomar} />}
                 {planoAtual && <p className="gt-ps-aviso">Seu plano "{planoAtual.nome}" termina quando este começar.</p>}
               </>
             )}
             <div className="gt-ps-rodape">
-              <button type="button" className="gt-btn" disabled={!previa || !previa.plano.sessoes.length} onClick={() => onCriar(previa.plano, previa.fichasNovas)}>Começar plano</button>
+              <button type="button" className="gt-btn" disabled={!previa || !previa.plano.sessoes.length} onClick={() => onCriar(passo === "modelo" && somar ? { ...previa.plano, somar: true } : previa.plano, previa.fichasNovas)}>Começar plano</button>
             </div>
           </>
         )}
@@ -20416,7 +20472,7 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
   );
 }
 
-function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTrocar, onAbrirFicha }) {
+function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTrocar, onAbrirFicha, podeSomar, onSomar }) {
   const hoje = todayISO();
   const semanas = planoSemanasLista(plano, feitoFn);
   const atual = Math.max(0, semanas.findIndex((w) => hoje >= w.inicio && hoje <= w.fim));
@@ -20438,6 +20494,7 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
       </div>
       {acoes && (
         <div className="gt-ps-acoes">
+          {onSomar && (plano.somar || podeSomar) && <button type="button" onClick={() => { setAcoes(false); onSomar(!plano.somar); }}>{plano.somar ? "Pausar o que o plano cobre" : "Manter tudo da minha semana"}</button>}
           <button type="button" onClick={() => { setAcoes(false); onTrocar(); }}>Trocar de plano</button>
           <button type="button" className="warn" onClick={() => { setAcoes(false); onEncerrar(); }}>{hoje < plano.inicio ? "Excluir plano" : "Encerrar plano"}</button>
         </div>
