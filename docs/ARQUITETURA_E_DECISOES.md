@@ -147,7 +147,7 @@ Marcos recentes:
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- Flag `blocos`: aplicar `feature_flags.sql` (só acrescenta `'blocos'` em `my_features`) e liberar a Dayanne (`admin_feature_set`), depois do ok do Andre ao PR da v204. Próximo da fase 1: modo guiado série a série (botão, nunca padrão), Roxzone no HYROX e comparação com a última simulação.
+- Flag `blocos`: `feature_flags.sql` aplicado em produção em 20/10 (ok do Andre), v204 publicada só para o admin. Falta liberar a Dayanne (`admin_feature_set`) depois do ok do Andre. Próximo da fase 1: modo guiado série a série (botão, nunca padrão), Roxzone no HYROX e comparação com a última simulação.
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
 - Painel: e-mail em massa para Recados (usa Resend, **custo a combinar com o Andre antes**); botão de e-mail de teste em Integrações (idem); ação de encerrar desafio abandonado (fora por risco).
