@@ -2060,7 +2060,9 @@ grant execute on function public.app_dominio_novo() to anon, authenticated;
 -- feature_flags.sql
 -- ======================================================================
 -- Experimentos por usuário (feature flags com lista de liberados).
--- Hoje: 'ajuste_semana' (Ajustar minha semana / "Sua semana mudou" com IA) e 'blocos' (editor de sessão em blocos, liberado para todos desde 20/10).
+-- Hoje: 'ajuste_semana' (Ajustar minha semana / "Sua semana mudou" com IA), 'blocos' (editor de sessão em blocos,
+-- liberado para todos desde 20/10) e 'plano' (plano de semanas, fase 2; v207).
+-- feature_allowed é a mesma aqui e em feature_flags_todos.sql (qualquer ordem de execução dá o mesmo resultado).
 -- Regra: só quem o admin liberar usa, e quem tem Strava conectado fica de fora (a política da API do Strava
 -- proíbe usar dados do Strava em IA). O admin (ardurso@gmail.com) sempre tem acesso, para testar.
 -- Rodar uma vez no SQL editor do Supabase. Pode rodar de novo sem problema.
@@ -2086,9 +2088,11 @@ as $$
     when public.movo_admin_uid(p_uid) then true
     when p_feature = 'blocos' then true  -- liberado para todos em 20/10 (decisão do Andre)
     when p_feature = 'ajuste_semana' then
-      exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
+      (coalesce((select (valor)::text::boolean from public.app_config where chave = 'ff_ajuste_semana_todos'), false)
+       or exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature))
       and not exists (select 1 from public.strava_connections where user_id = p_uid)
-    else exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
+    else coalesce((select (valor)::text::boolean from public.app_config where chave = 'ff_' || p_feature || '_todos'), false)
+      or exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
   end;
 $$;
 revoke all on function public.feature_allowed(uuid, text) from public, anon, authenticated;
@@ -2102,7 +2106,7 @@ security definer
 set search_path = public, auth
 as $$
   select coalesce(array_agg(f), '{}'::text[])
-  from unnest(array['ajuste_semana', 'blocos']) as f
+  from unnest(array['ajuste_semana', 'blocos', 'plano']) as f
   where public.feature_allowed(auth.uid(), f);
 $$;
 revoke all on function public.my_features() from public, anon;
@@ -2208,11 +2212,13 @@ as $$
   select case
     when p_uid is null then false
     when public.movo_admin_uid(p_uid) then true
+    when p_feature = 'blocos' then true  -- liberado para todos em 20/10 (decisão do Andre)
     when p_feature = 'ajuste_semana' then
       (coalesce((select (valor)::text::boolean from public.app_config where chave = 'ff_ajuste_semana_todos'), false)
        or exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature))
       and not exists (select 1 from public.strava_connections where user_id = p_uid)
-    else exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
+    else coalesce((select (valor)::text::boolean from public.app_config where chave = 'ff_' || p_feature || '_todos'), false)
+      or exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
   end;
 $$;
 revoke all on function public.feature_allowed(uuid, text) from public, anon, authenticated;
@@ -2237,7 +2243,7 @@ set search_path = public, auth
 as $$
 begin
   if not public.is_movo_admin() then raise exception 'forbidden'; end if;
-  if p_feature is distinct from 'ajuste_semana' then raise exception 'feature desconhecida'; end if;
+  if p_feature is null or p_feature not in ('ajuste_semana', 'plano') then raise exception 'feature desconhecida'; end if;
   insert into public.app_config (chave, valor, atualizado_em) values ('ff_' || p_feature || '_todos', to_jsonb(coalesce(p_on, false)), now())
     on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
 end;

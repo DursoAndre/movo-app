@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 20/10/2026 (v206, fim da fase 1: modo guiado série a série, Roxzone no HYROX, comparação com o último resultado do bloco).
+Última atualização: 20/10/2026 (v207, início da fase 2: plano de semanas na aba Treinos, atrás da flag `plano`; antes, v206: modo guiado, Roxzone e comparação).
 
 ---
 
@@ -136,6 +136,14 @@ Marcos recentes:
   - **Roxzone** (`blocoTemRoxzone`, `blocoRoteiro(b, {roxzone})`): no bloco HYROX For Time com corrida, caixa opcional antes de começar; liga um trecho "Roxzone" depois de cada corrida ("Saí da corrida" → "Comecei a estação"). Resultado ganha `roxzoneSeg`.
   - **Comparação** (`blocoResultadoAnterior`, `blocoDelta`): o cronômetro mostra "Sua última" antes de começar, a diferença por trecho (casada pela ordem dentro de estação/Roxzone) e a diferença no total. O resultado do bloco agora grava `nome`, `tipo` e `rotulos` (nome de cada parcial); o anterior é achado pelo mesmo nome de bloco (ou mesmo id, para resultados antigos).
 
+### 6.3.2 Plano de semanas (v207, fase 2, flag `plano`)
+- **Uma lista só de planos:** o plano de semanas mora em `planos` (mesma lista do plano de corrida, sincroniza em `app_data.planos`) com `tipo:"semanas"`: `{id, tipo, versao:2, nome, provaNome (=nome, para apps antigos), origem ("meu"|"modelo"|"ia"|"treinador", `PLANO_ORIGENS`), modelo?, nivel, inicio (segunda), semanas, criadoEm, sessoes, encerradoEm?}`. Sessão de corrida = sessão de plano de sempre (etapas, fase, `cid`); sessão de força = `{data, tipo:"treino", ref (id da ficha), titulo, fase, cid, nota?}`. Apps antigos mostram só as corridas (a sessão de força cai como rodagem sem quebrar).
+- **Agenda do dia:** `agendaDoDia(schedule, planos, iso)` substitui `schedule[dia]` em Hoje, faixa da semana, `semanaFatos` e próximo treino. Enquanto um plano de semanas cobre a data, as fichas e o dia de "corrida" da semana fixa saem e entram as sessões de força do plano; outras atividades e tudo que veio do treinador ficam. A semana fixa não é apagada e volta quando o plano acaba. Sessão de força conta como feita pelo log da ficha no dia (`sessaoPlanoFeita`).
+- **Fases:** `planoFaseDaSemana(w, n)`: Base (<35%), Construção (<70%), Específico; Descarga a cada 4ª semana (exceto a última); Polimento na última se n≥6. Descarga/Polimento levam uma `nota` na sessão de força.
+- **Origens na v207:** "Modelo do Movo" (`PLANO_MODELOS`: Híbrido 8 sem., HYROX 8 sem. com meia simulação no meio e simulação completa na última semana, Força 3x 6 sem.; fichas `pl-<modelo>-<chave>` entram em Meus treinos e são reaproveitadas), "Do meu jeito" (`planoDaSemanaFixa`: a semana fixa vira N semanas, corrida crescendo aos poucos), "Prova" (abre o plano de prova com IA de sempre). "Com IA" aparece como "em breve"; "Do treinador" é informativo.
+- Telas: `PlanoSemanasNovo` (origem, semanas, nível, começo, prévia da 1ª semana e das fases) e `PlanoSemanasCard` (barra de fases, navegação por semana, mover sessão para outro dia da mesma semana, tirar da semana, encerrar/excluir). Só um plano de semanas ativo: criar outro encerra o atual na véspera. `planosParaReplanejar` ignora planos de semanas.
+- SQL: `my_features` passa a listar `'plano'`; `admin_feature_todos_set` aceita `'plano'` (ligar para todos = `ff_plano_todos`).
+
 ### 6.4 Relatórios compartilhados
 - `report_shares`: aluno libera por **e-mail** com categorias (frequência, carga, peso e notas, treinos completos). Filtragem no banco (`get_shared_report`). Quem recebe vê em Configurações › "Ver relatórios". Aviso por e-mail só se a pessoa já tem conta (v188).
 
@@ -152,7 +160,8 @@ Marcos recentes:
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Fase 1 fechada na v206 (modo guiado, Roxzone, comparação). Próximo: fase 2 (plano de semanas).
+- Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Fase 1 fechada na v206 (modo guiado, Roxzone, comparação). Fase 2 começou na v207 (plano de semanas, flag `plano`, só admin até o Andre liberar). Próximos passos da fase 2: plano híbrido com IA (aprovado, dentro de 3/mês), treinador envia plano inteiro com aceite automático opcional (`coach_plano.sql`), "Trazer meu treinador" e o plano do treinador virar "Meu plano" quando o vínculo acaba.
+- **Bug em produção (achado em 20/10):** a `feature_allowed` aplicada com a v204/v205 não tem a cláusula `ff_ajuste_semana_todos`, então "Ajustar minha semana" sumiu para quem não está na lista. `feature_flags.sql` e `feature_flags_todos.sql` (iguais agora, qualquer ordem dá o mesmo resultado) corrigem; falta aplicar (precisa do ok do Andre).
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
 - Painel: botão de e-mail de teste em Integrações; ação de encerrar desafio (esperando a decisão do Andre sobre como fica o prêmio final).
@@ -162,6 +171,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **20/10/2026 (v207, mesmo pedido, início da fase 2):** plano de semanas reaproveita a lista `planos` (`tipo:"semanas"`) em vez de criar uma estrutura nova; as sessões de força apontam para fichas e entram no dia por `agendaDoDia`, então a tela de ficha, o modo guiado e o histórico são os mesmos. Enquanto o plano dura, ele ocupa o lugar das fichas e da corrida da semana fixa (sem apagá-la). Começa só para o admin (flag `plano`).
 - **20/10/2026 (v206, pedido do Andre "Fecha esses pontos da fase 1 e inicia a fase 2"):** modo guiado série a série como botão opcional (a lista continua padrão), Roxzone opcional no HYROX e comparação com o último resultado do mesmo bloco. A fase 2 (plano de semanas) é feita pela thread "Benchmark do modo aluno", começando do main depois da v205.
 - **20/10/2026 (aprovação do Andre: "e-mail em massa dentro do limite do Resend"):** recados podem ir também por e-mail. `recado_email.sql` (fila `recado_emails`, `email_prefs` com token de saída, `admin_m_recado_email_fila`/`_ok`, `email_sair`, `admin_m_conta_impacto`) + edge function `recado-email` (Resend `/emails/batch`). Cota dos recados: 80/dia e 2.000/mês (o resto fica na fila e sai em "Enviar o restante" no dia seguinte). Todo e-mail tem link "não quero mais receber" para `movoapp.com.br/sair/?t=<token>` (movo-site) e cabeçalho List-Unsubscribe. Só vai para e-mail confirmado. Ao apagar conta pelo painel, a confirmação mostra o que some junto (acertos em aberto, desafios criados, alunos).
 - **20/10/2026 (v205, teste do Andre na v204):** entrada rápida com botão "Adicionar" e prévia "Vai entrar: …"; exercício de academia é força por padrão (sem chip "+ Força"); bi-set com 2 e tri-set com 3 exercícios. Andre aprovou e pediu para liberar o editor de blocos para todo mundo (flag `blocos` aberta para todas as contas).
