@@ -2060,7 +2060,7 @@ grant execute on function public.app_dominio_novo() to anon, authenticated;
 -- feature_flags.sql
 -- ======================================================================
 -- Experimentos por usuário (feature flags com lista de liberados).
--- Hoje: 'ajuste_semana' (Ajustar minha semana / "Sua semana mudou" com IA) e 'blocos' (editor de sessão em blocos).
+-- Hoje: 'ajuste_semana' (Ajustar minha semana / "Sua semana mudou" com IA) e 'blocos' (editor de sessão em blocos, liberado para todos desde 20/10).
 -- Regra: só quem o admin liberar usa, e quem tem Strava conectado fica de fora (a política da API do Strava
 -- proíbe usar dados do Strava em IA). O admin (ardurso@gmail.com) sempre tem acesso, para testar.
 -- Rodar uma vez no SQL editor do Supabase. Pode rodar de novo sem problema.
@@ -2084,6 +2084,7 @@ as $$
   select case
     when p_uid is null then false
     when public.movo_admin_uid(p_uid) then true
+    when p_feature = 'blocos' then true  -- liberado para todos em 20/10 (decisão do Andre)
     when p_feature = 'ajuste_semana' then
       exists (select 1 from public.feature_access where user_id = p_uid and feature = p_feature)
       and not exists (select 1 from public.strava_connections where user_id = p_uid)

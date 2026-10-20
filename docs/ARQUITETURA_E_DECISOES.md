@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 20/10/2026 (v205, entrada rápida com botão Adicionar e prévia do que foi entendido).
+Última atualização: 20/10/2026 (v205, editor de blocos liberado para todos; entrada rápida com botão e prévia; força como padrão; bi-set/tri-set com número fixo).
 
 ---
 
@@ -148,7 +148,7 @@ Marcos recentes:
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- Flag `blocos`: `feature_flags.sql` aplicado em produção em 20/10 (ok do Andre), v204 publicada só para o admin. Falta liberar a Dayanne (`admin_feature_set`) depois do ok do Andre. Próximo da fase 1: modo guiado série a série (botão, nunca padrão), Roxzone no HYROX e comparação com a última simulação.
+- Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Próximo da fase 1: modo guiado série a série (botão, nunca padrão), Roxzone no HYROX e comparação com a última simulação.
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
 - Painel: e-mail em massa para Recados (usa Resend, **custo a combinar com o Andre antes**); botão de e-mail de teste em Integrações (idem); ação de encerrar desafio abandonado (fora por risco).
@@ -158,6 +158,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **20/10/2026 (v205, teste do Andre na v204):** entrada rápida com botão "Adicionar" e prévia "Vai entrar: …"; exercício de academia é força por padrão (sem chip "+ Força"); bi-set com 2 e tri-set com 3 exercícios. Andre aprovou e pediu para liberar o editor de blocos para todo mundo (flag `blocos` aberta para todas as contas).
 - **20/10/2026 (v204, sessão em blocos, pedido do Andre "Começa" sobre o plano de execução):** fases 0 e 1 construídas atrás da flag `blocos` (ver 6.3.1). Princípio do relatório "Movo para Alunos" v2 (https://claude.ai/artifact/V6nmiERxsnDQaZERCczPc7, seção "Simples por padrão", a partir do comentário do Andre): a ficha de hoje continua sendo a tela padrão; superset, RIR, %1RM e cronômetro só aparecem quando o treino tem aquilo; nada obrigatório; o PR com a flag ligada só para o Andre serve de protótipo para ele revisar antes de abrir para mais gente. O relatório recomenda a mesma hierarquia plano > fase > semana > sessão > bloco para aluno sozinho, modelo do Movo, IA e treinador.
 
 - **20/10/2026 (modo treinador, decisão do Andre, confirmada na thread):** **dor e esforço podem ser liberados ao treinador** sem esperar o ok jurídico: o próprio aluno autoriza ou não essa parte (permissão `ver_esforco_dor`, desligada por padrão, revogável), e isso é o consentimento. Hoje o recurso está desligado no app pela flag `COACH_FLAGS_PADRAO.esforcoDor = false`; ligar entra no plano de execução do modo treinador.
