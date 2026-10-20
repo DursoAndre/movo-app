@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v204";
+const APP_BUILD = "v205";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1145,6 +1145,22 @@ function rxTexto(ex) {
   if (ex.rir != null && ex.rir !== "") p.push(`rir ${rxNum(ex.rir)}`);
   if (ex.descansoSeg) p.push(`desc ${rxTempo(ex.descansoSeg)}`);
   return p.join(" ");
+}
+// Prescrição por extenso, para mostrar o que a entrada rápida entendeu.
+function rxLegivel(ex) {
+  if (!ex) return "";
+  const p = [];
+  const n = Number(ex.series) || 0;
+  if (ex.repeticoes) p.push(n > 1 ? `${n} séries de ${ex.repeticoes}` : `${ex.repeticoes} reps`);
+  else if (n > 1) p.push(`${n} séries`);
+  if (ex.distanciaM) p.push(ex.distanciaM >= 1000 && ex.distanciaM % 100 === 0 ? `${rxNum(ex.distanciaM / 1000)} km` : `${ex.distanciaM} m`);
+  if (ex.tempoSeg) p.push(rxTempo(ex.tempoSeg));
+  if (ex.calorias) p.push(`${ex.calorias} cal`);
+  if (ex.cargaKg) p.push(`${rxNum(ex.cargaKg)} kg`);
+  if (ex.pct1rm) p.push(`${rxNum(ex.pct1rm)}% do 1RM`);
+  if (ex.rir != null && ex.rir !== "") p.push(`RIR ${rxNum(ex.rir)}`);
+  if (ex.descansoSeg) p.push(`descanso ${rxTempo(ex.descansoSeg)}`);
+  return p.join(" · ");
 }
 // Aplica o texto da prescrição ao exercício: o que saiu do texto sai do exercício.
 function aplicarRx(ex, texto) {
@@ -3672,7 +3688,11 @@ const APP_CSS = `
   .gt-bl-ex-letra { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--bl-cor); width:22px; flex-shrink:0; }
   .gt-bl-ex-nome { flex:1; min-width:0; text-align:left; background:none; border:none; color:var(--text); font-size:14px; font-weight:500; padding:8px 0; cursor:pointer; font-family:inherit; }
   .gt-input.gt-bl-rx { font-family:'Roboto Mono',monospace; font-size:14px; }
+  .gt-bl-entrada-wrap { display:flex; flex-direction:column; gap:6px; }
   .gt-bl-entrada { display:flex; gap:6px; align-items:center; }
+  .gt-bl-entrada-prev { font-size:12px; color:var(--text-muted); line-height:1.4; }
+  .gt-bl-entrada-prev.ok { color:var(--accent); }
+  .gt-bl-entrada-prev strong { font-weight:600; }
   .gt-bl-entrada .gt-input { flex:1; min-width:0; }
   .gt-bl-entrada .gt-btn.small { min-height:44px; padding:8px 12px; }
   .gt-bl-novos-lbl { font-size:12px; color:var(--text-muted); margin-top:-4px; }
@@ -18556,6 +18576,27 @@ function exercicioNovo(cat) {
 }
 
 // Campo da prescrição: mostra o texto curto e só aplica ao sair do campo (ou Enter).
+// Entrada rápida: escreve o exercício, vê o que o app entendeu e toca em Adicionar.
+function EntradaRapida({ label, placeholder, onAdd, extra }) {
+  const [txt, setTxt] = useState("");
+  const ex = txt.trim() ? exercicioDaEntrada(txt) : null;
+  const enviar = (e) => { e.preventDefault(); if (!ex) return; onAdd(ex); setTxt(""); };
+  const detalhe = ex ? rxLegivel(ex) : "";
+  return (
+    <form className="gt-bl-entrada-wrap" onSubmit={enviar}>
+      <div className="gt-bl-entrada">
+        <input className="gt-input" aria-label={label} enterKeyHint="send" placeholder={placeholder} maxLength={100}
+          value={txt} onChange={(e) => setTxt(e.target.value)} />
+        <button type="submit" className="gt-btn secondary small" disabled={!ex}>Adicionar</button>
+        {extra}
+      </div>
+      <div className={`gt-bl-entrada-prev ${ex ? "ok" : ""}`} aria-live="polite">
+        {ex ? <>Vai entrar: <strong>{ex.nome}</strong>{detalhe ? ` · ${detalhe}` : ""}</> : "Escreva nome, séries x reps, carga e RIR, e toque em Adicionar."}
+      </div>
+    </form>
+  );
+}
+
 function RxInput({ ex, onCommit, label }) {
   const [txt, setTxt] = useState(() => rxTexto(ex));
   const [foco, setFoco] = useState(false);
@@ -18609,7 +18650,6 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
   const [picker, setPicker] = useState(null); // índice do bloco que recebe o exercício do catálogo
   const [busca, setBusca] = useState("");
   const [grupo, setGrupo] = useState(CATALOG_GRUPOS[0].label);
-  const [entrada, setEntrada] = useState({});
   const [obsAberta, setObsAberta] = useState({});
   const [cfg, setCfg] = useState({}); // blocos com o tipo/formato aberto para editar
   const [pickerGeral, setPickerGeral] = useState(false);
@@ -18625,14 +18665,6 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
   const moverEx = (i, j, d) => { const exs = lista[i].exercicios.slice(); const k = j + d; if (k < 0 || k >= exs.length) return; [exs[j], exs[k]] = [exs[k], exs[j]]; setBloco(i, { ...lista[i], exercicios: exs }); };
   const tirarEx = (i, j) => setBloco(i, { ...lista[i], exercicios: lista[i].exercicios.filter((_, k) => k !== j) });
   const addEx = (i, ex) => setBloco(i, { ...lista[i], exercicios: [...lista[i].exercicios, ex] });
-  function enviarEntrada(i) {
-    const txt = (entrada[i] || "").trim();
-    if (!txt) return;
-    const ex = exercicioDaEntrada(txt);
-    if (!ex) return;
-    addEx(i, exercicioNovo(ex));
-    setEntrada({ ...entrada, [i]: "" });
-  }
   // "Adicionar exercício" geral: igual ao app de hoje, agrupa por grupo muscular em blocos de força.
   function addPorGrupo(cat) {
     const nomeBloco = cat.grupo || "Exercícios";
@@ -18703,25 +18735,18 @@ function BlocosEditor({ blocos, onChange, ultimas }) {
                     </div>
                   );
                 })}
-                <div className="gt-bl-entrada">
-                  <input className="gt-input" aria-label={`Adicionar exercício em ${b.nome}`} enterKeyHint="done"
-                    placeholder={tipo === "condicionamento" ? "Ex.: 15 wall ball 9kg" : tipo === "hyrox" ? "Ex.: SkiErg 1000m" : tipo === "mobilidade" ? "Ex.: Alongamento de quadril 45s" : "Ex.: Agachamento 4x6 80kg rir2"}
-                    value={entrada[i] || ""} onChange={(e) => setEntrada({ ...entrada, [i]: e.target.value })}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); enviarEntrada(i); } }} />
-                  <button type="button" className="gt-btn secondary small" disabled={!exercicioDaEntrada(entrada[i] || "")} onClick={() => enviarEntrada(i)}>＋</button>
-                  <button type="button" className="gt-btn secondary small" onClick={() => setPicker(i)}>Catálogo</button>
-                </div>
+                <EntradaRapida label={`Adicionar exercício em ${b.nome}`}
+                  placeholder={tipo === "condicionamento" ? "Ex.: 15 wall ball 9kg" : tipo === "hyrox" ? "Ex.: SkiErg 1000m" : tipo === "mobilidade" ? "Ex.: Alongamento de quadril 45s" : "Ex.: Agachamento 4x6 80kg rir2"}
+                  onAdd={(ex) => addEx(i, exercicioNovo(ex))}
+                  extra={<button type="button" className="gt-btn secondary small" onClick={() => setPicker(i)}>Catálogo</button>} />
               </>
             )}
           </div>
         );
       })}
       {!lista.some((b) => blocoTipo(b) !== "corrida") && (
-        <div className="gt-bl-entrada">
-          <input className="gt-input" aria-label="Escrever exercício" enterKeyHint="done" placeholder="Ex.: Agachamento 4x6 80kg rir2"
-            value={entrada.geral || ""} onChange={(e) => setEntrada({ ...entrada, geral: e.target.value })}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const ex = exercicioDaEntrada(entrada.geral || ""); if (ex) { onChange([...lista, { nome: "Exercícios", exercicios: [exercicioNovo(ex)] }]); setEntrada({ ...entrada, geral: "" }); } } }} />
-        </div>
+        <EntradaRapida label="Escrever exercício" placeholder="Ex.: Agachamento 4x6 80kg rir2"
+          onAdd={(ex) => onChange([...lista, { nome: "Exercícios", exercicios: [exercicioNovo(ex)] }])} />
       )}
       <button className="gt-add-extra-card" type="button" onClick={() => setPickerGeral(true)}>
         <span className="plus">+</span> Adicionar exercício

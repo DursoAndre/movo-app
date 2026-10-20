@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 20/10/2026 (v204, sessão em blocos e treino guiado atrás da flag `blocos`).
+Última atualização: 20/10/2026 (v205, entrada rápida com botão Adicionar e prévia do que foi entendido).
 
 ---
 
@@ -129,6 +129,7 @@ Marcos recentes:
 - Editor `BlocosEditor` (aluno: montar/editar ficha; treinador: `CoachFichaEditor`), só com a flag. **Simples por padrão:** "Adicionar exercício" continua agrupando por grupo muscular; tipo/formato ficam atrás de um botão no bloco; blocos especiais só por "Ou um bloco com formato próprio" (inclui "Simulação HYROX").
 - Leitura (sempre ligada, sem flag): o treino em foco mostra cada bloco com cor do tipo, resumo, A1/A2 em bi-set/tri-set/circuito com "Terminei a rodada" (descanso do bloco), RIR como coluna só quando prescrito, %1RM convertido em kg pelo 1RM estimado (Epley, séries até 12 reps), linha "última vez" ao abrir o exercício, carga prescrita pré-preenche o peso. Blocos AMRAP/EMOM/For Time/Tabata/Intervalos têm "Iniciar cronômetro" opcional (`BlocoTimer`): tempo pelo horário salvo (`treino-app:blocoTimer:<data>:<item>:<bloco>`), sobrevive a tela bloqueada e recarregar, bipes e vibração com o app na tela, notificação no fim com o app em segundo plano, Wake Lock enquanto roda. O descanso também fica salvo (`treino-app:rest:<data>:<item>`).
 - Resultado por bloco no dia: `sessions[data].blocos[itemKey][blocoId] = {formato, concluido, rodadas?, reps?, tempoSeg?, parciais?}` (sincroniza junto com o dia). Concluir o cronômetro marca os exercícios do bloco como feitos.
+- Entrada rápida (v205, após teste do Andre: não estava claro que o campo adiciona): componente `EntradaRapida` (form com botão "Adicionar", funciona com o OK do teclado do Android) e linha "Vai entrar: Agachamento · 4 séries de 8 · 60 kg · RIR 2" enquanto digita (`rxLegivel`).
 - PDF e diff do treinador mostram o formato do bloco, a corrida do bloco e a prescrição completa (`coachFmtEx` usa `rxTexto`).
 
 ### 6.4 Relatórios compartilhados

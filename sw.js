@@ -1,4 +1,4 @@
-const CACHE = "treino-app-v204";
+const CACHE = "treino-app-v205";
 const SHELL = [
   "./",
   "./index.html",
