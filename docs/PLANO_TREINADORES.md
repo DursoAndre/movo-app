@@ -85,7 +85,7 @@ Status: **aprovado para implementação** (escopo completo com flags, revisado a
 | Esforço/dor (alertas e dados) | **desligado** até OK jurídico; opt-in do aluno separado |
 | Envio em lote / turmas | desligado |
 | Plano de corrida pelo treinador | ligado só se o aluno corre |
-| Aceite automático | **não será construído** |
+| Aceite automático | **opção do aluno (aprovado em 20/10/2026)**: desligado por padrão, revogável |
 | Mensagens gerais, anexos, diretório público de treinadores | **não serão construídos** |
 | Tela de auditoria | adiada (dados já gravados) |
 | Rascunho por IA | adiado |
