@@ -47,7 +47,7 @@ Quem é admin: tabela `movo_admins` (por `user_id`, `admin_identidade.sql`); tod
 - Não publicar no site o que não precisa estar lá (ROADMAP, docs). `build.mjs` copia só uma lista de arquivos.
 
 ### 2.2 E-mail (Resend)
-- Funções que mandam e-mail: `notificar-feedback`, `alerta-saude`, `convidar-email` (convite de desafio), `avisar-email` (pedido de treinador e relatório compartilhado).
+- Funções que mandam e-mail: `notificar-feedback`, `alerta-saude`, `convidar-email` (convite de desafio), `avisar-email` (pedido de treinador e relatório compartilhado), `recado-email` (recados do painel por e-mail, em lote; cota própria de 80/dia e 2.000/mês para caber no plano grátis do Resend, que tem 100/dia e 3.000/mês para tudo, inclusive login).
 - Secrets (só nomes; valores ficam no Supabase › Edge Functions › Secrets): `RESEND_API_KEY`, `FEEDBACK_FROM`, `FEEDBACK_TO` (opcional), `CONVITE_FROM` (opcional; cai em `FEEDBACK_FROM` e depois em `onboarding@resend.dev`).
 - **Estado em 16/10/2026 (print do Andre):** domínio movoapp.com.br **verificado** no Resend desde 15/10 (região São Paulo, sa-east-1). No Supabase só existiam `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` e `ANTHROPIC_API_KEY`: **`RESEND_API_KEY` não estava criada**, então nenhum e-mail das funções saía (nem feedback nem alerta de saúde). Andre vai criar `RESEND_API_KEY`, `FEEDBACK_FROM` = `Movo <aviso@movoapp.com.br>` e `CONVITE_FROM` = `Movo <convite@movoapp.com.br>`. A chave nunca é colada no chat.
 - Sem `RESEND_API_KEY` as funções respondem `enviado:false` e **não consomem o limite**.
@@ -80,7 +80,7 @@ Deploy: pelo MCP do Supabase (`deploy_edge_function`) ou CLI. Funções novas us
 
 ## 5. Banco de dados (`supabase/sql/`, ordem em `supabase/ordem.txt`)
 
-Total: 68 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
+Total: 69 arquivos. Idempotentes. `setup_completo.sql` é a soma, gerada por `build_setup.py`.
 
 Marcos recentes:
 - `challenge_acertos.sql`, `challenge_formatos.sql`, `challenge_acertos_saida.sql` (prêmios; ver 6.1)
@@ -155,7 +155,7 @@ Marcos recentes:
 - Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Fase 1 fechada na v206 (modo guiado, Roxzone, comparação). Próximo: fase 2 (plano de semanas).
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
-- Painel: e-mail em massa para Recados (usa Resend, **custo a combinar com o Andre antes**); botão de e-mail de teste em Integrações (idem); ação de encerrar desafio abandonado (fora por risco).
+- Painel: botão de e-mail de teste em Integrações; ação de encerrar desafio (esperando a decisão do Andre sobre como fica o prêmio final).
 - Apagar conta pelo painel não remove a foto do storage nem revoga o acesso no Strava (o app faz isso quando a própria pessoa apaga).
 - Aviso em tela (não só e-mail) quando alguém libera relatório para você.
 - Compartilhar relatório escolhendo da lista de amigos (hoje só por e-mail).
@@ -163,6 +163,7 @@ Marcos recentes:
 ## 8. Registro de decisões (mais recentes primeiro)
 
 - **20/10/2026 (v206, pedido do Andre "Fecha esses pontos da fase 1 e inicia a fase 2"):** modo guiado série a série como botão opcional (a lista continua padrão), Roxzone opcional no HYROX e comparação com o último resultado do mesmo bloco. A fase 2 (plano de semanas) é feita pela thread "Benchmark do modo aluno", começando do main depois da v205.
+- **20/10/2026 (aprovação do Andre: "e-mail em massa dentro do limite do Resend"):** recados podem ir também por e-mail. `recado_email.sql` (fila `recado_emails`, `email_prefs` com token de saída, `admin_m_recado_email_fila`/`_ok`, `email_sair`, `admin_m_conta_impacto`) + edge function `recado-email` (Resend `/emails/batch`). Cota dos recados: 80/dia e 2.000/mês (o resto fica na fila e sai em "Enviar o restante" no dia seguinte). Todo e-mail tem link "não quero mais receber" para `movoapp.com.br/sair/?t=<token>` (movo-site) e cabeçalho List-Unsubscribe. Só vai para e-mail confirmado. Ao apagar conta pelo painel, a confirmação mostra o que some junto (acertos em aberto, desafios criados, alunos).
 - **20/10/2026 (v205, teste do Andre na v204):** entrada rápida com botão "Adicionar" e prévia "Vai entrar: …"; exercício de academia é força por padrão (sem chip "+ Força"); bi-set com 2 e tri-set com 3 exercícios. Andre aprovou e pediu para liberar o editor de blocos para todo mundo (flag `blocos` aberta para todas as contas).
 - **20/10/2026 (v204, sessão em blocos, pedido do Andre "Começa" sobre o plano de execução):** fases 0 e 1 construídas atrás da flag `blocos` (ver 6.3.1). Princípio do relatório "Movo para Alunos" v2 (https://claude.ai/artifact/V6nmiERxsnDQaZERCczPc7, seção "Simples por padrão", a partir do comentário do Andre): a ficha de hoje continua sendo a tela padrão; superset, RIR, %1RM e cronômetro só aparecem quando o treino tem aquilo; nada obrigatório; o PR com a flag ligada só para o Andre serve de protótipo para ele revisar antes de abrir para mais gente. O relatório recomenda a mesma hierarquia plano > fase > semana > sessão > bloco para aluno sozinho, modelo do Movo, IA e treinador.
 
