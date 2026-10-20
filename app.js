@@ -3822,6 +3822,9 @@ const APP_CSS = `
   .gt-ps-aviso { font-size:12px; color:var(--amber); margin:8px 0 0; }
   .gt-ps-rodape { position:sticky; bottom:-1px; background:var(--surface); padding:12px 0 2px; margin-top:12px; }
   .gt-ps-rodape .gt-btn { width:100%; }
+  .gt-ps-check { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:14px; margin:4px 0 2px; cursor:pointer; }
+  .gt-ps-check input { accent-color:var(--accent); width:18px; height:18px; }
+  .gt-ps-check small { flex-basis:100%; font-size:12px; color:var(--text-muted); padding-left:26px; }
   .gt-ps-fixa-nota { font-size:12px; color:var(--text-muted); margin:-4px 0 8px; }
   .gt-guiado-toggle { background:none; border:1px solid var(--border); color:var(--text-muted); font-size:12px; padding:5px 10px; border-radius:20px; cursor:pointer; white-space:nowrap; }
   .gt-guiado-toggle.on { border-color:var(--accent-dim); color:var(--accent); }
@@ -7174,7 +7177,7 @@ function planoFichaSimulacao(meia) {
 }
 const PLANO_MODELOS = [
   {
-    id: "hibrido", nome: "Força e corrida", desc: "3 treinos de força e 2 corridas por semana", icone: "treinos", semanas: 8,
+    id: "hibrido", grupo: "hibrido", nome: "Híbrido", foco: "Equilibrado", desc: "3 treinos de força e 2 corridas por semana", icone: "treinos", semanas: 8,
     fichas: () => {
       const ul = TEMPLATE_ROUTINES.find((r) => r.id === "upper-lower").treinos;
       const fb = TEMPLATE_ROUTINES.find((r) => r.id === "full-body").treinos[0];
@@ -7190,13 +7193,14 @@ const PLANO_MODELOS = [
     },
   },
   {
-    id: "hyrox", nome: "HYROX", desc: "Força, funcional e corrida, com simulados", icone: "raio", semanas: 8,
+    id: "hyrox", grupo: "hibrido", nome: "HYROX", foco: "Funcional / HYROX", desc: "Força, funcional e 2 corridas por semana", icone: "raio", semanas: 8,
     fichas: () => ({ F: planoFichaHyroxForca(), U: planoFichaHyroxFuncional(), M: planoFichaSimulacao(true), S: planoFichaSimulacao(false) }),
-    semana: (w, fase, nivel, n) => {
+    semana: (w, fase, nivel, n, opts) => {
       const base = { iniciante: [3, 5], intermediario: [5, 8], avancado: [6, 10] }[nivel] || [5, 8];
       const tiros = fase === "Base" || fase === "Descarga" ? "fartlek" : w % 2 ? "tiros1000" : "tiros400";
-      const meio = n >= 6 && w === Math.floor(n / 2) - 1;
-      const ultima = w === n - 1;
+      // Simulados só para quem tem prova de HYROX marcada.
+      const meio = !!(opts && opts.provaHyrox) && n >= 6 && w === Math.floor(n / 2) - 1;
+      const ultima = !!(opts && opts.provaHyrox) && w === n - 1;
       return [
         { dia: 1, ficha: "F" }, { dia: 2, corrida: tiros, km: base[0] }, { dia: 4, ficha: "U" },
         ultima ? { dia: 6, ficha: "S" } : meio ? { dia: 6, ficha: "M" } : { dia: 6, corrida: "longao", km: base[1], longo: true },
@@ -7204,12 +7208,37 @@ const PLANO_MODELOS = [
     },
   },
   {
-    id: "forca", nome: "Força", titulo: "Só força", desc: "3 treinos por semana: empurrar, puxar e pernas", icone: "treinos", semanas: 6,
+    id: "hibrido_corrida", grupo: "hibrido", nome: "Híbrido: mais corrida", foco: "Mais corrida", desc: "2 treinos de força e 3 corridas por semana", icone: "corrida", semanas: 8,
+    fichas: () => {
+      const ul = TEMPLATE_ROUTINES.find((r) => r.id === "upper-lower").treinos;
+      return { A: ul[0], B: ul[1] };
+    },
+    semana: (w, fase, nivel) => {
+      const base = { iniciante: [3, 3, 5], intermediario: [5, 5, 10], avancado: [7, 7, 14] }[nivel] || [5, 5, 10];
+      const qualidade = fase === "Base" || fase === "Descarga" || fase === "Polimento" ? "fartlek" : fase === "Construção" ? (w % 2 ? "fartlek" : "tiros400") : (w % 2 ? "tempo" : "tiros1000");
+      return [
+        { dia: 1, ficha: "A" }, { dia: 2, corrida: qualidade, km: base[0] }, { dia: 3, ficha: "B" },
+        { dia: 4, corrida: "rodagem", km: base[1] }, { dia: 6, corrida: w > 2 && fase !== "Descarga" ? "longao_prog" : "longao", km: base[2], longo: true },
+      ];
+    },
+  },
+  {
+    id: "forca", grupo: "forca", nome: "Força", desc: "Academia, 3 treinos por semana", icone: "treinos", semanas: 6,
     fichas: () => { const t = buildMusculacaoSplit(3); return { A: t[0], B: t[1], C: t[2] }; },
-    semana: (w, fase, nivel) => [
-      { dia: 1, ficha: "A" }, { dia: 3, ficha: "B" }, { dia: 5, ficha: "C" },
-      { dia: 6, corrida: "rodagem", km: ({ iniciante: 3, intermediario: 5, avancado: 6 }[nivel] || 5) },
-    ],
+    semana: () => [{ dia: 1, ficha: "A" }, { dia: 3, ficha: "B" }, { dia: 5, ficha: "C" }],
+  },
+  {
+    // Corrida sem prova marcada: ganhar base, 3 corridas por semana.
+    id: "corrida", grupo: "corrida", nome: "Corrida", desc: "3 corridas por semana para ganhar base", icone: "corrida", semanas: 8,
+    fichas: () => ({}),
+    semana: (w, fase, nivel) => {
+      const base = { iniciante: [3, 3, 5], intermediario: [5, 5, 10], avancado: [7, 7, 14] }[nivel] || [5, 5, 10];
+      const qualidade = fase === "Base" || fase === "Descarga" || fase === "Polimento" ? "rodagem" : fase === "Construção" ? (w % 2 ? "fartlek" : "tiros400") : (w % 2 ? "tempo" : "tiros1000");
+      return [
+        { dia: 2, corrida: qualidade, km: base[0] }, { dia: 4, corrida: "rodagem", km: base[1] },
+        { dia: 6, corrida: w > 2 && fase !== "Descarga" ? "longao_prog" : "longao", km: base[2], longo: true },
+      ];
+    },
   },
 ];
 // Volume da corrida por semana: sobe ~8% por semana, cai na descarga e no polimento.
@@ -7229,16 +7258,11 @@ function planoDeModelo(modeloId, opts, treinosAtuais) {
   const inicio = planoSemanaChave(opts.inicio || todayISO());
   const fichas = m.fichas();
   const ids = {};
-  const fichasNovas = [];
-  Object.keys(fichas).forEach((k) => {
-    const id = `pl-${m.id}-${k.toLowerCase()}`;
-    ids[k] = { id, nome: fichas[k].nome };
-    if (!(treinosAtuais || []).some((t) => t.id === id)) fichasNovas.push({ ...normalizeImportedTreino(fichas[k]), id, doModelo: m.id });
-  });
+  Object.keys(fichas).forEach((k) => { ids[k] = { id: `pl-${m.id}-${k.toLowerCase()}`, nome: fichas[k].nome }; });
   const sessoes = [];
   for (let w = 0; w < n; w++) {
     const fase = planoFaseDaSemana(w, n);
-    m.semana(w, fase, nivel, n).forEach((it) => {
+    m.semana(w, fase, nivel, n, opts).forEach((it) => {
       const data = addDays(inicio, w * 7 + planoOrdemDia(it.dia));
       const nota = fase === "Descarga" ? "Semana leve: uma série a menos em cada exercício e carga confortável." : fase === "Polimento" ? "Semana final leve: mantenha a carga e faça menos séries." : "";
       if (it.ficha) { sessoes.push({ data, tipo: "treino", ref: ids[it.ficha].id, titulo: ids[it.ficha].nome, fase, cid: planoCid(), ...(nota ? { nota } : {}) }); return; }
@@ -7252,6 +7276,9 @@ function planoDeModelo(modeloId, opts, treinosAtuais) {
     });
   }
   sessoes.sort((a, b) => a.data.localeCompare(b.data));
+  const usadas = new Set(sessoes.filter((x) => x.tipo === "treino").map((x) => x.ref));
+  const fichasNovas = Object.keys(fichas).filter((k) => usadas.has(ids[k].id) && !(treinosAtuais || []).some((t) => t.id === ids[k].id))
+    .map((k) => ({ ...normalizeImportedTreino(fichas[k]), id: ids[k].id, doModelo: m.id }));
   return {
     plano: { id: planoIdNovo(), tipo: "semanas", versao: 2, nome: opts.nome || m.nome, provaNome: opts.nome || m.nome, origem: "modelo", modelo: m.id, nivel, inicio, semanas: n, criadoEm: new Date().toISOString(), sessoes },
     fichasNovas,
@@ -19980,15 +20007,16 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
   const [modelo, setModelo] = useState(PLANO_MODELOS[0].id);
   const [semanas, setSemanas] = useState(PLANO_MODELOS[0].semanas);
   const [nivel, setNivel] = useState("intermediario");
+  const [provaHyrox, setProvaHyrox] = useState(false);
   const hoje = todayISO();
   const estaSegunda = planoSemanaChave(hoje);
   const [inicio, setInicio] = useState(weekdayOf(hoje) >= 1 && weekdayOf(hoje) <= 2 ? estaSegunda : addDays(estaSegunda, 7));
   const temSemanaFixa = Object.values(schedule || {}).some((l) => (l || []).some((it) => !agendaEntradaDoTreinador(it) && (it.tipo === "treino" || it.id === "corrida")));
   const previa = useMemo(() => {
-    if (passo === "modelo") return planoDeModelo(modelo, { semanas, nivel, inicio }, treinos);
+    if (passo === "modelo") return planoDeModelo(modelo, { semanas, nivel, inicio, provaHyrox }, treinos);
     if (passo === "meu") return { plano: planoDaSemanaFixa(schedule, treinoById, { semanas, nivel, inicio }), fichasNovas: [] };
     return null;
-  }, [passo, modelo, semanas, nivel, inicio, treinos, schedule]);
+  }, [passo, modelo, semanas, nivel, inicio, provaHyrox, treinos, schedule]);
   const sem = previa ? planoSemanasLista(previa.plano) : [];
   const m = PLANO_MODELOS.find((x) => x.id === modelo);
   const temCorrida = sem.some((w) => w.sessoes.some((x) => x.tipo !== "treino"));
@@ -20004,19 +20032,22 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
       <span className="seta" aria-hidden="true">›</span>
     </button>
   );
-  const titulo = passo === "origem" ? "O que você quer treinar?" : passo === "modelo" ? (m.titulo || m.nome) : "Repetir minha semana";
+  const escolher = (id) => { const x = PLANO_MODELOS.find((y) => y.id === id); setModelo(id); setSemanas(x.semanas); setPasso("modelo"); };
+  const anterior = passo === "modelo" && m.grupo === "hibrido" ? "foco" : passo === "modelo" && m.grupo === "corrida" ? "corrida" : "origem";
+  const titulo = { origem: "O que você quer treinar?", corrida: "Corrida", foco: "Híbrido", meu: "Repetir minha semana" }[passo] || m.nome;
   return (
     <div className="gt-modal-backdrop" onClick={onClose}>
       <div className="gt-modal gt-ps-modal" role="dialog" aria-modal="true" aria-label="Montar plano" onClick={(e) => e.stopPropagation()}>
         <div className="gt-provas-head">
-          <h3>{passo !== "origem" && <button type="button" className="gt-ps-voltar" aria-label="Voltar" onClick={() => setPasso("origem")}>‹</button>}{titulo}</h3>
+          <h3>{passo !== "origem" && <button type="button" className="gt-ps-voltar" aria-label="Voltar" onClick={() => setPasso(anterior)}>‹</button>}{titulo}</h3>
           <button type="button" className="gt-provas-close" aria-label="Fechar" onClick={onClose}>✕</button>
         </div>
         {passo === "origem" && (
           <>
-            <p className="gt-ps-intro">O Movo organiza suas próximas semanas, com semanas leves para recuperar.</p>
-            {PLANO_MODELOS.map((x) => objetivo(x.id, x.icone || "treinos", x.titulo || x.nome, x.desc, () => { setModelo(x.id); setSemanas(x.semanas); setPasso("modelo"); }))}
-            {objetivo("prova", "provas", "Uma prova de corrida", "Escolha a prova e a data. A IA monta o plano até o dia.", onProva)}
+            <p className="gt-ps-intro">O Movo organiza suas próximas semanas, com semanas leves para recuperar. Dá para ajustar depois.</p>
+            {objetivo("forca", "treinos", "Força", "Academia, 3 treinos por semana", () => escolher("forca"))}
+            {objetivo("corrida", "corrida", "Corrida", "Do 5 km à maratona, com ou sem prova", () => setPasso("corrida"))}
+            {objetivo("hibrido", "raio", "Híbrido", "Força, corrida e funcional na mesma semana, inclusive para HYROX", () => setPasso("foco"))}
             {temSemanaFixa && (
               <button type="button" className="gt-ps-repetir" onClick={() => { setPasso("meu"); setSemanas(8); }}>
                 <b>Repetir minha semana atual ›</b>
@@ -20025,9 +20056,25 @@ function PlanoSemanasNovo({ treinos, schedule, treinoById, planoAtual, onCriar, 
             )}
           </>
         )}
-        {passo !== "origem" && (
+        {passo === "corrida" && (
+          <>
+            <p className="gt-ps-intro">Tem prova marcada?</p>
+            {objetivo("prova", "provas", "Sim, tenho prova", "Escolha a prova e a data. A IA monta o plano até o dia.", onProva)}
+            {objetivo("base", "corrida", "Não, quero ganhar base", "3 corridas por semana, aumentando aos poucos", () => escolher("corrida"))}
+          </>
+        )}
+        {passo === "foco" && (
+          <>
+            <p className="gt-ps-intro">Qual o foco?</p>
+            {PLANO_MODELOS.filter((x) => x.grupo === "hibrido").map((x) => objetivo(x.id, x.icone || "treinos", x.foco, x.desc, () => { setProvaHyrox(false); escolher(x.id); }))}
+          </>
+        )}
+        {(passo === "modelo" || passo === "meu") && (
           <>
             {passo === "modelo" && <p className="gt-ps-intro">{m.desc}.</p>}
+            {passo === "modelo" && m.id === "hyrox" && (
+              <label className="gt-ps-check"><input type="checkbox" checked={provaHyrox} onChange={(e) => setProvaHyrox(e.target.checked)} /> Tenho prova de HYROX <small>Entram uma meia simulação no meio do plano e a simulação completa na última semana.</small></label>
+            )}
             <div className="gt-field-label">Semanas</div>
             {opcoes([4, 6, 8, 12], semanas, setSemanas)}
             {(temCorrida || passo === "meu") && (
