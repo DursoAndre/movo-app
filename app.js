@@ -2209,6 +2209,12 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
     if (lote && sel.length && !confirm(`Descartar ${sel.length === 1 ? "1 exercício escolhido" : `${sel.length} exercícios escolhidos`}?`)) return;
     onClose();
   }
+  const chipNome = (l) => l.split(/ de | & | \/ /)[0];
+  useEffect(() => {
+    if (q || !chipsRef.current) return;
+    const el = chipsRef.current.querySelector(".gt-xp-chip.on");
+    if (el) try { el.scrollIntoView({ inline: "center", block: "nearest" }); } catch (e) { /* ignore */ }
+  }, [q]);
   function escolherFiltro(label, el) {
     setFiltro(label);
     try { el.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch (e) { /* ignore */ }
@@ -2226,7 +2232,7 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
           <span className="gt-xp-row-nome">{ex.nome}</span>
           {meta && <span className="gt-xp-row-meta">{meta}</span>}
         </span>
-        {added ? <span className="gt-xp-tag">{removable ? "Tirar" : lote ? "NA FICHA" : "✓"}</span>
+        {added ? <span className={`gt-xp-tag ${removable ? "tirar" : ""}`}>{removable ? "Tirar" : canRemove ? "NO TREINO" : "NA FICHA"}</span>
           : <span className={`gt-xp-marca ${pos >= 0 ? "on" : ""}`} aria-hidden="true">{pos >= 0 ? pos + 1 : "+"}</span>}
       </button>
     );
@@ -2277,7 +2283,7 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
         {!q && (
           <div className="gt-xp-chips" ref={chipsRef} role="tablist" aria-label="Filtrar por grupo">
             {["Todos", ...grupos.map((g) => g.label)].map((l) => (
-              <button key={l} type="button" role="tab" aria-selected={filtro === l} className={`gt-xp-chip ${filtro === l ? "on" : ""}`} onClick={(e) => escolherFiltro(l, e.currentTarget)}>{l}</button>
+              <button key={l} type="button" role="tab" aria-selected={filtro === l} className={`gt-xp-chip ${filtro === l ? "on" : ""}`} onClick={(e) => escolherFiltro(l, e.currentTarget)}>{chipNome(l)}</button>
             ))}
           </div>
         )}
@@ -3052,14 +3058,15 @@ const APP_CSS = `
   .gt-fx-menu button { min-height:40px; padding:8px 14px; border-radius:20px; background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-family:inherit; font-size:14px; cursor:pointer; }
   .gt-fx-menu button:disabled { opacity:0.4; cursor:default; }
   .gt-fx-menu button.perigo { color:var(--danger, #ff6b5b); }
-  .gt-fx-biset { border-left:2px solid var(--accent); margin:6px 0; padding-left:8px; }
-  .gt-fx-biset-hd { display:flex; align-items:center; justify-content:space-between; font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.04em; color:var(--accent); text-transform:uppercase; padding-top:6px; }
-  .gt-fx-biset-hd button { background:none; border:none; color:var(--text-muted); font-family:inherit; font-size:12px; text-transform:uppercase; min-height:36px; cursor:pointer; }
+  .gt-fx-biset { border-left:2px solid var(--accent); margin:16px 0; padding-left:8px; }
+  .gt-fx-biset-hd { display:flex; align-items:center; justify-content:space-between; font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.04em; color:var(--accent); text-transform:uppercase; }
+  .gt-fx-biset-hd button { background:none; border:none; color:var(--accent); font-family:inherit; font-size:13px; text-transform:none; letter-spacing:0; min-height:44px; padding:0 4px 0 12px; cursor:pointer; }
   .gt-fx-desfazer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0; padding:8px 8px 8px 12px; border-radius:var(--radius); background:var(--surface-2); border:1px solid var(--border); font-size:14px; }
   .gt-fx-desfazer button { background:none; border:none; color:var(--accent); font-family:'Oswald',sans-serif; font-size:14px; min-height:36px; padding:0 8px; cursor:pointer; }
   .gt-fx .gt-add-extra-card { margin-top:14px; }
-  .gt-fx-mais-opcoes { display:block; margin:14px 0 4px; background:none; border:none; color:var(--text-muted); font-family:'Roboto Mono',monospace; font-size:13px; padding:8px 0; min-height:40px; cursor:pointer; }
-  .gt-fx-opcoes { padding:4px 0 8px; }
+  .gt-fx-mais-opcoes { display:block; margin:14px 0 0; background:none; border:none; color:var(--text-muted); font-family:'Roboto Mono',monospace; font-size:13px; padding:8px 0; min-height:40px; cursor:pointer; }
+  .gt-fx-opcoes { padding:0 0 8px; }
+  .gt-fx-opcoes > .gt-bl-param:first-child { margin-top:8px; }
   .gt-fx-opcoes .gt-bl-param { margin-bottom:14px; }
   .gt-xp-topo { padding:0 14px 6px; flex-shrink:0; }
   .gt-xp-busca { position:relative; }
@@ -3071,7 +3078,7 @@ const APP_CSS = `
   .gt-xp-chip { flex-shrink:0; min-height:40px; padding:8px 14px; border-radius:20px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); font-family:'Roboto Mono',monospace; font-size:13px; white-space:nowrap; cursor:pointer; }
   .gt-xp-chip.on { border-color:var(--accent); color:var(--accent); background:rgba(198,241,53,0.08); }
   .gt-xp-lista { padding:0 14px; }
-  .gt-xp-sec-hd { position:sticky; top:0; z-index:1; background:var(--bg); font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.06em; color:var(--text-muted); padding:14px 0 6px; }
+  .gt-xp-sec-hd { position:sticky; top:0; z-index:1; background:var(--bg); font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.06em; color:var(--text-muted); padding:14px 0 8px; margin-bottom:2px; }
   .gt-xp-row { display:flex; align-items:center; gap:12px; width:100%; min-height:56px; padding:8px 2px; background:none; border:none; border-bottom:1px solid var(--border); color:var(--text); font-family:inherit; text-align:left; cursor:pointer; }
   .gt-xp-row:disabled { cursor:default; }
   .gt-xp-row-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
@@ -3080,7 +3087,8 @@ const APP_CSS = `
   .gt-xp-marca { flex-shrink:0; width:28px; height:28px; border-radius:50%; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:16px; }
   .gt-xp-marca.on { background:var(--accent); border-color:var(--accent); color:#14161A; font-family:'Roboto Mono',monospace; font-size:13px; font-weight:700; }
   .gt-xp-tag { flex-shrink:0; font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:0.04em; color:var(--text-muted); }
-  .gt-xp-row.na-ficha .gt-xp-row-nome { color:var(--text-muted); }
+  .gt-xp-tag.tirar { min-height:44px; min-width:64px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:20px; color:var(--text); font-family:inherit; font-size:14px; letter-spacing:0; }
+  .gt-xp .gt-focus-footer .gt-btn:disabled { background:var(--surface-2); color:var(--text-muted); cursor:default; }
   .gt-xp-livre .gt-xp-row-nome { color:var(--accent); }
   .gt-xp-vazio { color:var(--text-muted); font-size:14px; padding:16px 2px 4px; }
   .gt-grupo-chips-label { font-family:'Roboto Mono',monospace; font-size:12px; letter-spacing:0.04em; color:var(--text-muted); margin:10px 0 4px; }
@@ -4846,7 +4854,7 @@ function treinoIAMontarPedido(f) {
   const ok = (lista, v, pad) => (lista.some((x) => x[0] === v) ? v : pad);
   const dias = Math.max(1, Math.min(6, Math.round(Number(f.dias) || 3)));
   const catalogo = {};
-  CATALOG_GRUPOS.forEach((g) => { catalogo[g.key] = EXERCISE_CATALOG_FLAT.filter((e) => e.grupo === g.label).map((e) => e.nome); });
+  CATALOG_GRUPOS.forEach((g) => { catalogo[g.key] = EXERCISE_CATALOG_FLAT.filter((e) => e.grupo === g.label).slice(0, 8).map((e) => e.nome); }); // só os 8 mais comuns de cada grupo: mandar o catálogo todo encareceria a IA
   return {
     objetivo: ok(TREINO_IA_OBJETIVOS, f.objetivo, "hipertrofia"),
     nivel: ok(TREINO_IA_NIVEIS, f.nivel, "iniciante"),
@@ -5318,7 +5326,7 @@ function AjustarSemanaModal({ fatosBase, gerarFatos, treinoById, sessions, getTo
     };
     try {
       const catalogo = {};
-      CATALOG_GRUPOS.forEach((g) => { catalogo[g.key] = EXERCISE_CATALOG_FLAT.filter((e) => e.grupo === g.label).map((e) => e.nome); });
+      CATALOG_GRUPOS.forEach((g) => { catalogo[g.key] = EXERCISE_CATALOG_FLAT.filter((e) => e.grupo === g.label).slice(0, 8).map((e) => e.nome); }); // só os 8 mais comuns de cada grupo: mandar o catálogo todo encareceria a IA
       const pay = semanaPayload(fatos, {});
       const exPorRef = semanaExerciciosRestantes(fatos, treinoById, sessions);
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/ajustar-semana`, {
@@ -16648,7 +16656,7 @@ function App() {
     const prevAj = (session.ajustes && session.ajustes[item.id]) || { added: [] };
     const ajustes = { ...(session.ajustes || {}), [item.id]: { ...prevAj, added: [...(prevAj.added || []), exercicio] } };
     updateSessions({ ...sessions, [selectedDate]: { ...session, ajustes } });
-    showToast(`${catalogEx.nome} adicionado a hoje`);
+    showToast(`Entrou no treino: ${catalogEx.nome}`);
   }
   function removeAddedExercise(item, exId) {
     const session = ensureSessionShape();
@@ -19602,7 +19610,7 @@ function exercicioNovo(cat) {
 
 // Campo da prescrição: mostra o texto curto e só aplica ao sair do campo (ou Enter).
 // Entrada rápida: escreve o exercício, vê o que o app entendeu e toca em Adicionar.
-function EntradaRapida({ label, placeholder, onAdd, extra }) {
+function EntradaRapida({ label, placeholder, onAdd, extra, semDica }) {
   const [txt, setTxt] = useState("");
   const ex = txt.trim() ? exercicioDaEntrada(txt) : null;
   const enviar = (e) => { e.preventDefault(); if (!ex) return; onAdd(ex); setTxt(""); };
@@ -19615,9 +19623,9 @@ function EntradaRapida({ label, placeholder, onAdd, extra }) {
         <button type="submit" className="gt-btn secondary small" disabled={!ex}>Adicionar</button>
         {extra}
       </div>
-      <div className={`gt-bl-entrada-prev ${ex ? "ok" : ""}`} aria-live="polite">
+      {(!semDica || ex) && <div className={`gt-bl-entrada-prev ${ex ? "ok" : ""}`} aria-live="polite">
         {ex ? <>Vai entrar: <strong>{ex.nome}</strong>{detalhe ? ` · ${detalhe}` : ""}</> : "Escreva nome, séries x reps, carga e RIR, e toque em Adicionar."}
-      </div>
+      </div>}
     </form>
   );
 }
@@ -19877,9 +19885,9 @@ function BlocosEditor({ blocos, onChange, ultimas, simples, abrirSeletor, maisOp
           </div>
           {menuEx === k && (
             <div className="gt-fx-menu">
-              <button type="button" disabled={j === 0} onClick={() => { moverEx(i, j, -1); setMenuEx(null); }}>Subir</button>
-              <button type="button" disabled={j === b.exercicios.length - 1} onClick={() => { moverEx(i, j, 1); setMenuEx(null); }}>Descer</button>
-              {!bi && j < b.exercicios.length - 1 && <button type="button" onClick={() => juntarBiset(i, j)}>Bi-set com o próximo</button>}
+              {j > 0 && <button type="button" onClick={() => { moverEx(i, j, -1); setMenuEx(null); }}>Subir</button>}
+              {j < b.exercicios.length - 1 && <button type="button" onClick={() => { moverEx(i, j, 1); setMenuEx(null); }}>Descer</button>}
+              {!bi && j < b.exercicios.length - 1 && <button type="button" aria-label="Bi-set com o próximo" onClick={() => juntarBiset(i, j)}>Bi-set</button>}
               <button type="button" className="perigo" onClick={() => removerEx(i, j)}>Remover</button>
             </div>
           )}
@@ -19912,7 +19920,7 @@ function BlocosEditor({ blocos, onChange, ultimas, simples, abrirSeletor, maisOp
         <button className="gt-add-extra-card" type="button" onClick={() => setPickerGeral(true)}>
           <span className="plus">+</span> Adicionar exercícios
         </button>
-        <EntradaRapida label="Escrever exercício" placeholder="Ex.: Agachamento 4x6 80kg rir2" onAdd={(ex) => addLote([ex])} />
+        <EntradaRapida semDica label="Escrever exercício" placeholder="Ex.: Agachamento 4x6 80kg rir2" onAdd={(ex) => addLote([ex])} />
         <button type="button" className="gt-fx-mais-opcoes" aria-expanded={mais} onClick={() => setMais(!mais)}>Mais opções <span aria-hidden="true">{mais ? "▴" : "▾"}</span></button>
         {mais && (
           <div className="gt-fx-opcoes">
