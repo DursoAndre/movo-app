@@ -5,6 +5,7 @@ base_app_e_amigos.sql
 exercise_gaps_setup.sql
 exercise_gaps_origem.sql
 catalogo_banco.sql
+catalogo_v2.sql
 user_consents.sql
 client_errors_setup.sql
 client_errors_anon_grant.sql
