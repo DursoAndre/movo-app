@@ -82,7 +82,7 @@ Status: **aprovado para implementação** (escopo completo com flags, revisado a
 | Recurso | Estado no piloto |
 |---|---|
 | Convite, consentimento, revisão, envio, importação, modelos, duplicar, comentário | ligado |
-| Esforço/dor (alertas e dados) | **desligado** até OK jurídico; opt-in do aluno separado |
+| Esforço/dor (alertas e dados) | **aprovado em 20/10/2026** (consentimento = opt-in do aluno, separado); flag ainda desligada |
 | Envio em lote / turmas | desligado |
 | Plano de corrida pelo treinador | ligado só se o aluno corre |
 | Aceite automático | **opção do aluno (aprovado em 20/10/2026)**: desligado por padrão, revogável |

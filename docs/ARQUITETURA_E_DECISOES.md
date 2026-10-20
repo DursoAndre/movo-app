@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 20/10/2026 (v203, aceite automático aprovado).
+Última atualização: 20/10/2026 (v203, dor/esforço e aceite automático aprovados).
 
 ---
 
@@ -148,6 +148,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **20/10/2026 (modo treinador, decisão do Andre, confirmada na thread):** **dor e esforço podem ser liberados ao treinador** sem esperar o ok jurídico: o próprio aluno autoriza ou não essa parte (permissão `ver_esforco_dor`, desligada por padrão, revogável), e isso é o consentimento. Hoje o recurso está desligado no app pela flag `COACH_FLAGS_PADRAO.esforcoDor = false`; ligar entra no plano de execução do modo treinador.
 - **20/10/2026 (modo treinador, decisão do Andre):** **aceite automático aprovado como opção do aluno.** O aluno liga "Aplicar automaticamente o que {treinador} mandar" no consentimento do vínculo (desligado por padrão, revogável a qualquer momento); com ele ligado, a semana enviada entra na agenda sem a revisão do diff. Substitui o "Aceite automático: não será construído" de `docs/PLANO_TREINADORES.md` §6. Ainda não implementado.
 - **19/10/2026 (estratégia do modo treinador, decisão do Andre após benchmark do MFIT e dos apps de corrida):** o modelo de negócio e os preços do treinador **não estão fixos**; primeiro gerar valor para professor e aluno, depois definir preço. Tese: hoje o professor paga o MFIT (força) e outro app para a corrida (SisRUN, Treinus, TrainingPeaks); o Movo quer substituir os dois e **competir de frente com o MFIT**, com proposta mais completa e usabilidade melhor para professor e aluno (os dois pressionam pela troca). Nicho de entrada: quem treina mais de um esporte, sem se limitar a ele. Relatório (pesquisa, sem código): https://claude.ai/artifact/7DQjzokAFBwWMDBHePZjsh. Ainda em aberto: aceite automático opcional pelo aluno e liberar dor/esforço ao treinador.
 - **19/10/2026 (erros revisados, pedido do Andre):** sem botão: o Claude marca no banco o que já revisou (`client_errors.revisado_em` + `revisao`, arquivo `client_errors_revisao.sql`) e o painel (aba Mensagens › Erros registrados automaticamente) mostra por padrão só **Não revisados**, com filtro **Todos** (selo "revisado" ou "N novos" e o texto da revisão). A marcação é por linha: erro novo de um tipo já revisado volta a aparecer. `admin_m_relatos` devolve por grupo `novos`, `novos_pessoas`, `ultimo_novo`, `exemplo_novo`, `revisao`, `revisado_em` (ordena por novos; limite 50). Aplicado em produção; os 73 erros revisados hoje foram marcados. Para revisar: `update client_errors set revisado_em = now(), revisao = '...' where context = '...' and revisado_em is null`.
