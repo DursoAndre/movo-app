@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v203";
+const APP_BUILD = "v204";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -906,12 +906,12 @@ function lastLoggedSetsForExercise(sessions, exId, beforeDate) {
 function flattenExercicios(treino) {
   const out = [];
   let pos = 1;
-  for (const bloco of treino.blocos) {
+  treino.blocos.forEach((bloco, blocoIdx) => {
     for (const ex of bloco.exercicios) {
-      out.push({ ...ex, blocoNome: bloco.nome, posicao: pos });
+      out.push({ ...ex, blocoNome: bloco.nome, blocoIdx, posicao: pos });
       pos++;
     }
-  }
+  });
   return out;
 }
 // --- Sessão x ficha: o treino de um dia específico = a ficha (ou a cópia
@@ -965,7 +965,7 @@ function applyFichaChanges(treino, changes) {
       blocos = blocos.map((b) => ({ ...b, exercicios: b.exercicios.filter((e) => e.id !== c.exId) }));
     }
   });
-  blocos = blocos.filter((b) => b.exercicios.length > 0);
+  blocos = blocos.filter((b) => !blocoVazio(b));
   const toAdd = changes.filter((c) => c.on && c.kind === "added");
   if (toAdd.length > 0) {
     if (blocos.length === 0) blocos.push({ nome: "Exercícios", exercicios: [] });
@@ -993,19 +993,254 @@ function normalizeImportedTreino(raw, existingIds) {
   let i = 2;
   while (usedIds.has(id)) { id = `${baseId}-${i}`; i++; }
   usedIds.add(id);
-  const blocos = (raw.blocos || []).map((bloco) => ({
-    nome: bloco.nome || "Bloco",
-    exercicios: (bloco.exercicios || []).map((ex) => ({
-      id: slugify(ex.nome || "exercicio"),
-      nome: ex.nome || "Exercício",
-      series: Number(ex.series) || 3,
-      repeticoes: ex.repeticoes != null ? String(ex.repeticoes) : "",
-      descricao: ex.descricao || "",
-      observacoes: ex.observacoes || "",
-      videoUrl: ex.videoUrl || "",
-    })),
-  }));
+  // O registro do dia é por id de exercício: o mesmo exercício em dois blocos ganha "-2".
+  const exIds = new Set();
+  const blocos = (raw.blocos || []).map((bloco, i) => {
+    const b = blocoLimpo({ ...bloco, nome: bloco.nome || "Bloco" }, i);
+    b.exercicios = b.exercicios.map((ex) => {
+      const base = slugify(ex.nome || "exercicio");
+      let exId = base, k = 2;
+      while (exIds.has(exId)) { exId = `${base}-${k}`; k++; }
+      exIds.add(exId);
+      return { id: exId, ...ex };
+    });
+    return b;
+  });
   return { id, nome, duracaoMin: Number(raw.duracaoMin) || null, notas: raw.notas || "", blocos };
+}
+
+// --- Sessão em blocos (fases 0 e 1 do plano de treinadores, docs/PLANO_TREINADORES.md) ---
+// Um treino continua sendo { nome, blocos:[{ nome, exercicios }] }, igual para o aluno sozinho,
+// para a ficha do treinador e para o que chega do treinador. Os campos novos são opcionais:
+// bloco sem `tipo` é força em séries normais (como sempre foi), e apps antigos ignoram o resto
+// e mostram só os exercícios. Bloco: id, tipo, formato, rodadas, descansoSeg, duracaoMin,
+// trabalhoSeg, pausaSeg, capMin, notas, corrida ({ etapas, pace, detalhes }).
+// Exercício: series, repeticoes, cargaKg (texto, como o treinador já usava), pct1rm, rir,
+// descansoSeg, tempoSeg, distanciaM, calorias.
+const BLOCO_TIPOS = {
+  forca: { label: "Força", cor: "var(--accent)", formatos: ["normal", "biset", "triset", "circuito"] },
+  corrida: { label: "Corrida", cor: "var(--info)", formatos: ["normal"] },
+  condicionamento: { label: "Condicionamento", cor: "var(--amber)", formatos: ["amrap", "emom", "fortime", "tabata", "intervalos", "circuito"] },
+  hyrox: { label: "HYROX", cor: "#B48CFF", formatos: ["fortime", "normal"] },
+  mobilidade: { label: "Mobilidade", cor: "var(--success)", formatos: ["normal", "intervalos"] },
+};
+const BLOCO_TIPOS_ORDEM = ["forca", "corrida", "condicionamento", "hyrox", "mobilidade"];
+const BLOCO_FORMATOS = {
+  normal: "Séries normais", biset: "Bi-set", triset: "Tri-set", circuito: "Circuito",
+  amrap: "AMRAP", emom: "EMOM", fortime: "For Time", tabata: "Tabata", intervalos: "Intervalos",
+};
+// Formatos com cronômetro próprio no treino guiado.
+const BLOCO_COM_TIMER = new Set(["amrap", "emom", "fortime", "tabata", "intervalos"]);
+// Campos de prescrição do exercício (os que a entrada rápida escreve).
+const RX_CAMPOS = ["series", "repeticoes", "cargaKg", "pct1rm", "rir", "descansoSeg", "tempoSeg", "distanciaM", "calorias"];
+// Simulação de HYROX: 8 x (1 km de corrida + estação), na ordem oficial.
+const HYROX_ESTACOES = [
+  { nome: "SkiErg", distanciaM: 1000 }, { nome: "Sled push", distanciaM: 50 }, { nome: "Sled pull", distanciaM: 50 },
+  { nome: "Burpee broad jump", distanciaM: 80 }, { nome: "Remo ergômetro", distanciaM: 1000 }, { nome: "Farmer's carry", distanciaM: 200 },
+  { nome: "Sandbag lunges", distanciaM: 100 }, { nome: "Wall ball", repeticoes: "100" },
+];
+
+function blocoNumero(v, min, max) {
+  if (v == null || v === "") return undefined;
+  const n = Number(String(v).replace(",", "."));
+  return isFinite(n) && n >= min && n <= max ? Math.round(n * 100) / 100 : undefined;
+}
+function blocoTipo(b) { return b && BLOCO_TIPOS[b.tipo] ? b.tipo : "forca"; }
+function blocoFormato(b) {
+  const f = BLOCO_TIPOS[blocoTipo(b)].formatos;
+  return b && f.includes(b.formato) ? b.formato : f[0];
+}
+// Bloco sem conteúdo: sem exercícios e sem etapas de corrida. Só esses somem ao limpar a ficha.
+function blocoVazio(b) {
+  if (!b) return true;
+  if ((b.exercicios || []).length > 0) return false;
+  return !(blocoTipo(b) === "corrida" && b.corrida && (b.corrida.etapas || []).length > 0);
+}
+function blocoNovoId() { return "b" + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 5); }
+function blocoId(b, i) { return (b && b.id) || "b" + i; }
+
+// Exercício limpo: só os campos conhecidos, com faixas razoáveis.
+function exercicioLimpo(ex) {
+  const out = {
+    nome: String(ex.nome || "Exercício").slice(0, 80),
+    series: Number(ex.series) || 3,
+    repeticoes: ex.repeticoes != null ? String(ex.repeticoes).slice(0, 20) : "",
+    descricao: ex.descricao || "",
+    observacoes: ex.observacoes || "",
+    videoUrl: ex.videoUrl || "",
+  };
+  const kg = blocoNumero(ex.cargaKg, 0.1, 1000); if (kg != null) out.cargaKg = String(kg);
+  const pct = blocoNumero(ex.pct1rm, 1, 120); if (pct != null) out.pct1rm = pct;
+  const rir = blocoNumero(ex.rir, 0, 10); if (rir != null) out.rir = rir;
+  const desc = blocoNumero(ex.descansoSeg, 0, 900); if (desc != null) out.descansoSeg = Math.round(desc);
+  const tempo = blocoNumero(ex.tempoSeg, 1, 7200); if (tempo != null) out.tempoSeg = Math.round(tempo);
+  const dist = blocoNumero(ex.distanciaM, 1, 100000); if (dist != null) out.distanciaM = Math.round(dist);
+  const cal = blocoNumero(ex.calorias, 1, 2000); if (cal != null) out.calorias = Math.round(cal);
+  return out;
+}
+// Bloco limpo: grava tipo/formato/parâmetros só quando fogem do padrão, então uma ficha antiga
+// salva de novo continua igual.
+function blocoLimpo(b, i) {
+  const tipo = blocoTipo(b);
+  const formato = blocoFormato(b);
+  const out = { nome: String((b && b.nome) || BLOCO_TIPOS[tipo].label).slice(0, 60) };
+  const padrao = tipo === "forca" && formato === "normal";
+  if (!padrao || (b && b.id)) out.id = (b && b.id) || blocoNovoId();
+  if (tipo !== "forca") out.tipo = tipo;
+  if (formato !== BLOCO_TIPOS[tipo].formatos[0] || tipo !== "forca") out.formato = formato;
+  const campos = { rodadas: [1, 50], descansoSeg: [0, 900], duracaoMin: [1, 180], trabalhoSeg: [5, 600], pausaSeg: [0, 600], capMin: [1, 240] };
+  Object.keys(campos).forEach((k) => { const v = blocoNumero(b && b[k], campos[k][0], campos[k][1]); if (v != null) out[k] = Math.round(v); });
+  if (b && b.notas) out.notas = String(b.notas).slice(0, 300);
+  if (tipo === "corrida" && b && b.corrida) {
+    const etapas = planoEtapasNorm(b.corrida.etapas);
+    if (etapas.length) {
+      out.corrida = { etapas };
+      const pace = String(b.corrida.pace || "").trim();
+      if (COACH_RE_PACE.test(pace)) out.corrida.pace = pace;
+      if (b.corrida.detalhes) out.corrida.detalhes = String(b.corrida.detalhes).slice(0, 300);
+    }
+  }
+  out.exercicios = ((b && b.exercicios) || []).map(exercicioLimpo);
+  return out;
+}
+
+// Entrada rápida: "Agachamento 4x6 80kg rir2", "3x10-12 70% desc 90s", "15 cal", "400m",
+// "45s", "@rpe8". Devolve os campos reconhecidos e o texto que sobrou (o nome).
+function parseRx(texto) {
+  const campos = {};
+  let s = " " + String(texto || "").replace(/×/g, "x").replace(/(\d),(\d)/g, "$1.$2") + " ";
+  const tirar = (re, fn) => { const m = re.exec(s); if (!m) return false; fn(m); s = s.slice(0, m.index) + " " + s.slice(m.index + m[0].length); return true; };
+  const segundos = (n, un) => Math.round(Number(n) * (/^m/i.test(un || "") ? 60 : 1));
+  tirar(/(?:^|\s)(\d{1,2})\s*x\s*(?=\d|m[aá]x|\s|$)/i, (m) => { campos.series = Number(m[1]); });
+  tirar(/(?:^|\s)(?:desc(?:anso)?|rest|pausa|int(?:ervalo)?)\s*:?\s*(\d{1,3}(?:\.\d+)?)\s*(min|m|s|seg|")?(?=\s|$)/i, (m) => { campos.descansoSeg = segundos(m[1], m[2]); });
+  tirar(/(?:^|\s)@?\s*rir\s*:?\s*(\d(?:\.5)?)(?=\s|$)/i, (m) => { campos.rir = Number(m[1]); });
+  tirar(/(?:^|\s)@?\s*rpe\s*:?\s*(\d{1,2}(?:\.5)?)(?=\s|$)/i, (m) => { if (campos.rir == null) campos.rir = Math.max(0, 10 - Number(m[1])); });
+  tirar(/(?:^|\s)(\d{1,4}(?:\.\d{1,2})?)\s*kg(?=\s|$)/i, (m) => { campos.cargaKg = String(Number(m[1])); });
+  tirar(/(?:^|\s)@?\s*(\d{1,3}(?:\.\d)?)\s*%(?:\s*1rm)?(?=\s|$)/i, (m) => { campos.pct1rm = Number(m[1]); });
+  tirar(/(?:^|\s)(\d{1,3}(?:\.\d{1,2})?)\s*km(?=\s|$)/i, (m) => { campos.distanciaM = Math.round(Number(m[1]) * 1000); });
+  tirar(/(?:^|\s)(\d{1,5})\s*m(?=\s|$)/i, (m) => { campos.distanciaM = Number(m[1]); });
+  tirar(/(?:^|\s)(\d{1,3}(?:\.\d+)?)\s*(min|s|seg|")(?=\s|$)/i, (m) => { campos.tempoSeg = segundos(m[1], m[2]); });
+  tirar(/(?:^|\s)(\d{1,4})\s*cal(?:orias)?(?=\s|$)/i, (m) => { campos.calorias = Number(m[1]); });
+  if (!tirar(/(?:^|\s)(\d{1,3}\s*[-–a]\s*\d{1,3})(?=\s|$)/i, (m) => { campos.repeticoes = m[1].replace(/\s+/g, "").replace(/[–a]/, "-"); })) {
+    if (!tirar(/(?:^|\s)(\d{1,3})\s*(?:reps?|repeti[cç][õo]es)?(?=\s|$)/i, (m) => { campos.repeticoes = m[1]; }) && campos.series != null) {
+      tirar(/(?:^|\s)(m[aá]x(?:imo)?|falha)(?=\s|$)/i, () => { campos.repeticoes = "max"; });
+    }
+  }
+  const resto = s.replace(/\s+/g, " ").replace(/^[\s\-–:•·]+|[\s\-–:•·]+$/g, "").trim();
+  return { campos, resto };
+}
+function rxNum(n) { return String(n).replace(".", ","); }
+function rxTempo(seg) { return seg >= 60 && seg % 60 === 0 ? `${seg / 60}min` : `${seg}s`; }
+// Texto curto da prescrição, no mesmo formato que a entrada rápida entende.
+function rxTexto(ex) {
+  if (!ex) return "";
+  const p = [];
+  if (ex.repeticoes) p.push(Number(ex.series) > 1 ? `${ex.series}x${ex.repeticoes}` : String(ex.repeticoes));
+  else if (Number(ex.series) > 1) p.push(`${ex.series}x`);
+  if (ex.distanciaM) p.push(ex.distanciaM >= 1000 && ex.distanciaM % 100 === 0 ? `${rxNum(ex.distanciaM / 1000)}km` : `${ex.distanciaM}m`);
+  if (ex.tempoSeg) p.push(rxTempo(ex.tempoSeg));
+  if (ex.calorias) p.push(`${ex.calorias}cal`);
+  if (ex.cargaKg) p.push(`${rxNum(ex.cargaKg)}kg`);
+  if (ex.pct1rm) p.push(`${rxNum(ex.pct1rm)}%`);
+  if (ex.rir != null && ex.rir !== "") p.push(`rir ${rxNum(ex.rir)}`);
+  if (ex.descansoSeg) p.push(`desc ${rxTempo(ex.descansoSeg)}`);
+  return p.join(" ");
+}
+// Aplica o texto da prescrição ao exercício: o que saiu do texto sai do exercício.
+function aplicarRx(ex, texto) {
+  const { campos } = parseRx(texto);
+  const out = { ...ex };
+  RX_CAMPOS.forEach((k) => { delete out[k]; });
+  Object.assign(out, campos);
+  out.series = campos.series || ex.series || 1;
+  if (out.repeticoes == null) out.repeticoes = "";
+  return out;
+}
+// Linha de entrada rápida → exercício novo (nome do catálogo quando bate exatamente).
+function exercicioDaEntrada(texto) {
+  const { campos, resto } = parseRx(texto);
+  if (!resto) return null;
+  const q = normalizeSearch(resto);
+  const cat = EXERCISE_CATALOG_FLAT.find((ex) => normalizeSearch(ex.nome) === q);
+  const nome = cat ? cat.nome : resto.charAt(0).toUpperCase() + resto.slice(1);
+  return {
+    nome: nome.slice(0, 80),
+    series: campos.series || (cat ? cat.series : null) || (Object.keys(campos).length ? 1 : 3),
+    repeticoes: campos.repeticoes != null ? campos.repeticoes : (Object.keys(campos).length ? "" : ((cat && cat.repeticoes) || "10-12")),
+    descricao: (cat && cat.descricao) || "", observacoes: "", videoUrl: (cat && cat.videoUrl) || "",
+    ...Object.fromEntries(Object.entries(campos).filter(([k]) => k !== "series" && k !== "repeticoes")),
+  };
+}
+// Resumo do bloco para cabeçalhos ("AMRAP 12 min", "Bi-set · 3 rodadas · desc 90s").
+function blocoResumo(b) {
+  const tipo = blocoTipo(b), formato = blocoFormato(b);
+  const p = [];
+  if (tipo === "corrida") {
+    const km = b.corrida ? coachEtapasKm(b.corrida.etapas) : 0;
+    p.push("Corrida");
+    if (km) p.push(`${rxNum(km)} km`);
+    if (b.corrida && b.corrida.pace) p.push(`pace ${b.corrida.pace}`);
+    return p.join(" · ");
+  }
+  if (formato === "normal") p.push(tipo === "forca" ? "" : BLOCO_TIPOS[tipo].label);
+  else if (formato === "amrap") p.push(`AMRAP ${b.duracaoMin || 10} min`);
+  else if (formato === "emom") p.push(`EMOM ${b.duracaoMin || 10} min`);
+  else if (formato === "fortime") p.push(`For Time${b.rodadas > 1 ? ` · ${b.rodadas} rodadas` : ""}${b.capMin ? ` · limite ${b.capMin} min` : ""}`);
+  else if (formato === "tabata") p.push(`Tabata ${b.rodadas || 8}× ${b.trabalhoSeg || 20}s/${b.pausaSeg != null ? b.pausaSeg : 10}s`);
+  else if (formato === "intervalos") p.push(`Intervalos ${b.rodadas || 3}× ${b.trabalhoSeg || 40}s/${b.pausaSeg != null ? b.pausaSeg : 20}s`);
+  else p.push(`${BLOCO_FORMATOS[formato]}${b.rodadas ? ` · ${b.rodadas} rodadas` : ""}`);
+  if (b.descansoSeg && !["tabata", "intervalos", "emom", "amrap"].includes(formato)) p.push(`desc ${rxTempo(b.descansoSeg)}`);
+  return p.filter(Boolean).join(" · ");
+}
+
+// Roteiro do cronômetro de um bloco. modo "down": contagem regressiva única (AMRAP);
+// "seq": sequência de fases trabalho/pausa (EMOM, Tabata, Intervalos); "up": cronômetro
+// crescente com parciais por estação (For Time, HYROX).
+function blocoRoteiro(b) {
+  const formato = blocoFormato(b);
+  const exs = (b.exercicios || []).length ? b.exercicios : [{ nome: "Trabalho" }];
+  const nomeEx = (ex) => [ex.nome, rxTexto({ ...ex, series: 1, descansoSeg: 0 })].filter(Boolean).join(" · ");
+  if (formato === "amrap") {
+    const total = (b.duracaoMin || 10) * 60;
+    return { modo: "down", total, fases: [{ ini: 0, dur: total, label: "AMRAP", tipo: "trabalho" }] };
+  }
+  if (formato === "fortime") {
+    const rod = b.rodadas || 1;
+    const estacoes = [];
+    for (let r = 0; r < rod; r++) exs.forEach((ex) => estacoes.push({ label: nomeEx(ex), rodada: r + 1 }));
+    return { modo: "up", total: b.capMin ? b.capMin * 60 : 0, estacoes, rodadas: rod };
+  }
+  const fases = [];
+  let t = 0;
+  const push = (dur, label, tipo, rodada) => { if (dur > 0) { fases.push({ ini: t, dur, label, tipo, rodada }); t += dur; } };
+  if (formato === "emom") {
+    const min = b.duracaoMin || 10;
+    for (let i = 0; i < min; i++) push(60, nomeEx(exs[i % exs.length]), "trabalho", i + 1);
+  } else {
+    const tabata = formato === "tabata";
+    const rod = b.rodadas || (tabata ? 8 : 3);
+    const trab = b.trabalhoSeg || (tabata ? 20 : 40);
+    const pausa = b.pausaSeg != null ? b.pausaSeg : (tabata ? 10 : 20);
+    for (let r = 0; r < rod; r++) {
+      if (tabata) { push(trab, nomeEx(exs[r % exs.length]), "trabalho", r + 1); if (r < rod - 1) push(pausa, "Pausa", "pausa", r + 1); }
+      else exs.forEach((ex, j) => { push(ex.tempoSeg || trab, nomeEx(ex), "trabalho", r + 1); if (!(r === rod - 1 && j === exs.length - 1)) push(pausa, "Pausa", "pausa", r + 1); });
+    }
+  }
+  const rodadas = fases.reduce((m, f) => Math.max(m, f.rodada || 0), 0);
+  return { modo: "seq", total: t, fases, rodadas };
+}
+// Fase atual do roteiro dado o tempo decorrido (s).
+function blocoFaseEm(rot, seg) {
+  if (!rot.fases) return null;
+  for (let i = 0; i < rot.fases.length; i++) {
+    const f = rot.fases[i];
+    if (seg < f.ini + f.dur) return { i, f, resta: f.ini + f.dur - seg };
+  }
+  return null;
+}
+// Experimento ligado para esta conta (o App grava no aparelho a lista que o servidor libera).
+function featureLigada(nome) {
+  try { const v = JSON.parse(localStorage.getItem("treino-app:features") || "null"); return Array.isArray(v) && v.includes(nome); } catch (e) { return false; }
 }
 
 // --- Importar histórico de treinos (arquivo interpretado por IA) ---
@@ -3405,6 +3640,61 @@ const APP_CSS = `
   .gt-co-desfazer { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px 12px; margin-bottom:10px; font-size:14px; }
   .gt-co-prescrito { display:inline-block; border:1px solid var(--accent-dim); color:var(--accent); border-radius:4px; padding:1px 8px; font-size:11px; font-family:'Roboto Mono',monospace; margin-left:6px; vertical-align:middle; }
   @media (prefers-reduced-motion: reduce) { .gt-co-sw i::after { transition:none; } }
+  /* Sessão em blocos: cor do tipo vem de --bl-cor (força lima, corrida azul, condicionamento âmbar, HYROX violeta, mobilidade verde). */
+  .gt-bloco-tipo .gt-bloco-title { border-left-color:var(--bl-cor); }
+  .gt-bloco-resumo { margin-left:8px; color:var(--bl-cor, var(--text-muted)); text-transform:none; }
+  .gt-bloco-cta { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin:0 0 10px; }
+  .gt-bloco-cta .gt-btn.small { min-height:40px; padding:8px 14px; }
+  .gt-bloco-res { font-family:'Roboto Mono',monospace; font-size:13px; color:var(--text); }
+  .gt-bloco-dica { font-size:12px; color:var(--text-muted); }
+  .gt-bloco-corrida { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:10px; }
+  .gt-bloco-feito { align-self:flex-start; min-height:40px; padding:8px 14px; border-radius:var(--radius); border:1px solid var(--bl-cor, var(--border)); background:none; color:var(--text); font-size:13px; cursor:pointer; font-family:inherit; }
+  .gt-bloco-feito.on { background:var(--bl-cor); color:#14161A; font-weight:600; }
+  .gt-sets-header .gt-set-rir-h { width:56px; flex:none; text-align:center; }
+  .gt-set-row input.gt-set-rir { width:56px; flex:none; }
+  .gt-ex-ultima { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); margin:8px 0 2px 26px; }
+  .gt-bl-ed { display:flex; flex-direction:column; gap:12px; margin-top:8px; }
+  .gt-bl { --bl-cor:var(--accent); background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--bl-cor); border-radius:var(--radius); padding:6px 10px 10px; display:flex; flex-direction:column; gap:8px; }
+  .gt-bl-head { display:flex; align-items:center; gap:2px; }
+  .gt-bl-nome { flex:1; min-width:0; background:none; border:none; border-bottom:1px dashed transparent; color:var(--text); font-family:'Oswald',sans-serif; font-size:16px; letter-spacing:.03em; text-transform:uppercase; padding:8px 0; }
+  .gt-bl-nome:focus { outline:none; border-bottom-color:var(--bl-cor); }
+  .gt-bl-cfg { align-self:flex-start; background:none; border:1px solid var(--border); border-radius:14px; color:var(--bl-cor); font-family:'Roboto Mono',monospace; font-size:12px; padding:6px 10px; min-height:32px; cursor:pointer; }
+  .gt-bl-tipo { display:flex; gap:8px; }
+  .gt-bl-tipo select { flex:1; min-width:0; }
+  .gt-bl-params { display:flex; flex-wrap:wrap; gap:8px; }
+  .gt-bl-param { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
+  .gt-bl-param.wide { width:100%; margin-top:8px; }
+  .gt-bl-param-in { display:flex; align-items:center; gap:4px; }
+  .gt-bl-param-in input { width:64px; text-align:center; }
+  .gt-bl-param-in span { font-family:'Roboto Mono',monospace; font-size:12px; }
+  .gt-bl-ex { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:4px 8px 8px; display:flex; flex-direction:column; gap:6px; }
+  .gt-bl-ex-top { display:flex; align-items:center; gap:4px; }
+  .gt-bl-ex-letra { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--bl-cor); width:22px; flex-shrink:0; }
+  .gt-bl-ex-nome { flex:1; min-width:0; text-align:left; background:none; border:none; color:var(--text); font-size:14px; font-weight:500; padding:8px 0; cursor:pointer; font-family:inherit; }
+  .gt-input.gt-bl-rx { font-family:'Roboto Mono',monospace; font-size:14px; }
+  .gt-bl-entrada { display:flex; gap:6px; align-items:center; }
+  .gt-bl-entrada .gt-input { flex:1; min-width:0; }
+  .gt-bl-entrada .gt-btn.small { min-height:44px; padding:8px 12px; }
+  .gt-bl-novos-lbl { font-size:12px; color:var(--text-muted); margin-top:-4px; }
+  .gt-bl-novos { display:flex; flex-wrap:wrap; gap:8px; }
+  .gt-bl-novo { background:none; border:1px solid var(--bl-cor); color:var(--bl-cor); border-radius:16px; padding:8px 12px; min-height:36px; font-size:13px; cursor:pointer; font-family:inherit; }
+  .gt-bt-body { flex:1; overflow-y:auto; padding:20px 16px 24px; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+  .gt-bt-fase { font-family:'Oswald',sans-serif; font-size:22px; letter-spacing:.02em; color:var(--bl-cor); min-height:30px; }
+  .gt-bt-fase.pausa { color:var(--text-muted); }
+  .gt-bt-rodada { font-family:'Roboto Mono',monospace; font-size:13px; color:var(--text-muted); }
+  .gt-bt-tempo { font-family:'Oswald',sans-serif; font-weight:600; font-size:96px; line-height:1; letter-spacing:.02em; color:var(--text); font-variant-numeric:tabular-nums; }
+  .gt-bt-tempo.pausa { color:var(--text-muted); }
+  .gt-bt-sub { font-size:13px; color:var(--text-muted); }
+  .gt-bt-prox { font-size:14px; color:var(--text-muted); margin-top:6px; }
+  .gt-bt-lista, .gt-bt-parciais { list-style:none; margin:12px 0 0; padding:0; width:100%; max-width:420px; display:flex; flex-direction:column; gap:6px; text-align:left; }
+  .gt-bt-lista li, .gt-bt-parciais li { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; font-size:14px; display:flex; justify-content:space-between; gap:10px; }
+  .gt-bt-lista li span, .gt-bt-parciais li b { font-family:'Roboto Mono',monospace; color:var(--text-muted); font-weight:400; }
+  .gt-bt-fim { display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; }
+  .gt-bt-res { display:flex; gap:12px; justify-content:center; }
+  .gt-bt-res label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
+  .gt-bt-res input { width:96px; text-align:center; font-size:20px; }
+  .gt-bt-acoes { display:flex; gap:8px; }
+  .gt-bt-acoes .gt-btn { flex:1; }
 `;
 
 // --- Provas (calendário de provas esportivas): tela separada do fluxo de
@@ -3969,7 +4259,7 @@ function aplicarSemanaTreino(treino, daySession) {
   const ex = sw.ex || {};
   let blocos = treino.blocos
     .map((b) => ({ ...b, exercicios: b.exercicios.filter((e) => !(ex[e.id] && ex[e.id].remover)).map((e) => (ex[e.id] && ex[e.id].series ? { ...e, series: ex[e.id].series } : e)) }))
-    .filter((b) => b.exercicios.length > 0);
+    .filter((b) => !blocoVazio(b));
   if ((sw.add || []).length) blocos = [...blocos, { nome: SEMANA_BLOCO_NOME, exercicios: sw.add }];
   return { ...treino, blocos, ajustadoSemana: true };
 }
@@ -9917,12 +10207,19 @@ function coachFichaConteudo(sem, aluno, coachNome, rodape) {
         const f = sem.fichas && sem.fichas[it.ref];
         if (!f) return;
         const exs = [];
-        (f.blocos || []).forEach((b) => (b.exercicios || []).forEach((ex) => {
-          const partes = [`${ex.nome}  ${ex.series} x ${ex.repeticoes}`];
-          if (ex.cargaKg) partes[0] += `  ·  ${ex.cargaKg} kg`;
-          const obs = [ex.descricao, ex.observacoes].filter(Boolean).join(" · ");
-          exs.push({ linha: partes[0], obs });
-        }));
+        (f.blocos || []).forEach((b) => {
+          const resumo = blocoResumo(b);
+          if (resumo) exs.push({ linha: `${String(b.nome || "").toUpperCase()}  ·  ${resumo}`, obs: b.notas || "" });
+          if (blocoTipo(b) === "corrida" && b.corrida) (b.corrida.etapas || []).forEach((e) => exs.push({ linha: e.passos ? `${e.repeticoes}× (${e.passos.map(planoPassoTexto).join(" + ")})` : planoPassoTexto(e), obs: "" }));
+          (b.exercicios || []).forEach((ex) => {
+            const partes = [ex.repeticoes ? `${ex.nome}  ${ex.series} x ${ex.repeticoes}` : ex.nome];
+            const extra = rxTexto({ ...ex, series: 1, repeticoes: "", cargaKg: undefined });
+            if (extra) partes[0] += `  ·  ${extra}`;
+            if (ex.cargaKg) partes[0] += `  ·  ${ex.cargaKg} kg`;
+            const obs = [ex.descricao, ex.observacoes].filter(Boolean).join(" · ");
+            exs.push({ linha: partes[0], obs });
+          });
+        });
         itens.push({ titulo: f.nome || "Treino", detalhe: f.duracaoMin ? `${f.duracaoMin} min` : "", exs: f.notas ? [{ linha: f.notas, obs: "" }, ...exs] : exs });
       } else {
         const cn = coachCorridaNorm(it.corrida);
@@ -10080,8 +10377,7 @@ function coachEntradaDoLink(entry, tag) {
   return !!entry && ((entry.tipo === "treino" && String(entry.id).startsWith(`c-${tag}-`)) || entry.origem === tag);
 }
 function coachFmtEx(ex) {
-  const kg = ex.cargaKg ? ` · ${ex.cargaKg} kg` : "";
-  return `${ex.nome} ${ex.series}x${ex.repeticoes}${kg}`;
+  return `${ex.nome} ${rxTexto(ex)}`.trim();
 }
 function coachDiffFicha(atual, nova) {
   const linhas = [];
@@ -10096,10 +10392,21 @@ function coachDiffFicha(atual, nova) {
     if (ant.cargaKg !== ex.cargaKg && (ant.cargaKg || ex.cargaKg)) {
       linhas.push({ sinal: "~", texto: `${ex.nome}: ${ant.cargaKg ? ant.cargaKg + " kg" : "sem carga"} → ${ex.cargaKg ? ex.cargaKg + " kg" : "sem carga"}` });
     }
-    if (String(ant.series) !== String(ex.series) || String(ant.repeticoes) !== String(ex.repeticoes)) {
-      linhas.push({ sinal: "~", texto: `${ex.nome}: ${ant.series}x${ant.repeticoes} → ${ex.series}x${ex.repeticoes}` });
-    }
+    const rxAnt = rxTexto({ ...ant, cargaKg: undefined }), rxNovo = rxTexto({ ...ex, cargaKg: undefined });
+    if (rxAnt !== rxNovo) linhas.push({ sinal: "~", texto: `${ex.nome}: ${rxAnt || "sem prescrição"} → ${rxNovo || "sem prescrição"}` });
   }));
+  // Blocos: formato (AMRAP, bi-set...) e corrida mudam sem mexer nos exercícios.
+  const blAnt = new Map(((atual && atual.blocos) || []).map((b) => [normalizeSearch(b.nome), b]));
+  ((nova && nova.blocos) || []).forEach((b) => {
+    const ant = blAnt.get(normalizeSearch(b.nome));
+    const resumo = blocoResumo(b);
+    if (blocoTipo(b) === "corrida") {
+      if (!ant || blocoTipo(ant) !== "corrida") linhas.push({ sinal: "+", texto: `${b.nome}: ${resumo}` });
+      else if (JSON.stringify(ant.corrida || null) !== JSON.stringify(b.corrida || null)) linhas.push({ sinal: "~", texto: `${b.nome}: corrida alterada` });
+    } else if (ant && blocoResumo(ant) !== resumo) {
+      linhas.push({ sinal: "~", texto: `${b.nome}: ${blocoResumo(ant) || "séries normais"} → ${resumo || "séries normais"}` });
+    } else if (!ant && resumo) linhas.push({ sinal: "+", texto: `${b.nome}: ${resumo}` });
+  });
   mapa.forEach((ex, k) => { if (!vistos.has(k)) linhas.push({ sinal: "-", texto: ex.nome }); });
   return linhas;
 }
@@ -11025,6 +11332,7 @@ function CoachSessaoCard({ data, sess, nomes, notas, onComentar }) {
 // ---------- Treinador: editor de ficha (nome + exercícios) ----------
 function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
   const [f, setF] = useState(() => coachClonar(ficha));
+  const [comBlocos] = useState(() => featureLigada("blocos"));
   const [picker, setPicker] = useState(false);
   const [busca, setBusca] = useState("");
   const [grupo, setGrupo] = useState(CATALOG_GRUPOS[0].label);
@@ -11046,7 +11354,7 @@ function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
     });
   }
   const jaTem = (cat) => flat.some((x) => normalizeSearch(x.ex.nome) === normalizeSearch(cat.nome));
-  const valido = f.nome.trim() && flat.length > 0;
+  const valido = f.nome.trim() && f.blocos.some((b) => !blocoVazio(b));
   return (
     <div className="gt-focus gt-co-editor" style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-label="Editar ficha">
       <div className="gt-focus-header">
@@ -11057,8 +11365,9 @@ function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
         </div>
       </div>
       <div className="gt-focus-body gt-co-aluno-body">
-        {flat.length === 0 && <div className="gt-empty">Adicione o primeiro exercício.</div>}
-        {flat.map(({ bi, ei, ex }) => {
+        {comBlocos && <BlocosEditor blocos={f.blocos} ultimas={ultimas} onChange={(blocos) => setF((p) => ({ ...p, blocos }))} />}
+        {!comBlocos && flat.length === 0 && <div className="gt-empty">Adicione o primeiro exercício.</div>}
+        {!comBlocos && flat.map(({ bi, ei, ex }) => {
           const ult = ultimas && ultimas[normalizeSearch(ex.nome)];
           return (
             <div key={bi + "-" + ei} className="gt-co-ex">
@@ -11075,9 +11384,9 @@ function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
             </div>
           );
         })}
-        <button type="button" className="gt-btn secondary" style={{ marginTop: 8 }} onClick={() => setPicker(true)}>＋ Adicionar exercício</button>
+        {!comBlocos && <button type="button" className="gt-btn secondary" style={{ marginTop: 8 }} onClick={() => setPicker(true)}>＋ Adicionar exercício</button>}
       </div>
-      <div className="gt-focus-footer"><button type="button" className="gt-btn" disabled={!valido} onClick={() => onSalvar({ ...f, nome: f.nome.trim() })}>Salvar ficha</button></div>
+      <div className="gt-focus-footer"><button type="button" className="gt-btn" disabled={!valido} onClick={() => onSalvar({ ...f, nome: f.nome.trim(), blocos: f.blocos.filter((b) => !blocoVazio(b)) })}>Salvar ficha</button></div>
       {picker && <ExercisePickerModal search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo} isAdded={jaTem} onAdd={adicionar} onClose={() => setPicker(false)} />}
     </div>
   );
@@ -13737,6 +14046,7 @@ function App() {
     return () => { cancelled = true; };
   }, [session, cloudSynced, stravaConnected]);
   const ajusteLiberado = !!(features && features.includes("ajuste_semana")) && !stravaConnected;
+  const blocosLiberado = !!(features && features.includes("blocos")); // editor de sessão em blocos (fase 1)
 
   // Planos e cobrança (dormente): o servidor diz se a tela de planos aparece e se os limites valem.
   useEffect(() => {
@@ -15282,6 +15592,22 @@ function App() {
     updateSessions({ ...sessions, [selectedDate]: { ...session, log: nextLog } });
   }
 
+  // Resultado de um bloco do treino (cronômetro, rodadas, corrida feita). Guardado no dia, por bloco;
+  // exsFeitos: exercícios do bloco que passam a "feito" (os que ainda não tinham status).
+  function saveBlocoResultado(item, blocoIdRes, res, exsFeitos) {
+    const key = itemKey(item);
+    const session = ensureSessionShape();
+    const doItem = { ...((session.blocos || {})[key] || {}) };
+    if (res) doItem[blocoIdRes] = res; else delete doItem[blocoIdRes];
+    let log = session.log;
+    if (exsFeitos && exsFeitos.length) {
+      const tl = { ...(log[key] || {}) };
+      exsFeitos.forEach((ex) => { if (!tl[ex.id] || !tl[ex.id].status) tl[ex.id] = { ...(tl[ex.id] || {}), status: "feito", sets: (tl[ex.id] && tl[ex.id].sets) || [] }; });
+      log = { ...log, [key]: tl };
+    }
+    updateSessions({ ...sessions, [selectedDate]: { ...session, log, blocos: { ...(session.blocos || {}), [key]: doItem } } });
+  }
+
   function cycleExercicioStatus(item, ex) {
     const key = itemKey(item);
     const treinoLog = dayLog[key] || {};
@@ -15294,7 +15620,7 @@ function App() {
       const repDefault = parseFirstNumber(ex.repeticoes);
       const lastSets = lastLoggedSetsForExercise(sessions, ex.id, selectedDate);
       sets = Array.from({ length: ex.series || 1 }, (_, i) => ({
-        peso: lastSets && lastSets[i] ? lastSets[i].peso : "",
+        peso: lastSets && lastSets[i] ? lastSets[i].peso : (ex.cargaKg || ""),
         reps: (lastSets && lastSets[i] ? lastSets[i].reps : "") || repDefault || "",
       }));
     }
@@ -15309,7 +15635,7 @@ function App() {
       const repDefault = parseFirstNumber(ex.repeticoes);
       const lastSets = lastLoggedSetsForExercise(sessions, ex.id, selectedDate);
       const sets = Array.from({ length: ex.series || 1 }, (_, i) => ({
-        peso: lastSets && lastSets[i] ? lastSets[i].peso : "",
+        peso: lastSets && lastSets[i] ? lastSets[i].peso : (ex.cargaKg || ""),
         reps: (lastSets && lastSets[i] ? lastSets[i].reps : "") || repDefault || "",
       }));
       patchItemLog(key, { [ex.id]: { status: prevExLog?.status, comentario: prevExLog?.comentario || "", sets } });
@@ -15686,7 +16012,7 @@ function App() {
     updateBuilderCurrent((t) => {
       const blocos = t.blocos.map((b) => ({ ...b, exercicios: b.exercicios.slice() }));
       blocos[blocoIdx].exercicios.splice(exIdx, 1);
-      const blocosLimpos = blocos.filter((b) => b.exercicios.length > 0);
+      const blocosLimpos = blocos.filter((b) => !blocoVazio(b));
       return { ...t, blocos: blocosLimpos };
     });
   }
@@ -15720,7 +16046,7 @@ function App() {
   function builderValidate() {
     const semNome = builderTreinos.findIndex((t) => !t.nome || !t.nome.trim());
     if (semNome !== -1) return `Dá um nome pro treino ${builderTreinos.length > 1 ? `#${semNome + 1}` : ""}`.trim();
-    const semExercicio = builderTreinos.findIndex((t) => t.blocos.length === 0);
+    const semExercicio = builderTreinos.findIndex((t) => t.blocos.every(blocoVazio));
     if (semExercicio !== -1) return `Adiciona pelo menos um exercício no treino "${builderTreinos[semExercicio].nome}"`;
     return null;
   }
@@ -15728,12 +16054,13 @@ function App() {
   function builderSave() {
     const erro = builderValidate();
     if (erro) { showToast(erro); return; }
+    const prontos = builderTreinos.map((t) => ({ ...t, blocos: t.blocos.filter((b) => !blocoVazio(b)) }));
     if (builderEditingId) {
-      const normalized = normalizeImportedTreino(builderTreinos[0], treinos.filter((t) => t.id !== builderEditingId).map((t) => t.id));
+      const normalized = normalizeImportedTreino(prontos[0], treinos.filter((t) => t.id !== builderEditingId).map((t) => t.id));
       updateTreinos(treinos.map((t) => (t.id === builderEditingId ? { ...normalized, id: builderEditingId } : t)));
       showToast("Treino atualizado");
     } else {
-      const novos = commitTreinosBatch(builderTreinos);
+      const novos = commitTreinosBatch(prontos);
       showToast(novos.length > 1 ? `${novos.length} treinos criados` : "Treino criado");
     }
     closeBuilder(true);
@@ -15982,6 +16309,9 @@ function App() {
             onClose={() => { setFocusTreino(null); setExpandedEx(null); }}
             onFinish={(elapsedMin) => finishTreino(focusTreino, treino, elapsedMin)}
             showToast={showToast}
+            blocosLog={((sessions[selectedDate] || {}).blocos || {})[itemKey(focusTreino)]}
+            onBlocoResultado={(bid, res, exs) => saveBlocoResultado(focusTreino, bid, res, exs)}
+            lastSetsFor={(ex) => lastLoggedSetsForExercise(sessions, ex.id, selectedDate)}
           />
           {rpeModal && (
             <RpeModal
@@ -17116,35 +17446,41 @@ function App() {
             />
 
             <div className="gt-field-label" style={{ marginTop: 18 }}>EXERCÍCIOS</div>
-            {builderTreinos[builderIndex].blocos.length === 0 && (
-              <div className="gt-empty" style={{ marginTop: 8 }}>Nenhum exercício ainda — adiciona pelo catálogo abaixo.</div>
-            )}
-            {builderTreinos[builderIndex].blocos.map((bloco, blocoIdx) => (
-              <div className="gt-bloco" key={bloco.nome}>
-                <div className="gt-bloco-title">{bloco.nome.toUpperCase()}</div>
-                {bloco.exercicios.map((ex, exIdx) => (
-                  <div className="gt-builder-ex-row" key={`${bloco.nome}-${exIdx}`}>
-                    <div className="gt-builder-ex-main">
-                      <div className="gt-builder-ex-nome">{ex.nome}</div>
-                      <div className="gt-builder-ex-fields">
-                        <input type="number" inputMode="numeric" className="gt-builder-ex-input" value={ex.series} onChange={(e) => builderUpdateExField(blocoIdx, exIdx, "series", Number(e.target.value) || 0)} />
-                        <span className="gt-builder-ex-x">x</span>
-                        <input type="text" className="gt-builder-ex-input wide" value={ex.repeticoes} onChange={(e) => builderUpdateExField(blocoIdx, exIdx, "repeticoes", e.target.value)} />
+            {blocosLiberado ? (
+              <BlocosEditor blocos={builderTreinos[builderIndex].blocos} onChange={(blocos) => updateBuilderCurrent((t) => ({ ...t, blocos }))} />
+            ) : (
+              <>
+                {builderTreinos[builderIndex].blocos.length === 0 && (
+                  <div className="gt-empty" style={{ marginTop: 8 }}>Nenhum exercício ainda — adiciona pelo catálogo abaixo.</div>
+                )}
+                {builderTreinos[builderIndex].blocos.map((bloco, blocoIdx) => (
+                  <div className="gt-bloco" key={bloco.nome}>
+                    <div className="gt-bloco-title">{bloco.nome.toUpperCase()}</div>
+                    {bloco.exercicios.map((ex, exIdx) => (
+                      <div className="gt-builder-ex-row" key={`${bloco.nome}-${exIdx}`}>
+                        <div className="gt-builder-ex-main">
+                          <div className="gt-builder-ex-nome">{ex.nome}</div>
+                          <div className="gt-builder-ex-fields">
+                            <input type="number" inputMode="numeric" className="gt-builder-ex-input" value={ex.series} onChange={(e) => builderUpdateExField(blocoIdx, exIdx, "series", Number(e.target.value) || 0)} />
+                            <span className="gt-builder-ex-x">x</span>
+                            <input type="text" className="gt-builder-ex-input wide" value={ex.repeticoes} onChange={(e) => builderUpdateExField(blocoIdx, exIdx, "repeticoes", e.target.value)} />
+                          </div>
+                        </div>
+                        <div className="gt-builder-ex-actions">
+                          <button type="button" onClick={() => builderMoveExercicio(blocoIdx, exIdx, -1)} disabled={exIdx === 0}>▲</button>
+                          <button type="button" onClick={() => builderMoveExercicio(blocoIdx, exIdx, 1)} disabled={exIdx === bloco.exercicios.length - 1}>▼</button>
+                          <button type="button" className="danger" onClick={() => builderRemoveExercicio(blocoIdx, exIdx)}>✕</button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="gt-builder-ex-actions">
-                      <button type="button" onClick={() => builderMoveExercicio(blocoIdx, exIdx, -1)} disabled={exIdx === 0}>▲</button>
-                      <button type="button" onClick={() => builderMoveExercicio(blocoIdx, exIdx, 1)} disabled={exIdx === bloco.exercicios.length - 1}>▼</button>
-                      <button type="button" className="danger" onClick={() => builderRemoveExercicio(blocoIdx, exIdx)}>✕</button>
-                    </div>
+                    ))}
                   </div>
                 ))}
-              </div>
-            ))}
 
-            <button className="gt-add-extra-card" type="button" onClick={() => setExercisePickerOpen(true)}>
-              <span className="plus">+</span> Adicionar exercício
-            </button>
+                <button className="gt-add-extra-card" type="button" onClick={() => setExercisePickerOpen(true)}>
+                  <span className="plus">+</span> Adicionar exercício
+                </button>
+              </>
+            )}
             <div style={{ height: 76 }} />
           </div>
 
@@ -17898,7 +18234,7 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
     setEditingTreino((prev) => {
       const blocos = prev.blocos.map((b) => ({ ...b, exercicios: b.exercicios.slice() }));
       blocos[blocoIdx].exercicios.splice(exIdx, 1);
-      return { ...prev, blocos: blocos.filter((b) => b.exercicios.length > 0) };
+      return { ...prev, blocos: blocos.filter((b) => !blocoVazio(b)) };
     });
   }
   function onbMoveExercicio(blocoIdx, exIdx, dir) {
@@ -18193,9 +18529,417 @@ function notifyRestDone(label) {
   } catch (e) {}
 }
 
-function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, setExpandedEx, ensureSetsForExpand, updateSetField, updateExComentario, cycleExercicioStatus, addSetToExercise, removeLastSet, addExerciseToday, removeAddedExercise, onClose, onFinish, showToast }) {
+// ---------- Editor de sessão em blocos (o mesmo para o aluno e para o treinador) ----------
+// Recebe a lista de blocos do treino e devolve a lista nova a cada mudança. Atrás da flag "blocos".
+function blocoNovo(tipo) {
+  const id = blocoNovoId();
+  if (tipo === "corrida") {
+    const r = coachDraftEtapas([{ tipo: "leve", qtd: "5", un: "km", pace: "", descricao: "", esforco: "" }]);
+    return { id, nome: "Corrida", tipo, formato: "normal", corrida: { etapas: r.ok ? r.etapas : [] }, exercicios: [] };
+  }
+  if (tipo === "condicionamento") return { id, nome: "Metcon", tipo, formato: "amrap", duracaoMin: 12, exercicios: [] };
+  if (tipo === "hyrox") return { id, nome: "HYROX", tipo, formato: "fortime", rodadas: 1, exercicios: [] };
+  if (tipo === "mobilidade") return { id, nome: "Mobilidade", tipo, formato: "normal", exercicios: [] };
+  return { id, nome: "Força", tipo: "forca", formato: "normal", exercicios: [] };
+}
+function blocoSimulacaoHyrox() {
+  const exercicios = [];
+  const suf = coachNovoId().slice(0, 3);
+  HYROX_ESTACOES.forEach((st, i) => {
+    exercicios.push({ id: `corrida-${i + 1}-${suf}`, nome: "Corrida", series: 1, repeticoes: "", distanciaM: 1000, descricao: "", observacoes: "", videoUrl: "" });
+    exercicios.push({ id: `${coachSlug(st.nome)}-${i + 1}-${suf}`, nome: st.nome, series: 1, repeticoes: st.repeticoes || "", ...(st.distanciaM ? { distanciaM: st.distanciaM } : {}), descricao: "", observacoes: "", videoUrl: "" });
+  });
+  return { id: blocoNovoId(), nome: "Simulação HYROX", tipo: "hyrox", formato: "fortime", rodadas: 1, exercicios };
+}
+function exercicioNovo(cat) {
+  return { id: coachSlug(cat.nome) + "-" + coachNovoId().slice(0, 3), nome: cat.nome, series: cat.series || 3, repeticoes: cat.repeticoes != null ? cat.repeticoes : "10-12", descricao: cat.descricao || "", observacoes: cat.observacoes || "", videoUrl: cat.videoUrl || "", ...Object.fromEntries(RX_CAMPOS.filter((k) => k !== "series" && k !== "repeticoes" && cat[k] != null).map((k) => [k, cat[k]])) };
+}
+
+// Campo da prescrição: mostra o texto curto e só aplica ao sair do campo (ou Enter).
+function RxInput({ ex, onCommit, label }) {
+  const [txt, setTxt] = useState(() => rxTexto(ex));
+  const [foco, setFoco] = useState(false);
+  const atual = rxTexto(ex);
+  useEffect(() => { if (!foco) setTxt(atual); }, [atual, foco]);
+  const aplicar = () => { setFoco(false); if (txt.trim() !== atual) onCommit(aplicarRx(ex, txt)); };
+  return (
+    <input className="gt-input gt-bl-rx" aria-label={label} placeholder="4x10 20kg" value={txt} maxLength={60}
+      onFocus={() => setFoco(true)} onChange={(e) => setTxt(e.target.value)} onBlur={aplicar}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }} />
+  );
+}
+
+// Etapas de um bloco de corrida (mesmo editor do treino de corrida do treinador).
+function BlocoCorridaEditor({ bloco, onChange }) {
+  const [draft, setDraft] = useState(() => coachEtapasDraft((bloco.corrida && bloco.corrida.etapas) || []));
+  const [erro, setErro] = useState("");
+  const [pace, setPace] = useState((bloco.corrida && bloco.corrida.pace) || "");
+  function mudar(d) {
+    setDraft(d);
+    const r = coachDraftEtapas(d);
+    setErro(r.ok ? "" : r.erro);
+    if (r.ok) onChange({ ...bloco, corrida: { ...(bloco.corrida || {}), etapas: r.etapas } });
+  }
+  return (
+    <div className="gt-bl-corrida">
+      <CoachEtapasEditor itens={draft} onChange={mudar} />
+      <label className="gt-bl-param wide">Pace alvo (opcional)
+        <input className="gt-input" inputMode="text" placeholder="5:30" value={pace} maxLength={11}
+          onChange={(e) => setPace(e.target.value)}
+          onBlur={() => { const v = pace.trim(); if (v && !COACH_RE_PACE.test(v)) { setErro("O pace precisa estar no formato 5:30 ou 5:30-5:45."); return; } const c = { ...(bloco.corrida || {}) }; if (v) c.pace = v; else delete c.pace; onChange({ ...bloco, corrida: c }); }} />
+      </label>
+      {erro && <div className="gt-error">{erro}</div>}
+    </div>
+  );
+}
+
+function BlocoParam({ label, value, onChange, max, sufixo }) {
+  return (
+    <label className="gt-bl-param">{label}
+      <span className="gt-bl-param-in">
+        <input className="gt-input" inputMode="numeric" value={value == null ? "" : value} placeholder="—"
+          onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 3); onChange(v === "" ? undefined : Math.min(max, Number(v))); }} />
+        {sufixo && <span>{sufixo}</span>}
+      </span>
+    </label>
+  );
+}
+
+function BlocosEditor({ blocos, onChange, ultimas }) {
+  const [picker, setPicker] = useState(null); // índice do bloco que recebe o exercício do catálogo
+  const [busca, setBusca] = useState("");
+  const [grupo, setGrupo] = useState(CATALOG_GRUPOS[0].label);
+  const [entrada, setEntrada] = useState({});
+  const [obsAberta, setObsAberta] = useState({});
+  const [cfg, setCfg] = useState({}); // blocos com o tipo/formato aberto para editar
+  const [pickerGeral, setPickerGeral] = useState(false);
+  const lista = blocos || [];
+  const setBloco = (i, b) => onChange(lista.map((x, k) => (k === i ? b : x)));
+  const mover = (i, d) => { const j = i + d; if (j < 0 || j >= lista.length) return; const n = lista.slice(); [n[i], n[j]] = [n[j], n[i]]; onChange(n); };
+  const remover = (i) => {
+    const b = lista[i];
+    if (!blocoVazio(b) && !confirm(`Remover o bloco "${b.nome}" e o que tem nele?`)) return;
+    onChange(lista.filter((_, k) => k !== i));
+  };
+  const setEx = (i, j, ex) => setBloco(i, { ...lista[i], exercicios: lista[i].exercicios.map((x, k) => (k === j ? ex : x)) });
+  const moverEx = (i, j, d) => { const exs = lista[i].exercicios.slice(); const k = j + d; if (k < 0 || k >= exs.length) return; [exs[j], exs[k]] = [exs[k], exs[j]]; setBloco(i, { ...lista[i], exercicios: exs }); };
+  const tirarEx = (i, j) => setBloco(i, { ...lista[i], exercicios: lista[i].exercicios.filter((_, k) => k !== j) });
+  const addEx = (i, ex) => setBloco(i, { ...lista[i], exercicios: [...lista[i].exercicios, ex] });
+  function enviarEntrada(i) {
+    const txt = (entrada[i] || "").trim();
+    if (!txt) return;
+    const ex = exercicioDaEntrada(txt);
+    if (!ex) return;
+    addEx(i, exercicioNovo(ex));
+    setEntrada({ ...entrada, [i]: "" });
+  }
+  // "Adicionar exercício" geral: igual ao app de hoje, agrupa por grupo muscular em blocos de força.
+  function addPorGrupo(cat) {
+    const nomeBloco = cat.grupo || "Exercícios";
+    const i = lista.findIndex((b) => b.nome === nomeBloco && blocoTipo(b) === "forca" && blocoFormato(b) === "normal");
+    if (i >= 0) addEx(i, exercicioNovo(cat));
+    else onChange([...lista, { nome: nomeBloco, exercicios: [exercicioNovo(cat)] }]);
+  }
+  const novoBloco = (b) => { setCfg({ ...cfg, [b.id]: true }); onChange([...lista, b]); };
+  function trocarTipo(i, tipo) {
+    const b = lista[i];
+    const base = blocoNovo(tipo);
+    const nomePadrao = BLOCO_TIPOS_ORDEM.some((t) => blocoNovo(t).nome === b.nome);
+    setBloco(i, { ...b, tipo, formato: base.formato, nome: nomePadrao ? base.nome : b.nome, ...(tipo === "corrida" && !b.corrida ? { corrida: base.corrida } : {}), ...(base.duracaoMin && !b.duracaoMin ? { duracaoMin: base.duracaoMin } : {}) });
+  }
+  return (
+    <div className="gt-bl-ed">
+      {lista.length === 0 && <div className="gt-empty">Nenhum exercício ainda. Adicione pelo catálogo ou escreva direto, como "Agachamento 4x8 60kg".</div>}
+      {lista.map((b, i) => {
+        const tipo = blocoTipo(b), formato = blocoFormato(b);
+        const p = (k, v) => setBloco(i, { ...b, [k]: v });
+        return (
+          <div key={b.id || i} className="gt-bl" style={{ "--bl-cor": BLOCO_TIPOS[tipo].cor }}>
+            <div className="gt-bl-head">
+              <input className="gt-bl-nome" aria-label="Nome do bloco" value={b.nome} maxLength={60} onChange={(e) => p("nome", e.target.value)} />
+              <button type="button" className="gt-co-mini" aria-label="Subir bloco" disabled={i === 0} onClick={() => mover(i, -1)}>↑</button>
+              <button type="button" className="gt-co-mini" aria-label="Descer bloco" disabled={i === lista.length - 1} onClick={() => mover(i, 1)}>↓</button>
+              <button type="button" className="gt-co-mini perigo" aria-label={`Remover bloco ${b.nome}`} onClick={() => remover(i)}>✕</button>
+            </div>
+            <button type="button" className="gt-bl-cfg" aria-expanded={!!cfg[b.id || i]} onClick={() => setCfg({ ...cfg, [b.id || i]: !cfg[b.id || i] })}>
+              {tipo === "corrida" ? "Corrida" : formato === "normal" ? `${BLOCO_TIPOS[tipo].label} · ${tipo === "hyrox" ? "Estações livres" : "Séries normais"}` : `${BLOCO_TIPOS[tipo].label} · ${blocoResumo(b)}`} <span aria-hidden="true">✎</span>
+            </button>
+            {cfg[b.id || i] && <div className="gt-bl-tipo">
+              <select className="gt-input" aria-label="Tipo do bloco" value={tipo} onChange={(e) => trocarTipo(i, e.target.value)}>
+                {BLOCO_TIPOS_ORDEM.map((t) => <option key={t} value={t}>{BLOCO_TIPOS[t].label}</option>)}
+              </select>
+              {BLOCO_TIPOS[tipo].formatos.length > 1 && (
+                <select className="gt-input" aria-label="Formato do bloco" value={formato} onChange={(e) => p("formato", e.target.value)}>
+                  {BLOCO_TIPOS[tipo].formatos.map((f) => <option key={f} value={f}>{tipo === "hyrox" && f === "normal" ? "Estações livres" : BLOCO_FORMATOS[f]}</option>)}
+                </select>
+              )}
+            </div>}
+            {cfg[b.id || i] && tipo !== "corrida" && (
+              <div className="gt-bl-params">
+                {["biset", "triset", "circuito", "fortime", "tabata", "intervalos"].includes(formato) && <BlocoParam label="Rodadas" value={b.rodadas} max={50} onChange={(v) => p("rodadas", v)} />}
+                {["amrap", "emom"].includes(formato) && <BlocoParam label="Duração" sufixo="min" value={b.duracaoMin} max={180} onChange={(v) => p("duracaoMin", v)} />}
+                {formato === "fortime" && <BlocoParam label="Limite" sufixo="min" value={b.capMin} max={240} onChange={(v) => p("capMin", v)} />}
+                {["tabata", "intervalos"].includes(formato) && <BlocoParam label="Trabalho" sufixo="s" value={b.trabalhoSeg} max={600} onChange={(v) => p("trabalhoSeg", v)} />}
+                {["tabata", "intervalos"].includes(formato) && <BlocoParam label="Pausa" sufixo="s" value={b.pausaSeg} max={600} onChange={(v) => p("pausaSeg", v)} />}
+                {["normal", "biset", "triset", "circuito"].includes(formato) && <BlocoParam label={formato === "normal" ? "Descanso" : "Desc. rodada"} sufixo="s" value={b.descansoSeg} max={900} onChange={(v) => p("descansoSeg", v)} />}
+              </div>
+            )}
+            {tipo === "corrida" ? <BlocoCorridaEditor bloco={b} onChange={(nb) => setBloco(i, nb)} /> : (
+              <>
+                {b.exercicios.map((ex, j) => {
+                  const ult = ultimas && ultimas[normalizeSearch(ex.nome)];
+                  const kObs = `${i}-${j}`;
+                  return (
+                    <div key={ex.id || j} className="gt-bl-ex">
+                      <div className="gt-bl-ex-top">
+                        <span className="gt-bl-ex-letra">{formato === "biset" || formato === "triset" || formato === "circuito" ? String.fromCharCode(65 + j) : j + 1}</span>
+                        <button type="button" className="gt-bl-ex-nome" onClick={() => setObsAberta({ ...obsAberta, [kObs]: !obsAberta[kObs] })}>{ex.nome}</button>
+                        <button type="button" className="gt-co-mini" aria-label={`Subir ${ex.nome}`} disabled={j === 0} onClick={() => moverEx(i, j, -1)}>↑</button>
+                        <button type="button" className="gt-co-mini perigo" aria-label={`Remover ${ex.nome}`} onClick={() => tirarEx(i, j)}>✕</button>
+                      </div>
+                      <RxInput ex={ex} label={`Prescrição de ${ex.nome}`} onCommit={(nx) => setEx(i, j, nx)} />
+                      {ult && <div className="gt-co-ex-ult">Última do aluno: {ult.kg} kg ({coachDataCurta(ult.data)})</div>}
+                      {(obsAberta[kObs] || ex.observacoes) && <input className="gt-input gt-bl-obs" aria-label={`Observação de ${ex.nome}`} placeholder="Observação (opcional)" maxLength={120} value={ex.observacoes || ""} onChange={(e) => setEx(i, j, { ...ex, observacoes: e.target.value })} />}
+                    </div>
+                  );
+                })}
+                <div className="gt-bl-entrada">
+                  <input className="gt-input" aria-label={`Adicionar exercício em ${b.nome}`} enterKeyHint="done"
+                    placeholder={tipo === "condicionamento" ? "Ex.: 15 wall ball 9kg" : tipo === "hyrox" ? "Ex.: SkiErg 1000m" : tipo === "mobilidade" ? "Ex.: Alongamento de quadril 45s" : "Ex.: Agachamento 4x6 80kg rir2"}
+                    value={entrada[i] || ""} onChange={(e) => setEntrada({ ...entrada, [i]: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); enviarEntrada(i); } }} />
+                  <button type="button" className="gt-btn secondary small" disabled={!exercicioDaEntrada(entrada[i] || "")} onClick={() => enviarEntrada(i)}>＋</button>
+                  <button type="button" className="gt-btn secondary small" onClick={() => setPicker(i)}>Catálogo</button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+      {!lista.some((b) => blocoTipo(b) !== "corrida") && (
+        <div className="gt-bl-entrada">
+          <input className="gt-input" aria-label="Escrever exercício" enterKeyHint="done" placeholder="Ex.: Agachamento 4x6 80kg rir2"
+            value={entrada.geral || ""} onChange={(e) => setEntrada({ ...entrada, geral: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const ex = exercicioDaEntrada(entrada.geral || ""); if (ex) { onChange([...lista, { nome: "Exercícios", exercicios: [exercicioNovo(ex)] }]); setEntrada({ ...entrada, geral: "" }); } } }} />
+        </div>
+      )}
+      <button className="gt-add-extra-card" type="button" onClick={() => setPickerGeral(true)}>
+        <span className="plus">+</span> Adicionar exercício
+      </button>
+      <div className="gt-bl-novos-lbl">Ou um bloco com formato próprio:</div>
+      <div className="gt-bl-novos">
+        {BLOCO_TIPOS_ORDEM.map((t) => (
+          <button key={t} type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS[t].cor }} onClick={() => novoBloco(blocoNovo(t))}>＋ {BLOCO_TIPOS[t].label}</button>
+        ))}
+        <button type="button" className="gt-bl-novo" style={{ "--bl-cor": BLOCO_TIPOS.hyrox.cor }} onClick={() => novoBloco(blocoSimulacaoHyrox())}>＋ Simulação HYROX</button>
+      </div>
+      {pickerGeral && (
+        <ExercisePickerModal search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo}
+          isAdded={(cat) => lista.some((b) => b.exercicios.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(cat.nome)))}
+          onAdd={addPorGrupo} onClose={() => setPickerGeral(false)} />
+      )}
+      {picker != null && lista[picker] && (
+        <ExercisePickerModal search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo}
+          isAdded={(cat) => lista[picker].exercicios.some((ex) => normalizeSearch(ex.nome) === normalizeSearch(cat.nome))}
+          onAdd={(cat) => addEx(picker, exercicioNovo(cat))} onClose={() => setPicker(null)} />
+      )}
+    </div>
+  );
+}
+
+// ---------- Treino guiado: cronômetro de bloco (AMRAP, EMOM, For Time, Tabata, Intervalos) ----------
+// O tempo é calculado pelo horário de início salvo no aparelho, então bloquear a tela, trocar de
+// app ou recarregar a página não para nem zera o bloco. Bipes só tocam com o app na tela; com o
+// app em segundo plano, o fim do bloco vira notificação (se a pessoa já permitiu).
+function blocoBipe(ctxRef, longo) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!ctxRef.current) ctxRef.current = new AC();
+    const ctx = ctxRef.current;
+    if (ctx.state === "suspended") ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = longo ? 880 : 660;
+    g.gain.setValueAtTime(0.25, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (longo ? 0.6 : 0.15));
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + (longo ? 0.6 : 0.15));
+  } catch (e) {}
+}
+function blocoAviso(titulo, corpo) {
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible") return;
+    const opts = { body: corpo, icon: "./icon-192.png", badge: "./icon-192.png", vibrate: [300, 100, 300], tag: "movo-bloco-timer", renotify: true };
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) navigator.serviceWorker.ready.then((reg) => reg.showNotification(titulo, opts)).catch(() => {});
+    else new Notification(titulo, { body: corpo });
+  } catch (e) {}
+}
+function blocoFmtResultado(r) {
+  if (!r) return "";
+  if (r.formato === "amrap") return `${r.rodadas || 0} rodada${r.rodadas === 1 ? "" : "s"}${r.reps ? ` + ${r.reps} reps` : ""}`;
+  if (r.formato === "fortime") return r.limite ? `Limite atingido · ${r.estacoes || 0} estações` : `Tempo ${formatRestTime(r.tempoSeg || 0)}`;
+  if (r.formato === "rodadas") return `${r.rodadas || 0} rodada${r.rodadas === 1 ? "" : "s"} feita${r.rodadas === 1 ? "" : "s"}`;
+  if (r.formato === "corrida") return "Feito";
+  return "Concluído";
+}
+
+function BlocoTimer({ bloco, chave, onClose, onSalvar }) {
+  const rot = useMemo(() => blocoRoteiro(bloco), [bloco]);
+  const formato = blocoFormato(bloco);
+  const vazio = { ini: null, pausaEm: null, pausado: 0, parciais: [], fim: null };
+  const [st, setStRaw] = useState(() => { try { const v = JSON.parse(localStorage.getItem(chave) || "null"); return v && v.ini ? { ...vazio, ...v } : vazio; } catch (e) { return vazio; } });
+  const setSt = (v) => { setStRaw(v); try { if (v.ini) localStorage.setItem(chave, JSON.stringify(v)); else localStorage.removeItem(chave); } catch (e) {} };
+  const [agora, setAgora] = useState(Date.now());
+  const [rodadas, setRodadas] = useState("");
+  const [reps, setReps] = useState("");
+  const audio = useRef(null);
+  const ultFase = useRef(-1);
+  const ultSeg = useRef(-1);
+  const rodando = !!st.ini && !st.pausaEm && !st.fim;
+  const decorrido = st.ini ? Math.max(0, ((st.fim || st.pausaEm || agora) - st.ini - st.pausado) / 1000) : 0;
+
+  useEffect(() => {
+    if (!rodando) return;
+    const id = setInterval(() => setAgora(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [rodando]);
+
+  // Tela acesa enquanto o bloco roda (o navegador solta a trava quando o app sai da tela; pega de novo na volta).
+  useEffect(() => {
+    if (!rodando || !navigator.wakeLock) return;
+    let trava = null, ativo = true;
+    const pegar = () => { if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((t) => { if (ativo) trava = t; else t.release(); }).catch(() => {}); };
+    pegar();
+    document.addEventListener("visibilitychange", pegar);
+    return () => { ativo = false; document.removeEventListener("visibilitychange", pegar); if (trava) trava.release().catch(() => {}); };
+  }, [rodando]);
+
+  // Fim do bloco, troca de fase e contagem dos últimos 3 segundos.
+  let fase = null, resta = 0, acabou = false;
+  if (rot.modo === "down") { resta = Math.max(0, rot.total - decorrido); acabou = st.ini && resta <= 0; }
+  else if (rot.modo === "seq") { fase = blocoFaseEm(rot, decorrido); acabou = st.ini && !fase; resta = fase ? fase.resta : 0; }
+  else { acabou = st.ini && (st.parciais.length >= rot.estacoes.length || (rot.total > 0 && decorrido >= rot.total)); }
+  useEffect(() => {
+    if (!rodando) return;
+    if (acabou) {
+      const fimEm = st.ini + st.pausado + Math.round((rot.modo === "up" ? decorrido : rot.total) * 1000);
+      setSt({ ...st, fim: Math.min(fimEm, Date.now()) });
+      blocoBipe(audio, true);
+      try { navigator.vibrate && navigator.vibrate([400, 150, 400]); } catch (e) {}
+      blocoAviso("Bloco concluído", `${bloco.nome}: registre o resultado`);
+      return;
+    }
+    if (rot.modo === "seq" && fase && fase.i !== ultFase.current) {
+      if (ultFase.current >= 0) { blocoBipe(audio, fase.f.tipo === "trabalho"); try { navigator.vibrate && navigator.vibrate(fase.f.tipo === "trabalho" ? 300 : [100, 80, 100]); } catch (e) {} }
+      ultFase.current = fase.i;
+    }
+    const s = Math.ceil(resta);
+    if ((rot.modo === "seq" || rot.modo === "down") && s <= 3 && s > 0 && s !== ultSeg.current) { ultSeg.current = s; blocoBipe(audio, false); }
+  });
+
+  function iniciar() {
+    blocoBipe(audio, true);
+    if (typeof Notification !== "undefined" && Notification.permission === "default") { try { Notification.requestPermission(); } catch (e) {} }
+    ultFase.current = 0;
+    setAgora(Date.now());
+    setSt({ ...vazio, ini: Date.now() });
+  }
+  const pausar = () => setSt({ ...st, pausaEm: Date.now() });
+  const retomar = () => { setAgora(Date.now()); setSt({ ...st, pausado: st.pausado + (Date.now() - st.pausaEm), pausaEm: null }); };
+  const encerrar = () => setSt({ ...st, fim: st.pausaEm || Date.now(), pausaEm: null });
+  const parcial = () => { blocoBipe(audio, false); setSt({ ...st, parciais: [...st.parciais, Math.round(decorrido)] }); };
+  const refazer = () => { ultFase.current = -1; ultSeg.current = -1; setSt(vazio); };
+  function salvar() {
+    const base = { formato, em: Date.now(), concluido: true };
+    let res;
+    if (formato === "amrap") res = { ...base, rodadas: Number(rodadas) || 0, reps: Number(reps) || 0 };
+    else if (formato === "fortime") {
+      const completo = st.parciais.length >= rot.estacoes.length;
+      res = { ...base, tempoSeg: Math.round(completo ? st.parciais[st.parciais.length - 1] : decorrido), parciais: st.parciais, estacoes: st.parciais.length, limite: !completo && rot.total > 0 && decorrido >= rot.total };
+    } else res = { ...base, tempoSeg: Math.round(decorrido) };
+    onSalvar(res);
+    setSt(vazio);
+  }
+
+  const grande = rot.modo === "up" ? decorrido : resta;
+  const estacao = rot.modo === "up" ? rot.estacoes[st.parciais.length] : null;
+  const prox = rot.modo === "seq" && fase ? rot.fases[fase.i + 1] : rot.modo === "up" ? rot.estacoes[st.parciais.length + 1] : null;
+  const pausaFase = fase && fase.f.tipo === "pausa";
+  const progresso = rot.modo === "up" ? (rot.estacoes.length ? st.parciais.length / rot.estacoes.length : 0) : rot.total ? Math.min(1, decorrido / rot.total) : 0;
+  return (
+    <div className="gt-focus gt-bt" style={{ zIndex: 70, "--bl-cor": BLOCO_TIPOS[blocoTipo(bloco)].cor }} role="dialog" aria-modal="true" aria-label={`Cronômetro: ${bloco.nome}`}>
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar ao treino" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap">
+          <div className="gt-focus-title">{bloco.nome}</div>
+          <div className="gt-focus-progress-label">{blocoResumo(bloco)}</div>
+        </div>
+      </div>
+      <div className="gt-progress-bar gt-focus-progress-bar"><div className="gt-progress-fill" style={{ width: `${progresso * 100}%`, background: "var(--bl-cor)" }} /></div>
+      <div className="gt-bt-body">
+        {!st.fim && (
+          <>
+            <div className={`gt-bt-fase ${pausaFase ? "pausa" : ""}`}>
+              {!st.ini ? "Pronto" : rot.modo === "seq" && fase ? (pausaFase ? "Pausa" : fase.f.label) : rot.modo === "up" && estacao ? estacao.label : bloco.nome}
+            </div>
+            {rot.modo !== "down" && rot.rodadas > 1 && st.ini && (
+              <div className="gt-bt-rodada">Rodada {(fase && fase.f.rodada) || (estacao && estacao.rodada) || rot.rodadas} de {rot.rodadas}</div>
+            )}
+            <div className={`gt-bt-tempo ${pausaFase ? "pausa" : ""}`} aria-live="off">{formatRestTime(Math.ceil(rot.modo === "up" ? Math.floor(grande) : grande))}</div>
+            {rot.modo === "up" && rot.total > 0 && <div className="gt-bt-sub">limite {formatRestTime(rot.total)}</div>}
+            {rot.modo === "down" && <div className="gt-bt-sub">faça o máximo de rodadas</div>}
+            {prox && st.ini && <div className="gt-bt-prox">A seguir: {prox.tipo === "pausa" ? "pausa" : prox.label}</div>}
+            {rot.modo === "up" && st.parciais.length > 0 && (
+              <ol className="gt-bt-parciais">
+                {st.parciais.map((s, i) => <li key={i}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(s - (i ? st.parciais[i - 1] : 0))}</b></li>)}
+              </ol>
+            )}
+            {rot.modo !== "up" && (bloco.exercicios || []).length > 0 && (
+              <ul className="gt-bt-lista">
+                {bloco.exercicios.map((ex, i) => <li key={i}><b>{ex.nome}</b> <span>{rxTexto({ ...ex, series: 1, descansoSeg: 0 })}</span></li>)}
+              </ul>
+            )}
+          </>
+        )}
+        {st.fim && (
+          <div className="gt-bt-fim">
+            <div className="gt-bt-fase">Bloco concluído</div>
+            <div className="gt-bt-tempo">{formatRestTime(Math.round(formato === "fortime" && st.parciais.length >= rot.estacoes.length ? st.parciais[st.parciais.length - 1] : decorrido))}</div>
+            {formato === "amrap" && (
+              <div className="gt-bt-res">
+                <label>Rodadas<input className="gt-input" inputMode="numeric" value={rodadas} onChange={(e) => setRodadas(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
+                <label>Reps extras<input className="gt-input" inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
+              </div>
+            )}
+            {formato === "fortime" && st.parciais.length < rot.estacoes.length && <div className="gt-bt-sub">{st.parciais.length} de {rot.estacoes.length} estações</div>}
+            {rot.modo === "up" && st.parciais.length > 0 && (
+              <ol className="gt-bt-parciais">
+                {st.parciais.map((s, i) => <li key={i}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(s - (i ? st.parciais[i - 1] : 0))}</b></li>)}
+              </ol>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="gt-focus-footer gt-bt-acoes">
+        {!st.ini && <button type="button" className="gt-btn" onClick={iniciar}>▶ Começar</button>}
+        {st.ini && !st.fim && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : "Próxima estação"}</button>}
+        {st.ini && !st.fim && (st.pausaEm ? <button type="button" className="gt-btn" onClick={retomar}>▶ Continuar</button> : <button type="button" className="gt-btn secondary" onClick={pausar}>Pausar</button>)}
+        {st.ini && !st.fim && <button type="button" className="gt-btn secondary" onClick={encerrar}>Encerrar</button>}
+        {st.fim && <button type="button" className="gt-btn" onClick={salvar}>Salvar resultado</button>}
+        {st.fim && <button type="button" className="gt-btn secondary" onClick={refazer}>Refazer</button>}
+      </div>
+    </div>
+  );
+}
+
+function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, setExpandedEx, ensureSetsForExpand, updateSetField, updateExComentario, cycleExercicioStatus, addSetToExercise, removeLastSet, addExerciseToday, removeAddedExercise, onClose, onFinish, showToast, blocosLog, onBlocoResultado, lastSetsFor }) {
   const flat = flattenExercicios(treino);
-  const doneCount = flat.filter((ex) => treinoLog[ex.id]?.status === "feito").length;
+  const blocosRes = blocosLog || {};
+  const corridas = treino.blocos.map((b, i) => ({ b, id: blocoId(b, i) })).filter((x) => blocoTipo(x.b) === "corrida" && !blocoVazio(x.b));
+  const corridasFeitas = corridas.filter((x) => blocosRes[x.id] && blocosRes[x.id].concluido).length;
+  const doneCount = flat.filter((ex) => treinoLog[ex.id]?.status === "feito").length + corridasFeitas;
+  const totalItens = flat.length + corridas.length;
+  const [timerBloco, setTimerBloco] = useState(null); // índice do bloco com o cronômetro aberto
   const skippedCount = flat.filter((ex) => treinoLog[ex.id]?.status === "pulei").length;
   const key = itemKey(item);
   const [videoOpenId, setVideoOpenId] = useState(null);
@@ -18209,7 +18953,18 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
   // aqui em cima, fora do detalhe de qualquer exercício (tanto o botão de
   // iniciar quanto a barra rodando), pra sobreviver a fechar o acordeão do
   // exercício ou abrir outro enquanto conta. ---
-  const [restTimer, setRestTimer] = useState(null); // { exNome, endsAt, totalSec }
+  // O descanso fica salvo no aparelho: recarregar a página ou o navegador descartar a aba não perde a contagem.
+  const restKey = `treino-app:rest:${selectedDate || todayISO()}:${key}`;
+  const [restTimer, setRestTimerState] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(restKey) || "null"); return v && v.endsAt > Date.now() ? v : null; } catch (e) { return null; }
+  }); // { exNome, endsAt, totalSec }
+  const setRestTimer = (v) => {
+    setRestTimerState((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      try { if (next) localStorage.setItem(restKey, JSON.stringify(next)); else localStorage.removeItem(restKey); } catch (e) {}
+      return next;
+    });
+  };
   const [restRemaining, setRestRemaining] = useState(0);
 
   useEffect(() => {
@@ -18247,10 +19002,15 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
   // Nome do exercício atualmente aberto (se houver), só pra dar contexto no
   // rótulo do descanso — o timer em si não depende de nenhum exercício.
   let currentExNome = null;
+  let descansoPadrao = 75;
   if (expandedEx && expandedEx.startsWith(key + "#")) {
     const openExId = expandedEx.slice(key.length + 1);
     const openEx = flat.find((e) => String(e.id) === openExId);
-    if (openEx) currentExNome = openEx.nome;
+    if (openEx) {
+      currentExNome = openEx.nome;
+      const bl = treino.blocos[openEx.blocoIdx];
+      descansoPadrao = openEx.descansoSeg || (bl && bl.descansoSeg) || 75;
+    }
   }
 
   // --- Timer do treino todo: início manual, parado ao concluir (lá em
@@ -18285,6 +19045,112 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
     onFinish(elapsedMin);
   }
 
+  // Alvo do exercício: "4x 6-8", com carga, %1RM (já em kg, se dá para estimar o 1RM), RIR, tempo ou distância.
+  function alvoTexto(ex, exLog) {
+    const n = (exLog?.sets?.length || 0) > 0 ? exLog.sets.length : ex.series;
+    const partes = [];
+    const extra = rxTexto({ ...ex, series: 1, repeticoes: "", descansoSeg: 0, pct1rm: undefined, rir: undefined });
+    const bl = treino.blocos[ex.blocoIdx];
+    const serieUnica = n <= 1 && bl && (blocoTipo(bl) !== "forca" || blocoFormato(bl) !== "normal");
+    const cabeca = ex.repeticoes ? (serieUnica ? String(ex.repeticoes) : `${n}x ${ex.repeticoes}`) : n > 1 ? `${n}x` : "";
+    if (cabeca && extra && !ex.repeticoes) partes.push(`${cabeca} ${extra}`);
+    else { if (cabeca) partes.push(cabeca); if (extra) partes.push(extra); }
+    if (ex.pct1rm) {
+      const ult = lastSetsFor ? lastSetsFor(ex) : null;
+      const e1rm = (ult || []).reduce((m, x) => { const kg = Number(String(x.peso).replace(",", ".")), r = Number(x.reps); return kg > 0 && r > 0 && r <= 12 ? Math.max(m, kg * (1 + r / 30)) : m; }, 0);
+      partes.push(e1rm ? `${rxNum(ex.pct1rm)}% ≈ ${rxNum(Math.round((e1rm * ex.pct1rm) / 100 * 2) / 2)} kg` : `${rxNum(ex.pct1rm)}% 1RM`);
+    }
+    if (ex.rir != null && ex.rir !== "") partes.push(`RIR ${rxNum(ex.rir)}`);
+    return partes.join(" · ");
+  }
+  function renderEx(ex, letra) {
+    const exLog = treinoLog[ex.id];
+    const exOpen = expandedEx === `${key}#${ex.id}`;
+    const temRir = ex.rir != null && ex.rir !== "";
+    const alvo = alvoTexto(ex, exLog);
+    const ult = exOpen && lastSetsFor ? lastSetsFor(ex) : null;
+    const ultimaVez = ult && ult.length ? ult.filter((x) => x.peso !== "" && x.peso != null).map((x) => `${rxNum(x.peso || 0)}×${x.reps || 0}`).join(" · ") : "";
+    return (
+      <div className={`gt-ex ${exLog?.status === "feito" ? "done" : ""} ${exLog?.status === "pulei" ? "skipped" : ""}`} key={ex.id}>
+        <div className="gt-ex-row" onClick={() => {
+          const next = exOpen ? null : `${key}#${ex.id}`;
+          setExpandedEx(next);
+          if (!exOpen) ensureSetsForExpand(item, ex);
+        }}>
+          <div className="gt-ex-pos">{letra || String(ex.posicao).padStart(2, "0")}</div>
+          <div className="gt-ex-main">
+            <div className="gt-ex-nm">{ex.nome}</div>
+            <div className="gt-ex-target">
+              {alvo}
+              {(exLog?.sets?.length || 0) > 0 && exLog.sets.length !== ex.series && <span className="gt-ex-adjusted">ajustado</span>}
+            </div>
+          </div>
+          <div className="gt-chevron">{exOpen ? "▲" : "▼"}</div>
+          <button
+            className={`gt-check ${exLog?.status === "feito" ? "on" : ""} ${exLog?.status === "pulei" ? "skipped" : ""}`}
+            title="Toque pra alternar: feito / pulei / em branco"
+            onClick={(e) => { e.stopPropagation(); cycleExercicioStatus(item, ex); }}
+          >
+            {exLog?.status === "feito" ? "✓" : exLog?.status === "pulei" ? "✕" : ""}
+          </button>
+        </div>
+        {exOpen && (
+          <div className="gt-ex-detail">
+            {ex.descricao && <div className="gt-ex-desc">{ex.descricao}</div>}
+            {ex.observacoes && <div className="gt-ex-obs"><Ei e="⚠" /> {ex.observacoes}</div>}
+            {(() => {
+              const ytId = extractYoutubeId(ex.videoUrl);
+              if (!ytId) return null;
+              const videoShown = videoOpenId === ex.id;
+              return (
+                <div className="gt-ex-video-wrap">
+                  <button
+                    type="button"
+                    className="gt-ex-video-toggle"
+                    onClick={(e) => { e.stopPropagation(); setVideoOpenId(videoShown ? null : ex.id); }}
+                  >
+                    ▶ {videoShown ? "Esconder vídeo" : "Ver vídeo do exercício"}
+                  </button>
+                  {videoShown && (
+                    <div className="gt-ex-video-frame">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${ytId}`}
+                        title={`Vídeo: ${ex.nome}`}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            <div className="gt-field-label">SÉRIES</div>
+            <div className="gt-sets-table">
+              <div className="gt-sets-header"><div style={{ width: 18 }} /><div style={{ flex: 1 }}>Peso (kg)</div><div style={{ flex: 1 }}>Reps</div>{temRir && <div className="gt-set-rir-h">RIR</div>}</div>
+              {(exLog?.sets || []).map((s, idx) => (
+                <div className="gt-set-row" key={idx}>
+                  <div className="gt-set-idx">{idx + 1}</div>
+                  <input type="number" inputMode="decimal" placeholder="0" value={s.peso} onChange={(e) => updateSetField(item, ex, idx, "peso", e.target.value)} />
+                  <input type="number" inputMode="numeric" placeholder="0" value={s.reps} onChange={(e) => updateSetField(item, ex, idx, "reps", e.target.value)} />
+                  {temRir && <input className="gt-set-rir" type="number" inputMode="numeric" aria-label={`RIR da série ${idx + 1}`} placeholder={String(ex.rir)} value={s.rir == null ? "" : s.rir} onChange={(e) => updateSetField(item, ex, idx, "rir", e.target.value)} />}
+                </div>
+              ))}
+            </div>
+            {ultimaVez && <div className="gt-ex-ultima">última vez: {ultimaVez}</div>}
+            <div className="gt-set-adjust">
+              <button type="button" onClick={() => addSetToExercise(item, ex)}>+ série</button>
+              {(exLog?.sets?.length || 0) > 1 && <button type="button" onClick={() => removeLastSet(item, ex)}>− série</button>}
+              {addedIds.has(ex.id) && <button type="button" onClick={() => { removeAddedExercise(ex.id); setExpandedEx(null); }}>remover de hoje</button>}
+            </div>
+            <div className="gt-field-label">COMENTÁRIO</div>
+            <textarea className="gt-comment" placeholder="Como foi? Alguma dor, ajuste de carga…" value={exLog?.comentario || ""} onChange={(e) => updateExComentario(item, ex, e.target.value)} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="gt-focus">
       <div className="gt-focus-header">
@@ -18298,12 +19164,12 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
                 {" · "}
               </span>
             )}
-            {doneCount}/{flat.length} exercícios{skippedCount > 0 ? ` · ${skippedCount} pulado${skippedCount > 1 ? "s" : ""}` : ""}
+            {doneCount}/{totalItens} {corridas.length ? "itens" : "exercícios"}{skippedCount > 0 ? ` · ${skippedCount} pulado${skippedCount > 1 ? "s" : ""}` : ""}
           </div>
         </div>
       </div>
       <div className="gt-progress-bar gt-focus-progress-bar">
-        <div className="gt-progress-fill" style={{ width: `${flat.length ? (doneCount / flat.length) * 100 : 0}%` }} />
+        <div className="gt-progress-fill" style={{ width: `${totalItens ? (doneCount / totalItens) * 100 : 0}%` }} />
       </div>
 
       <div className="gt-focus-timers">
@@ -18331,98 +19197,59 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
               </div>
             </div>
           ) : (
-            <button type="button" className="gt-rest-start-btn" onClick={() => startRest(75, currentExNome)}><Ei e="⏱" /> descanso</button>
+            <button type="button" className="gt-rest-start-btn" onClick={() => startRest(descansoPadrao, currentExNome)}><Ei e="⏱" /> descanso</button>
           )}
         </div>
       </div>
 
       <div className="gt-focus-body">
-        {groupByBloco(flat).map((bloco) => (
-          <div className="gt-bloco" key={bloco.nome}>
-            <div className="gt-bloco-title">{bloco.nome.toUpperCase()}</div>
-            {bloco.exercicios.map((ex) => {
-              const exLog = treinoLog[ex.id];
-              const exOpen = expandedEx === `${key}#${ex.id}`;
-              return (
-                <div className={`gt-ex ${exLog?.status === "feito" ? "done" : ""} ${exLog?.status === "pulei" ? "skipped" : ""}`} key={ex.id}>
-                  <div className="gt-ex-row" onClick={() => {
-                    const next = exOpen ? null : `${key}#${ex.id}`;
-                    setExpandedEx(next);
-                    if (!exOpen) ensureSetsForExpand(item, ex);
-                  }}>
-                    <div className="gt-ex-pos">{String(ex.posicao).padStart(2, "0")}</div>
-                    <div className="gt-ex-main">
-                      <div className="gt-ex-nm">{ex.nome}</div>
-                      <div className="gt-ex-target">
-                        {(exLog?.sets?.length || 0) > 0 ? exLog.sets.length : ex.series}x {ex.repeticoes}
-                        {(exLog?.sets?.length || 0) > 0 && exLog.sets.length !== ex.series && <span className="gt-ex-adjusted">ajustado</span>}
-                      </div>
-                    </div>
-                    <div className="gt-chevron">{exOpen ? "▲" : "▼"}</div>
-                    <button
-                      className={`gt-check ${exLog?.status === "feito" ? "on" : ""} ${exLog?.status === "pulei" ? "skipped" : ""}`}
-                      title="Toque pra alternar: feito / pulei / em branco"
-                      onClick={(e) => { e.stopPropagation(); cycleExercicioStatus(item, ex); }}
-                    >
-                      {exLog?.status === "feito" ? "✓" : exLog?.status === "pulei" ? "✕" : ""}
-                    </button>
-                  </div>
-                  {exOpen && (
-                    <div className="gt-ex-detail">
-                      {ex.descricao && <div className="gt-ex-desc">{ex.descricao}</div>}
-                      {ex.observacoes && <div className="gt-ex-obs"><Ei e="⚠" /> {ex.observacoes}</div>}
-                      {(() => {
-                        const ytId = extractYoutubeId(ex.videoUrl);
-                        if (!ytId) return null;
-                        const videoShown = videoOpenId === ex.id;
-                        return (
-                          <div className="gt-ex-video-wrap">
-                            <button
-                              type="button"
-                              className="gt-ex-video-toggle"
-                              onClick={(e) => { e.stopPropagation(); setVideoOpenId(videoShown ? null : ex.id); }}
-                            >
-                              ▶ {videoShown ? "Esconder vídeo" : "Ver vídeo do exercício"}
-                            </button>
-                            {videoShown && (
-                              <div className="gt-ex-video-frame">
-                                <iframe
-                                  src={`https://www.youtube.com/embed/${ytId}`}
-                                  title={`Vídeo: ${ex.nome}`}
-                                  frameBorder="0"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                  allowFullScreen
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      <div className="gt-field-label">SÉRIES</div>
-                      <div className="gt-sets-table">
-                        <div className="gt-sets-header"><div style={{ width: 18 }} /><div style={{ flex: 1 }}>Peso (kg)</div><div style={{ flex: 1 }}>Reps</div></div>
-                        {(exLog?.sets || []).map((s, idx) => (
-                          <div className="gt-set-row" key={idx}>
-                            <div className="gt-set-idx">{idx + 1}</div>
-                            <input type="number" inputMode="decimal" placeholder="0" value={s.peso} onChange={(e) => updateSetField(item, ex, idx, "peso", e.target.value)} />
-                            <input type="number" inputMode="numeric" placeholder="0" value={s.reps} onChange={(e) => updateSetField(item, ex, idx, "reps", e.target.value)} />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="gt-set-adjust">
-                        <button type="button" onClick={() => addSetToExercise(item, ex)}>+ série</button>
-                        {(exLog?.sets?.length || 0) > 1 && <button type="button" onClick={() => removeLastSet(item, ex)}>− série</button>}
-                        {addedIds.has(ex.id) && <button type="button" onClick={() => { removeAddedExercise(ex.id); setExpandedEx(null); }}>remover de hoje</button>}
-                      </div>
-                      <div className="gt-field-label">COMENTÁRIO</div>
-                      <textarea className="gt-comment" placeholder="Como foi? Alguma dor, ajuste de carga…" value={exLog?.comentario || ""} onChange={(e) => updateExComentario(item, ex, e.target.value)} />
-                    </div>
+        {treino.blocos.map((bloco, bi) => {
+          if (blocoVazio(bloco)) return null;
+          const exs = flat.filter((e) => e.blocoIdx === bi);
+          const tipo = blocoTipo(bloco), formato = blocoFormato(bloco);
+          const bid = blocoId(bloco, bi);
+          const res = blocosRes[bid];
+          const especial = tipo !== "forca" || formato !== "normal";
+          const agrupado = ["biset", "triset", "circuito"].includes(formato);
+          const letra = String.fromCharCode(65 + Math.min(bi, 25));
+          const resumo = blocoResumo(bloco);
+          const rodadasFeitas = (res && res.formato === "rodadas" && res.rodadas) || 0;
+          return (
+            <div className={`gt-bloco ${especial ? "gt-bloco-tipo" : ""}`} key={bid + "-" + bi} style={especial ? { "--bl-cor": BLOCO_TIPOS[tipo].cor } : undefined}>
+              <div className="gt-bloco-title">{agrupado ? `${letra} · ` : ""}{bloco.nome.toUpperCase()}{resumo && <span className="gt-bloco-resumo">{resumo}</span>}</div>
+              {bloco.notas && <div className="gt-ex-desc">{bloco.notas}</div>}
+              {tipo === "corrida" && bloco.corrida && (
+                <div className="gt-bloco-corrida">
+                  <PlanoEtapas etapas={bloco.corrida.etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
+                  <button type="button" className={`gt-bloco-feito ${res && res.concluido ? "on" : ""}`} aria-pressed={!!(res && res.concluido)}
+                    onClick={() => onBlocoResultado && onBlocoResultado(bid, res && res.concluido ? null : { formato: "corrida", concluido: true, em: Date.now() }, [])}>
+                    {res && res.concluido ? "✓ Corrida feita" : "Marcar corrida como feita"}
+                  </button>
+                </div>
+              )}
+              {BLOCO_COM_TIMER.has(formato) && (
+                <div className="gt-bloco-cta">
+                  {res && res.concluido && <span className="gt-bloco-res">✓ {blocoFmtResultado(res)}</span>}
+                  <button type="button" className="gt-btn small" onClick={() => setTimerBloco(bi)}>▶ {res && res.concluido ? "Cronômetro de novo" : "Iniciar cronômetro"}</button>
+                  {!(res && res.concluido) && <span className="gt-bloco-dica">ou só marque os exercícios</span>}
+                </div>
+              )}
+              {agrupado && bloco.rodadas > 1 && (
+                <div className="gt-bloco-cta">
+                  <span className="gt-bloco-res">Rodada {Math.min(rodadasFeitas + 1, bloco.rodadas)} de {bloco.rodadas}{rodadasFeitas >= bloco.rodadas ? " · feito" : ""}</span>
+                  {rodadasFeitas < bloco.rodadas && (
+                    <button type="button" className="gt-btn secondary small" onClick={() => {
+                      const n = rodadasFeitas + 1;
+                      if (onBlocoResultado) onBlocoResultado(bid, { formato: "rodadas", rodadas: n, concluido: n >= bloco.rodadas, em: Date.now() }, n >= bloco.rodadas ? exs : []);
+                      if (n < bloco.rodadas && bloco.descansoSeg) startRest(bloco.descansoSeg, bloco.nome);
+                    }}>Terminei a rodada</button>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        ))}
+              )}
+              {exs.map((ex, j) => renderEx(ex, agrupado ? `${letra}${j + 1}` : null))}
+            </div>
+          );
+        })}
         <button className="gt-add-extra-card" type="button" onClick={() => setPickerOpen(true)}>
           <span className="plus">+</span> Adicionar exercício hoje
         </button>
@@ -18433,6 +19260,18 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
         <button className="gt-btn" onClick={handleFinish}>Concluir treino</button>
       </div>
 
+      {timerBloco != null && treino.blocos[timerBloco] && (
+        <BlocoTimer
+          bloco={treino.blocos[timerBloco]}
+          chave={`treino-app:blocoTimer:${selectedDate || todayISO()}:${key}:${blocoId(treino.blocos[timerBloco], timerBloco)}`}
+          onClose={() => setTimerBloco(null)}
+          onSalvar={(res) => {
+            if (onBlocoResultado) onBlocoResultado(blocoId(treino.blocos[timerBloco], timerBloco), res, flat.filter((e) => e.blocoIdx === timerBloco));
+            setTimerBloco(null);
+            if (showToast) showToast("Resultado salvo");
+          }}
+        />
+      )}
       {pickerOpen && (
         <ExercisePickerModal
           search={pickerSearch}
