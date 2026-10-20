@@ -47,7 +47,7 @@ Quem é admin: tabela `movo_admins` (por `user_id`, `admin_identidade.sql`); tod
 - Não publicar no site o que não precisa estar lá (ROADMAP, docs). `build.mjs` copia só uma lista de arquivos.
 
 ### 2.2 E-mail (Resend)
-- Funções que mandam e-mail: `notificar-feedback`, `alerta-saude`, `convidar-email` (convite de desafio), `avisar-email` (pedido de treinador e relatório compartilhado), `recado-email` (recados do painel por e-mail, em lote; cota própria de 80/dia e 2.000/mês para caber no plano grátis do Resend, que tem 100/dia e 3.000/mês para tudo, inclusive login).
+- Funções que mandam e-mail: `notificar-feedback`, `alerta-saude`, `convidar-email` (convite de desafio), `avisar-email` (pedido de treinador e relatório compartilhado), `admin-apagar-conta` (painel: revoga o Strava, apaga a foto e a conta; usa service role), `recado-email` (recados do painel por e-mail, em lote; cota própria de 80/dia e 2.000/mês para caber no plano grátis do Resend, que tem 100/dia e 3.000/mês para tudo, inclusive login).
 - Secrets (só nomes; valores ficam no Supabase › Edge Functions › Secrets): `RESEND_API_KEY`, `FEEDBACK_FROM`, `FEEDBACK_TO` (opcional), `CONVITE_FROM` (opcional; cai em `FEEDBACK_FROM` e depois em `onboarding@resend.dev`).
 - **Estado em 16/10/2026 (print do Andre):** domínio movoapp.com.br **verificado** no Resend desde 15/10 (região São Paulo, sa-east-1). No Supabase só existiam `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` e `ANTHROPIC_API_KEY`: **`RESEND_API_KEY` não estava criada**, então nenhum e-mail das funções saía (nem feedback nem alerta de saúde). Andre vai criar `RESEND_API_KEY`, `FEEDBACK_FROM` = `Movo <aviso@movoapp.com.br>` e `CONVITE_FROM` = `Movo <convite@movoapp.com.br>`. A chave nunca é colada no chat.
 - Sem `RESEND_API_KEY` as funções respondem `enviado:false` e **não consomem o limite**.
@@ -156,12 +156,12 @@ Marcos recentes:
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
 - Painel: botão de e-mail de teste em Integrações; ação de encerrar desafio (esperando a decisão do Andre sobre como fica o prêmio final).
-- Apagar conta pelo painel não remove a foto do storage nem revoga o acesso no Strava (o app faz isso quando a própria pessoa apaga).
 - Aviso em tela (não só e-mail) quando alguém libera relatório para você.
 - Compartilhar relatório escolhendo da lista de amigos (hoje só por e-mail).
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **20/10/2026 (decisão do Andre, cartão):** apagar conta pelo painel é **completo**: edge function `admin-apagar-conta` confere admin e e-mail, revoga o acesso do Movo no Strava da pessoa, apaga a foto (`avatars/<id>/a.jpg`) e chama `admin_m_conta_apagar`.
 - **20/10/2026 (v206, pedido do Andre "Fecha esses pontos da fase 1 e inicia a fase 2"):** modo guiado série a série como botão opcional (a lista continua padrão), Roxzone opcional no HYROX e comparação com o último resultado do mesmo bloco. A fase 2 (plano de semanas) é feita pela thread "Benchmark do modo aluno", começando do main depois da v205.
 - **20/10/2026 (aprovação do Andre: "e-mail em massa dentro do limite do Resend"):** recados podem ir também por e-mail. `recado_email.sql` (fila `recado_emails`, `email_prefs` com token de saída, `admin_m_recado_email_fila`/`_ok`, `email_sair`, `admin_m_conta_impacto`) + edge function `recado-email` (Resend `/emails/batch`). Cota dos recados: 80/dia e 2.000/mês (o resto fica na fila e sai em "Enviar o restante" no dia seguinte). Todo e-mail tem link "não quero mais receber" para `movoapp.com.br/sair/?t=<token>` (movo-site) e cabeçalho List-Unsubscribe. Só vai para e-mail confirmado. Ao apagar conta pelo painel, a confirmação mostra o que some junto (acertos em aberto, desafios criados, alunos).
 - **20/10/2026 (v205, teste do Andre na v204):** entrada rápida com botão "Adicionar" e prévia "Vai entrar: …"; exercício de academia é força por padrão (sem chip "+ Força"); bi-set com 2 e tri-set com 3 exercícios. Andre aprovou e pediu para liberar o editor de blocos para todo mundo (flag `blocos` aberta para todas as contas).
