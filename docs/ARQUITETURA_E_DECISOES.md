@@ -2,7 +2,7 @@
 
 Arquivo vivo. **Leia antes de mexer em qualquer coisa. Atualize ao final de cada entrega** (nova decisão, novo arquivo SQL, nova função, nova pendência). Quem escreve aqui é o Claude; quem decide é o Andre.
 
-Última atualização: 20/10/2026 (v205, editor de blocos liberado para todos; entrada rápida com botão e prévia; força como padrão; bi-set/tri-set com número fixo).
+Última atualização: 20/10/2026 (v206, fim da fase 1: modo guiado série a série, Roxzone no HYROX, comparação com o último resultado do bloco).
 
 ---
 
@@ -131,6 +131,10 @@ Marcos recentes:
 - Resultado por bloco no dia: `sessions[data].blocos[itemKey][blocoId] = {formato, concluido, rodadas?, reps?, tempoSeg?, parciais?}` (sincroniza junto com o dia). Concluir o cronômetro marca os exercícios do bloco como feitos.
 - Entrada rápida (v205, após teste do Andre: não estava claro que o campo adiciona): componente `EntradaRapida` (form com botão "Adicionar", funciona com o OK do teclado do Android) e linha "Vai entrar: Agachamento · 4 séries de 8 · 60 kg · RIR 2" enquanto digita (`rxLegivel`). Decisão do Andre (20/10): exercício de academia é força por padrão, então não há chip "+ Força"; os chips ficam só para outros tipos ("Outro tipo de treino na mesma sessão") e o bloco de força mostra "Fazer como bi-set ou circuito" para trocar o formato. Bi-set tem exatamente 2 exercícios e tri-set 3 (`BLOCO_LIMITE`, `blocoLimite`): o bloco mostra quantos faltam, esconde a entrada quando completa e, ao trocar um bloco maior para bi-set/tri-set, os exercícios que sobram vão para um bloco normal logo abaixo (pedido do Andre, 20/10: "precisa ser intuitivo").
 - PDF e diff do treinador mostram o formato do bloco, a corrida do bloco e a prescrição completa (`coachFmtEx` usa `rxTexto`).
+- **Fim da fase 1 (v206):**
+  - **Modo guiado** (`TreinoGuiado`, `guiadoPassos`, `guiadoFeito`): botão "Modo guiado" no treino em foco, nunca padrão; lembrado por dia e treino (`treino-app:guiado:<data>:<item>`), "Ver lista" volta. Um passo por série (bi-set, tri-set e circuito alternam A1/A2 por rodada; descanso só no fim da rodada); blocos com cronômetro e corrida são um passo cada ("Fiz sem cronômetro" grava `formato:"feito"`). Peso/reps/RIR grandes, "última vez nesta série", descanso grande com "A seguir". A série feita fica em `sets[i].feita` (`marcarSerieFeita`, um patch só); todas feitas ⇒ exercício "feito". A lista de sempre continua igual.
+  - **Roxzone** (`blocoTemRoxzone`, `blocoRoteiro(b, {roxzone})`): no bloco HYROX For Time com corrida, caixa opcional antes de começar; liga um trecho "Roxzone" depois de cada corrida ("Saí da corrida" → "Comecei a estação"). Resultado ganha `roxzoneSeg`.
+  - **Comparação** (`blocoResultadoAnterior`, `blocoDelta`): o cronômetro mostra "Sua última" antes de começar, a diferença por trecho (casada pela ordem dentro de estação/Roxzone) e a diferença no total. O resultado do bloco agora grava `nome`, `tipo` e `rotulos` (nome de cada parcial); o anterior é achado pelo mesmo nome de bloco (ou mesmo id, para resultados antigos).
 
 ### 6.4 Relatórios compartilhados
 - `report_shares`: aluno libera por **e-mail** com categorias (frequência, carga, peso e notas, treinos completos). Filtragem no banco (`get_shared_report`). Quem recebe vê em Configurações › "Ver relatórios". Aviso por e-mail só se a pessoa já tem conta (v188).
@@ -148,7 +152,7 @@ Marcos recentes:
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Próximo da fase 1: modo guiado série a série (botão, nunca padrão), Roxzone no HYROX e comparação com a última simulação.
+- Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Fase 1 fechada na v206 (modo guiado, Roxzone, comparação). Próximo: fase 2 (plano de semanas).
 - Exportar `race_favorites` no pedido de dados (LGPD).
 - Roadmap item 9: trocar o e-mail da conta (destravado na v202: o admin não depende mais do e-mail).
 - Painel: botão de e-mail de teste em Integrações; ação de encerrar desafio (esperando a decisão do Andre sobre como fica o prêmio final).
@@ -158,6 +162,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **20/10/2026 (v206, pedido do Andre "Fecha esses pontos da fase 1 e inicia a fase 2"):** modo guiado série a série como botão opcional (a lista continua padrão), Roxzone opcional no HYROX e comparação com o último resultado do mesmo bloco. A fase 2 (plano de semanas) é feita pela thread "Benchmark do modo aluno", começando do main depois da v205.
 - **20/10/2026 (aprovação do Andre: "e-mail em massa dentro do limite do Resend"):** recados podem ir também por e-mail. `recado_email.sql` (fila `recado_emails`, `email_prefs` com token de saída, `admin_m_recado_email_fila`/`_ok`, `email_sair`, `admin_m_conta_impacto`) + edge function `recado-email` (Resend `/emails/batch`). Cota dos recados: 80/dia e 2.000/mês (o resto fica na fila e sai em "Enviar o restante" no dia seguinte). Todo e-mail tem link "não quero mais receber" para `movoapp.com.br/sair/?t=<token>` (movo-site) e cabeçalho List-Unsubscribe. Só vai para e-mail confirmado. Ao apagar conta pelo painel, a confirmação mostra o que some junto (acertos em aberto, desafios criados, alunos).
 - **20/10/2026 (v205, teste do Andre na v204):** entrada rápida com botão "Adicionar" e prévia "Vai entrar: …"; exercício de academia é força por padrão (sem chip "+ Força"); bi-set com 2 e tri-set com 3 exercícios. Andre aprovou e pediu para liberar o editor de blocos para todo mundo (flag `blocos` aberta para todas as contas).
 - **20/10/2026 (v204, sessão em blocos, pedido do Andre "Começa" sobre o plano de execução):** fases 0 e 1 construídas atrás da flag `blocos` (ver 6.3.1). Princípio do relatório "Movo para Alunos" v2 (https://claude.ai/artifact/V6nmiERxsnDQaZERCczPc7, seção "Simples por padrão", a partir do comentário do Andre): a ficha de hoje continua sendo a tela padrão; superset, RIR, %1RM e cronômetro só aparecem quando o treino tem aquilo; nada obrigatório; o PR com a flag ligada só para o Andre serve de protótipo para ele revisar antes de abrir para mais gente. O relatório recomenda a mesma hierarquia plano > fase > semana > sessão > bloco para aluno sozinho, modelo do Movo, IA e treinador.

@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v205";
+const APP_BUILD = "v206";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1214,8 +1214,9 @@ function blocoResumo(b) {
 
 // Roteiro do cronômetro de um bloco. modo "down": contagem regressiva única (AMRAP);
 // "seq": sequência de fases trabalho/pausa (EMOM, Tabata, Intervalos); "up": cronômetro
-// crescente com parciais por estação (For Time, HYROX).
-function blocoRoteiro(b) {
+// crescente com parciais por estação (For Time, HYROX). opts.roxzone: no HYROX, marca a transição
+// depois de cada corrida (Roxzone) como uma parcial própria.
+function blocoRoteiro(b, opts) {
   const formato = blocoFormato(b);
   const exs = (b.exercicios || []).length ? b.exercicios : [{ nome: "Trabalho" }];
   const nomeEx = (ex) => [ex.nome, rxTexto({ ...ex, series: 1, descansoSeg: 0 })].filter(Boolean).join(" · ");
@@ -1226,7 +1227,11 @@ function blocoRoteiro(b) {
   if (formato === "fortime") {
     const rod = b.rodadas || 1;
     const estacoes = [];
-    for (let r = 0; r < rod; r++) exs.forEach((ex) => estacoes.push({ label: nomeEx(ex), rodada: r + 1 }));
+    const rox = !!(opts && opts.roxzone) && blocoTemRoxzone(b);
+    for (let r = 0; r < rod; r++) exs.forEach((ex, j) => {
+      estacoes.push({ label: nomeEx(ex), rodada: r + 1 });
+      if (rox && /^corrida/i.test(ex.nome || "") && !(r === rod - 1 && j === exs.length - 1)) estacoes.push({ label: "Roxzone", rodada: r + 1, roxzone: true });
+    });
     return { modo: "up", total: b.capMin ? b.capMin * 60 : 0, estacoes, rodadas: rod };
   }
   const fases = [];
@@ -1247,6 +1252,35 @@ function blocoRoteiro(b) {
   }
   const rodadas = fases.reduce((m, f) => Math.max(m, f.rodada || 0), 0);
   return { modo: "seq", total: t, fases, rodadas };
+}
+// HYROX com corrida entre as estações: dá para marcar a Roxzone (opcional, desligada por padrão).
+function blocoTemRoxzone(b) {
+  return blocoTipo(b) === "hyrox" && blocoFormato(b) === "fortime" && (b.exercicios || []).some((ex) => /^corrida/i.test(ex.nome || ""));
+}
+// Último resultado do mesmo bloco antes de uma data (mesmo nome, ou mesmo id de bloco), para comparar.
+function blocoResultadoAnterior(sessions, bloco, bid, antesDe) {
+  const formato = blocoFormato(bloco);
+  const datas = Object.keys(sessions || {}).filter((d) => d < antesDe).sort().reverse();
+  for (const data of datas) {
+    const porItem = (sessions[data] && sessions[data].blocos) || {};
+    for (const k of Object.keys(porItem)) {
+      const doItem = porItem[k] || {};
+      for (const id of Object.keys(doItem)) {
+        const r = doItem[id];
+        if (!r || !r.concluido || r.formato !== formato) continue;
+        if (r.nome ? r.nome !== bloco.nome : id !== bid) continue;
+        if (formato === "fortime" && (r.limite || !r.tempoSeg)) continue;
+        return { data, res: r };
+      }
+    }
+  }
+  return null;
+}
+// Diferença de tempo com sinal: "-1:05" (mais rápido) ou "+0:12".
+function blocoDelta(seg) {
+  const s = Math.round(seg);
+  if (!s) return "igual";
+  return `${s < 0 ? "−" : "+"}${formatRestTime(Math.abs(s))}`;
 }
 // Fase atual do roteiro dado o tempo decorrido (s).
 function blocoFaseEm(rot, seg) {
@@ -3719,6 +3753,35 @@ const APP_CSS = `
   .gt-bt-res label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
   .gt-bt-res input { width:96px; text-align:center; font-size:20px; }
   .gt-bt-acoes { display:flex; gap:8px; }
+  .gt-guiado-toggle { background:none; border:1px solid var(--border); color:var(--text-muted); font-size:12px; padding:5px 10px; border-radius:20px; cursor:pointer; white-space:nowrap; }
+  .gt-guiado-toggle.on { border-color:var(--accent-dim); color:var(--accent); }
+  .gt-guiado { display:flex; flex-direction:column; gap:12px; }
+  .gt-guiado-card { --bl-cor: var(--accent); background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--bl-cor); border-radius:var(--radius); padding:16px; display:flex; flex-direction:column; gap:10px; }
+  .gt-guiado-topo { font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted); }
+  .gt-guiado-ex { font-family:'Oswald',sans-serif; font-size:24px; line-height:1.15; display:flex; align-items:center; gap:8px; }
+  .gt-guiado-letra { font-family:'Roboto Mono',monospace; font-size:13px; color:var(--bl-cor); border:1px solid var(--bl-cor); border-radius:6px; padding:1px 6px; }
+  .gt-guiado-serie { font-size:15px; color:var(--bl-cor); font-weight:600; }
+  .gt-guiado-alvo { font-size:14px; color:var(--text-muted); }
+  .gt-guiado-campos { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .gt-guiado-campos.rir { grid-template-columns:1fr 1fr .7fr; }
+  .gt-guiado-campos label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
+  .gt-guiado-campos input { width:100%; box-sizing:border-box; background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); font-size:24px; text-align:center; padding:10px 6px; font-family:'Roboto Mono',monospace; }
+  .gt-guiado-ok { min-height:52px; font-size:16px; }
+  .gt-guiado-link { background:none; border:none; color:var(--text-muted); font-size:13px; text-decoration:underline; cursor:pointer; align-self:center; padding:6px; }
+  .gt-guiado-nav { display:flex; justify-content:space-between; gap:8px; margin-top:4px; }
+  .gt-guiado-desc { background:var(--surface-2); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:14px; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; }
+  .gt-guiado-desc-lbl { font-family:'Roboto Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); }
+  .gt-guiado-desc-tempo { font-family:'Oswald',sans-serif; font-size:56px; line-height:1; font-variant-numeric:tabular-nums; }
+  .gt-guiado-desc-prox { font-size:13px; color:var(--text-muted); }
+  .gt-guiado-fim { align-items:stretch; text-align:center; }
+  .gt-bt-parciais li.rox { background:transparent; border-style:dashed; color:var(--text-muted); }
+  .gt-bt-parciais li em { font-style:normal; margin-left:6px; }
+  .gt-bt-parciais li em.melhor, .gt-bt-comp.melhor { color:var(--success); }
+  .gt-bt-parciais li em.pior, .gt-bt-comp.pior { color:var(--amber); }
+  .gt-bt-comp { font-size:14px; }
+  .gt-bt-rox { display:flex; gap:10px; align-items:flex-start; text-align:left; max-width:420px; margin-top:10px; font-size:14px; cursor:pointer; }
+  .gt-bt-rox input { margin-top:3px; width:18px; height:18px; flex-shrink:0; }
+  .gt-bt-rox small { display:block; color:var(--text-muted); font-size:12px; margin-top:2px; }
   .gt-bt-acoes .gt-btn { flex:1; }
 `;
 
@@ -15675,6 +15738,28 @@ function App() {
     patchItemLog(key, { [ex.id]: { ...prevExLog, sets } });
   }
 
+  // Treino guiado: marca (ou desmarca) uma série como feita num patch só. idx = -1 pula o exercício.
+  // Quando todas as séries estão feitas, o exercício passa a "feito".
+  function marcarSerieFeita(item, ex, idx, feita) {
+    const key = itemKey(item);
+    const prev = (dayLog[key] || {})[ex.id] || { status: undefined, comentario: "", sets: [] };
+    if (idx < 0) { patchItemLog(key, { [ex.id]: { ...prev, status: "pulei", sets: prev.sets || [] } }); return; }
+    let sets = prev.sets && prev.sets.length ? prev.sets : null;
+    if (!sets) {
+      const repDefault = parseFirstNumber(ex.repeticoes);
+      const lastSets = lastLoggedSetsForExercise(sessions, ex.id, selectedDate);
+      sets = Array.from({ length: ex.series || 1 }, (_, i) => ({
+        peso: lastSets && lastSets[i] ? lastSets[i].peso : (ex.cargaKg || ""),
+        reps: (lastSets && lastSets[i] ? lastSets[i].reps : "") || repDefault || "",
+      }));
+    }
+    sets = sets.map((st, i) => (i === idx ? { ...st, feita: !!feita } : st));
+    let status = prev.status === "pulei" && feita ? undefined : prev.status;
+    if (feita && sets.every((st) => st.feita)) status = "feito";
+    if (!feita && status === "feito") status = undefined;
+    patchItemLog(key, { [ex.id]: { ...prev, status, sets } });
+  }
+
   function updateExComentario(item, ex, value) {
     const key = itemKey(item);
     const treinoLog = dayLog[key] || {};
@@ -16337,6 +16422,8 @@ function App() {
             blocosLog={((sessions[selectedDate] || {}).blocos || {})[itemKey(focusTreino)]}
             onBlocoResultado={(bid, res, exs) => saveBlocoResultado(focusTreino, bid, res, exs)}
             lastSetsFor={(ex) => lastLoggedSetsForExercise(sessions, ex.id, selectedDate)}
+            resultadoAnterior={(bloco, bid) => blocoResultadoAnterior(sessions, bloco, bid, selectedDate)}
+            marcarSerieFeita={(ex, idx, feita) => marcarSerieFeita(focusTreino, ex, idx, feita)}
           />
           {rpeModal && (
             <RpeModal
@@ -18834,12 +18921,145 @@ function blocoFmtResultado(r) {
   return "Concluído";
 }
 
-function BlocoTimer({ bloco, chave, onClose, onSalvar }) {
-  const rot = useMemo(() => blocoRoteiro(bloco), [bloco]);
+// Treino guiado: a sessão vira uma fila de passos. Força: uma série por passo (bi-set, tri-set e
+// circuito alternam os exercícios a cada rodada); blocos com cronômetro e corrida: um passo cada.
+function guiadoPassos(treino, flat, log) {
+  const passos = [];
+  treino.blocos.forEach((b, bi) => {
+    if (blocoVazio(b)) return;
+    const exs = flat.filter((e) => e.blocoIdx === bi);
+    const tipo = blocoTipo(b), formato = blocoFormato(b);
+    if (tipo === "corrida" && b.corrida) { passos.push({ tipo: "corrida", bi }); if (!exs.length) return; }
+    if (BLOCO_COM_TIMER.has(formato)) { passos.push({ tipo: "timer", bi }); return; }
+    const nSeries = (ex) => ((log[ex.id] && log[ex.id].sets && log[ex.id].sets.length) || Number(ex.series) || 1);
+    const letra = String.fromCharCode(65 + Math.min(bi, 25));
+    if (["biset", "triset", "circuito"].includes(formato) && exs.length > 1) {
+      const rod = Math.max(...exs.map(nSeries));
+      for (let r = 0; r < rod; r++) exs.forEach((ex, j) => { if (r < nSeries(ex)) passos.push({ tipo: "serie", bi, exId: ex.id, serie: r, n: nSeries(ex), letra: `${letra}${j + 1}`, grupo: true }); });
+    } else exs.forEach((ex) => { const n = nSeries(ex); for (let r = 0; r < n; r++) passos.push({ tipo: "serie", bi, exId: ex.id, serie: r, n }); });
+  });
+  return passos;
+}
+function guiadoFeito(p, treino, log, blocosRes) {
+  if (p.tipo === "serie") {
+    const l = log[p.exId];
+    return !!(l && (l.status === "feito" || l.status === "pulei" || (l.sets && l.sets[p.serie] && l.sets[p.serie].feita)));
+  }
+  const r = blocosRes[blocoId(treino.blocos[p.bi], p.bi)];
+  return !!(r && r.concluido);
+}
+
+function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, lastSetsFor, ensureSetsForExpand, updateSetField, marcarSerieFeita, onBlocoResultado, abrirTimer, startRest, stopRest, restTimer, restRemaining, onConcluir }) {
+  const passos = guiadoPassos(treino, flat, treinoLog);
+  const pendente = () => { const k = passos.findIndex((p) => !guiadoFeito(p, treino, treinoLog, blocosRes)); return k < 0 ? passos.length : k; };
+  const [i, setI] = useState(pendente);
+  const fim = i >= passos.length;
+  const p = fim ? null : passos[i];
+  const ex = p && p.tipo === "serie" ? flat.find((e) => e.id === p.exId) : null;
+  const exLog = ex ? treinoLog[ex.id] : null;
+  const bloco = p ? treino.blocos[p.bi] : null;
+  const bid = p ? blocoId(bloco, p.bi) : null;
+
+  useEffect(() => { if (ex && !(exLog && exLog.sets && exLog.sets.length)) ensureSetsForExpand(item, ex); }, [i, ex && ex.id]);
+
+  const descricao = (q) => {
+    if (!q) return "";
+    if (q.tipo === "serie") { const e = flat.find((x) => x.id === q.exId); return `${q.letra ? q.letra + " · " : ""}${e ? e.nome : ""} · série ${q.serie + 1}`; }
+    return treino.blocos[q.bi].nome;
+  };
+  function avancar() { setI((k) => Math.min(k + 1, passos.length)); }
+  function serieFeita() {
+    const ja = guiadoFeito(p, treino, treinoLog, blocosRes);
+    marcarSerieFeita(ex, p.serie, !ja);
+    if (ja) return;
+    const prox = passos[i + 1];
+    const mesmaRodada = p.grupo && prox && prox.bi === p.bi && prox.serie === p.serie;
+    if (prox && !mesmaRodada) startRest(ex.descansoSeg || (bloco && bloco.descansoSeg) || 75, prox.tipo === "serie" ? (flat.find((e) => e.id === prox.exId) || {}).nome : treino.blocos[prox.bi].nome);
+    avancar();
+  }
+
+  const set = ex && exLog && exLog.sets ? exLog.sets[p.serie] : null;
+  const temRir = ex && ex.rir != null && ex.rir !== "";
+  const ult = ex && lastSetsFor ? lastSetsFor(ex) : null;
+  const ultSerie = ult && ult[p.serie] && ult[p.serie].peso !== "" && ult[p.serie].peso != null ? `${rxNum(ult[p.serie].peso)} kg × ${ult[p.serie].reps || 0}` : "";
+  const feito = p ? guiadoFeito(p, treino, treinoLog, blocosRes) : false;
+
+  return (
+    <div className="gt-focus-body gt-guiado">
+      {restTimer && (
+        <div className="gt-guiado-desc" role="timer" aria-live="off">
+          <div className="gt-guiado-desc-lbl">Descanso</div>
+          <div className="gt-guiado-desc-tempo">{formatRestTime(restRemaining)}</div>
+          {p && <div className="gt-guiado-desc-prox">A seguir: {descricao(p)}</div>}
+          <button type="button" className="gt-btn secondary small" onClick={stopRest}>Pular descanso</button>
+        </div>
+      )}
+      {fim ? (
+        <div className="gt-guiado-card gt-guiado-fim">
+          <div className="gt-guiado-ex">Tudo feito</div>
+          <div className="gt-guiado-alvo">Você passou por todos os exercícios desta sessão.</div>
+          <button type="button" className="gt-btn" onClick={onConcluir}>Concluir treino</button>
+          {passos.length > 0 && <button type="button" className="gt-btn secondary" onClick={() => setI(passos.length - 1)}>‹ Voltar ao último</button>}
+        </div>
+      ) : (
+        <div className="gt-guiado-card" style={bloco && blocoTipo(bloco) !== "forca" ? { "--bl-cor": BLOCO_TIPOS[blocoTipo(bloco)].cor } : undefined}>
+          <div className="gt-guiado-topo">Passo {i + 1} de {passos.length} · {bloco.nome}</div>
+          {p.tipo === "serie" && ex && (
+            <>
+              <div className="gt-guiado-ex">{p.letra ? <span className="gt-guiado-letra">{p.letra}</span> : null}{ex.nome}</div>
+              <div className="gt-guiado-serie">Série {p.serie + 1} de {p.n}</div>
+              <div className="gt-guiado-alvo">{alvoTexto(ex, exLog)}</div>
+              {set && (
+                <div className={`gt-guiado-campos ${temRir ? "rir" : ""}`}>
+                  <label>Peso (kg)<input type="number" inputMode="decimal" placeholder="0" value={set.peso} onChange={(e) => updateSetField(item, ex, p.serie, "peso", e.target.value)} /></label>
+                  <label>Reps<input type="number" inputMode="numeric" placeholder="0" value={set.reps} onChange={(e) => updateSetField(item, ex, p.serie, "reps", e.target.value)} /></label>
+                  {temRir && <label>RIR<input type="number" inputMode="numeric" placeholder={String(ex.rir)} value={set.rir == null ? "" : set.rir} onChange={(e) => updateSetField(item, ex, p.serie, "rir", e.target.value)} /></label>}
+                </div>
+              )}
+              {ultSerie && <div className="gt-ex-ultima">última vez nesta série: {ultSerie}</div>}
+              {exLog && exLog.status === "pulei" ? (
+                <div className="gt-guiado-alvo">Exercício pulado.</div>
+              ) : (
+                <button type="button" className={`gt-btn gt-guiado-ok ${feito ? "secondary" : ""}`} onClick={serieFeita}>{feito ? "Desfazer série" : "✓ Série feita"}</button>
+              )}
+              {!(exLog && exLog.status === "pulei") && <button type="button" className="gt-guiado-link" onClick={() => { marcarSerieFeita(ex, -1); avancar(); }}>Pular este exercício</button>}
+            </>
+          )}
+          {p.tipo === "timer" && (
+            <>
+              <div className="gt-guiado-ex">{bloco.nome}</div>
+              <div className="gt-guiado-alvo">{blocoResumo(bloco)}</div>
+              <ul className="gt-bt-lista">{(bloco.exercicios || []).map((e, k) => <li key={k}><b>{e.nome}</b> <span>{rxTexto({ ...e, series: 1, descansoSeg: 0 })}</span></li>)}</ul>
+              {feito && <div className="gt-bloco-res">✓ {blocoFmtResultado(blocosRes[bid])}</div>}
+              <button type="button" className="gt-btn gt-guiado-ok" onClick={() => abrirTimer(p.bi)}>▶ {feito ? "Cronômetro de novo" : "Iniciar cronômetro"}</button>
+              {!feito && <button type="button" className="gt-guiado-link" onClick={() => { onBlocoResultado(bid, { formato: "feito", concluido: true, em: Date.now() }, flat.filter((e) => e.blocoIdx === p.bi)); avancar(); }}>Fiz sem cronômetro</button>}
+            </>
+          )}
+          {p.tipo === "corrida" && (
+            <>
+              <div className="gt-guiado-ex">{bloco.nome}</div>
+              <PlanoEtapas etapas={bloco.corrida.etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
+              <button type="button" className={`gt-btn gt-guiado-ok ${feito ? "secondary" : ""}`} onClick={() => { onBlocoResultado(bid, feito ? null : { formato: "corrida", concluido: true, em: Date.now() }, []); if (!feito) avancar(); }}>{feito ? "Desfazer" : "✓ Corrida feita"}</button>
+            </>
+          )}
+          <div className="gt-guiado-nav">
+            <button type="button" className="gt-btn secondary small" disabled={i === 0} onClick={() => setI(i - 1)}>‹ Anterior</button>
+            <button type="button" className="gt-btn secondary small" onClick={avancar}>Próximo ›</button>
+          </div>
+        </div>
+      )}
+      <div style={{ height: 76 }} />
+    </div>
+  );
+}
+
+function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
   const formato = blocoFormato(bloco);
-  const vazio = { ini: null, pausaEm: null, pausado: 0, parciais: [], fim: null };
+  const vazio = { ini: null, pausaEm: null, pausado: 0, parciais: [], fim: null, roxzone: false };
   const [st, setStRaw] = useState(() => { try { const v = JSON.parse(localStorage.getItem(chave) || "null"); return v && v.ini ? { ...vazio, ...v } : vazio; } catch (e) { return vazio; } });
   const setSt = (v) => { setStRaw(v); try { if (v.ini) localStorage.setItem(chave, JSON.stringify(v)); else localStorage.removeItem(chave); } catch (e) {} };
+  const temRox = blocoTemRoxzone(bloco);
+  const rot = useMemo(() => blocoRoteiro(bloco, { roxzone: st.roxzone }), [bloco, st.roxzone]);
   const [agora, setAgora] = useState(Date.now());
   const [rodadas, setRodadas] = useState("");
   const [reps, setReps] = useState("");
@@ -18893,25 +19113,58 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar }) {
     if (typeof Notification !== "undefined" && Notification.permission === "default") { try { Notification.requestPermission(); } catch (e) {} }
     ultFase.current = 0;
     setAgora(Date.now());
-    setSt({ ...vazio, ini: Date.now() });
+    setSt({ ...vazio, roxzone: st.roxzone, ini: Date.now() });
   }
   const pausar = () => setSt({ ...st, pausaEm: Date.now() });
   const retomar = () => { setAgora(Date.now()); setSt({ ...st, pausado: st.pausado + (Date.now() - st.pausaEm), pausaEm: null }); };
   const encerrar = () => setSt({ ...st, fim: st.pausaEm || Date.now(), pausaEm: null });
   const parcial = () => { blocoBipe(audio, false); setSt({ ...st, parciais: [...st.parciais, Math.round(decorrido)] }); };
-  const refazer = () => { ultFase.current = -1; ultSeg.current = -1; setSt(vazio); };
+  const refazer = () => { ultFase.current = -1; ultSeg.current = -1; setSt({ ...vazio, roxzone: st.roxzone }); };
   function salvar() {
-    const base = { formato, em: Date.now(), concluido: true };
+    const base = { formato, em: Date.now(), concluido: true, nome: bloco.nome, tipo: blocoTipo(bloco) };
     let res;
     if (formato === "amrap") res = { ...base, rodadas: Number(rodadas) || 0, reps: Number(reps) || 0 };
     else if (formato === "fortime") {
       const completo = st.parciais.length >= rot.estacoes.length;
-      res = { ...base, tempoSeg: Math.round(completo ? st.parciais[st.parciais.length - 1] : decorrido), parciais: st.parciais, estacoes: st.parciais.length, limite: !completo && rot.total > 0 && decorrido >= rot.total };
+      res = { ...base, tempoSeg: Math.round(completo ? st.parciais[st.parciais.length - 1] : decorrido), parciais: st.parciais, rotulos: rot.estacoes.slice(0, st.parciais.length).map((e) => e.label), estacoes: st.parciais.length, limite: !completo && rot.total > 0 && decorrido >= rot.total };
+      if (st.roxzone) res.roxzoneSeg = roxTotal;
     } else res = { ...base, tempoSeg: Math.round(decorrido) };
     onSalvar(res);
     setSt(vazio);
   }
 
+  // Parciais: tempo de cada trecho, e a diferença para o mesmo trecho da última vez.
+  const trecho = (i) => st.parciais[i] - (i ? st.parciais[i - 1] : 0);
+  const ant = anterior && anterior.res;
+  // Casa os trechos pela ordem dentro do mesmo tipo (estação ou Roxzone), então dá para comparar
+  // uma simulação com Roxzone marcada com outra sem.
+  const antTrechos = useMemo(() => {
+    if (!ant || !ant.parciais || !ant.parciais.length) return null;
+    const base = blocoRoteiro(bloco).estacoes || [];
+    const rotulos = ant.rotulos || (ant.parciais.length === base.length ? base.map((e) => e.label) : null);
+    if (!rotulos) return null;
+    const out = { est: [], rox: [] };
+    ant.parciais.forEach((s, i) => { (rotulos[i] === "Roxzone" ? out.rox : out.est).push({ label: rotulos[i], seg: s - (i ? ant.parciais[i - 1] : 0) }); });
+    return out;
+  }, [ant, bloco]);
+  const antTrecho = (i) => {
+    if (!antTrechos) return null;
+    const e = rot.estacoes[i];
+    const k = rot.estacoes.slice(0, i).filter((x) => !!x.roxzone === !!e.roxzone).length;
+    const a = (e.roxzone ? antTrechos.rox : antTrechos.est)[k];
+    return a && a.label === e.label ? a.seg : null;
+  };
+  const roxTotal = rot.modo === "up" ? st.parciais.reduce((t, s, i) => t + (rot.estacoes[i] && rot.estacoes[i].roxzone ? trecho(i) : 0), 0) : 0;
+  const listaParciais = () => (
+    <ol className="gt-bt-parciais">
+      {st.parciais.map((s, i) => {
+        const a = antTrecho(i);
+        return <li key={i} className={rot.estacoes[i].roxzone ? "rox" : ""}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(trecho(i))}{a != null && <em className={trecho(i) <= a ? "melhor" : "pior"}> {blocoDelta(trecho(i) - a)}</em>}</b></li>;
+      })}
+    </ol>
+  );
+  const tempoFinal = Math.round(formato === "fortime" && st.parciais.length >= rot.estacoes.length ? st.parciais[st.parciais.length - 1] : decorrido);
+  const antData = anterior ? formatDateLabel(anterior.data) : "";
   const grande = rot.modo === "up" ? decorrido : resta;
   const estacao = rot.modo === "up" ? rot.estacoes[st.parciais.length] : null;
   const prox = rot.modo === "seq" && fase ? rot.fases[fase.i + 1] : rot.modo === "up" ? rot.estacoes[st.parciais.length + 1] : null;
@@ -18939,12 +19192,15 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar }) {
             <div className={`gt-bt-tempo ${pausaFase ? "pausa" : ""}`} aria-live="off">{formatRestTime(Math.ceil(rot.modo === "up" ? Math.floor(grande) : grande))}</div>
             {rot.modo === "up" && rot.total > 0 && <div className="gt-bt-sub">limite {formatRestTime(rot.total)}</div>}
             {rot.modo === "down" && <div className="gt-bt-sub">faça o máximo de rodadas</div>}
-            {prox && st.ini && <div className="gt-bt-prox">A seguir: {prox.tipo === "pausa" ? "pausa" : prox.label}</div>}
-            {rot.modo === "up" && st.parciais.length > 0 && (
-              <ol className="gt-bt-parciais">
-                {st.parciais.map((s, i) => <li key={i}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(s - (i ? st.parciais[i - 1] : 0))}</b></li>)}
-              </ol>
+            {!st.ini && ant && <div className="gt-bt-sub">Sua última ({antData}): {blocoFmtResultado(ant)}</div>}
+            {!st.ini && temRox && (
+              <label className="gt-bt-rox">
+                <input type="checkbox" checked={!!st.roxzone} onChange={(e) => setSt({ ...st, roxzone: e.target.checked })} />
+                <span>Marcar a Roxzone<small>Um toque ao sair de cada corrida e outro ao começar a estação, para ver quanto tempo vai nas transições.</small></span>
+              </label>
             )}
+            {prox && st.ini && <div className="gt-bt-prox">A seguir: {prox.tipo === "pausa" ? "pausa" : prox.label}</div>}
+            {rot.modo === "up" && st.parciais.length > 0 && listaParciais()}
             {rot.modo !== "up" && (bloco.exercicios || []).length > 0 && (
               <ul className="gt-bt-lista">
                 {bloco.exercicios.map((ex, i) => <li key={i}><b>{ex.nome}</b> <span>{rxTexto({ ...ex, series: 1, descansoSeg: 0 })}</span></li>)}
@@ -18955,25 +19211,28 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar }) {
         {st.fim && (
           <div className="gt-bt-fim">
             <div className="gt-bt-fase">Bloco concluído</div>
-            <div className="gt-bt-tempo">{formatRestTime(Math.round(formato === "fortime" && st.parciais.length >= rot.estacoes.length ? st.parciais[st.parciais.length - 1] : decorrido))}</div>
+            <div className="gt-bt-tempo">{formatRestTime(tempoFinal)}</div>
+            {formato === "fortime" && ant && st.parciais.length >= rot.estacoes.length && (
+              <div className={`gt-bt-comp ${tempoFinal <= ant.tempoSeg ? "melhor" : "pior"}`}>
+                {tempoFinal === ant.tempoSeg ? "Igual à" : tempoFinal < ant.tempoSeg ? `${formatRestTime(ant.tempoSeg - tempoFinal)} mais rápido que a` : `${formatRestTime(tempoFinal - ant.tempoSeg)} mais lento que a`} última ({antData}: {formatRestTime(ant.tempoSeg)})
+              </div>
+            )}
+            {formato === "amrap" && ant && <div className="gt-bt-sub">Sua última ({antData}): {blocoFmtResultado(ant)}</div>}
+            {st.roxzone && roxTotal > 0 && <div className="gt-bt-sub">Roxzone: {formatRestTime(roxTotal)}{ant && ant.roxzoneSeg ? ` (última: ${formatRestTime(ant.roxzoneSeg)})` : ""}</div>}
             {formato === "amrap" && (
               <div className="gt-bt-res">
                 <label>Rodadas<input className="gt-input" inputMode="numeric" value={rodadas} onChange={(e) => setRodadas(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
                 <label>Reps extras<input className="gt-input" inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
               </div>
             )}
-            {formato === "fortime" && st.parciais.length < rot.estacoes.length && <div className="gt-bt-sub">{st.parciais.length} de {rot.estacoes.length} estações</div>}
-            {rot.modo === "up" && st.parciais.length > 0 && (
-              <ol className="gt-bt-parciais">
-                {st.parciais.map((s, i) => <li key={i}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(s - (i ? st.parciais[i - 1] : 0))}</b></li>)}
-              </ol>
-            )}
+            {formato === "fortime" && st.parciais.length < rot.estacoes.length && <div className="gt-bt-sub">{st.parciais.length} de {rot.estacoes.length} {st.roxzone ? "trechos" : "estações"}</div>}
+            {rot.modo === "up" && st.parciais.length > 0 && listaParciais()}
           </div>
         )}
       </div>
       <div className="gt-focus-footer gt-bt-acoes">
         {!st.ini && <button type="button" className="gt-btn" onClick={iniciar}>▶ Começar</button>}
-        {st.ini && !st.fim && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : "Próxima estação"}</button>}
+        {st.ini && !st.fim && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : rot.estacoes[st.parciais.length + 1].roxzone ? "Saí da corrida" : estacao && estacao.roxzone ? "Comecei a estação" : "Próxima estação"}</button>}
         {st.ini && !st.fim && (st.pausaEm ? <button type="button" className="gt-btn" onClick={retomar}>▶ Continuar</button> : <button type="button" className="gt-btn secondary" onClick={pausar}>Pausar</button>)}
         {st.ini && !st.fim && <button type="button" className="gt-btn secondary" onClick={encerrar}>Encerrar</button>}
         {st.fim && <button type="button" className="gt-btn" onClick={salvar}>Salvar resultado</button>}
@@ -18983,7 +19242,7 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar }) {
   );
 }
 
-function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, setExpandedEx, ensureSetsForExpand, updateSetField, updateExComentario, cycleExercicioStatus, addSetToExercise, removeLastSet, addExerciseToday, removeAddedExercise, onClose, onFinish, showToast, blocosLog, onBlocoResultado, lastSetsFor }) {
+function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, setExpandedEx, ensureSetsForExpand, updateSetField, updateExComentario, cycleExercicioStatus, addSetToExercise, removeLastSet, addExerciseToday, removeAddedExercise, onClose, onFinish, showToast, blocosLog, onBlocoResultado, lastSetsFor, resultadoAnterior, marcarSerieFeita }) {
   const flat = flattenExercicios(treino);
   const blocosRes = blocosLog || {};
   const corridas = treino.blocos.map((b, i) => ({ b, id: blocoId(b, i) })).filter((x) => blocoTipo(x.b) === "corrida" && !blocoVazio(x.b));
@@ -18991,6 +19250,10 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
   const doneCount = flat.filter((ex) => treinoLog[ex.id]?.status === "feito").length + corridasFeitas;
   const totalItens = flat.length + corridas.length;
   const [timerBloco, setTimerBloco] = useState(null); // índice do bloco com o cronômetro aberto
+  // Treino guiado (série a série): só quando a pessoa toca no botão; fica lembrado no dia.
+  const guiadoKey = `treino-app:guiado:${selectedDate || todayISO()}:${itemKey(item)}`;
+  const [guiado, setGuiadoState] = useState(() => { try { return localStorage.getItem(guiadoKey) === "1"; } catch (e) { return false; } });
+  const setGuiado = (v) => { setGuiadoState(v); try { if (v) localStorage.setItem(guiadoKey, "1"); else localStorage.removeItem(guiadoKey); } catch (e) {} };
   const skippedCount = flat.filter((ex) => treinoLog[ex.id]?.status === "pulei").length;
   const key = itemKey(item);
   const [videoOpenId, setVideoOpenId] = useState(null);
@@ -19234,8 +19497,11 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
             ▶ iniciar treino
           </button>
         )}
+        {marcarSerieFeita && flat.length > 0 && (
+          <button type="button" className={`gt-guiado-toggle ${guiado ? "on" : ""}`} aria-pressed={guiado} onClick={() => setGuiado(!guiado)}>{guiado ? "Ver lista" : "Modo guiado"}</button>
+        )}
         <div className="gt-rest-timer-slot">
-          {restTimer ? (
+          {restTimer && guiado ? null : restTimer ? (
             <div className="gt-rest-bar">
               <div className="gt-rest-bar-main">
                 <div className="gt-rest-bar-time">{formatRestTime(restRemaining)}</div>
@@ -19253,6 +19519,15 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
         </div>
       </div>
 
+      {guiado && marcarSerieFeita ? (
+        <TreinoGuiado
+          treino={treino} flat={flat} treinoLog={treinoLog} blocosRes={blocosRes} item={item}
+          alvoTexto={alvoTexto} lastSetsFor={lastSetsFor} ensureSetsForExpand={ensureSetsForExpand} updateSetField={updateSetField}
+          marcarSerieFeita={marcarSerieFeita} onBlocoResultado={(bid, res, exs) => onBlocoResultado && onBlocoResultado(bid, res, exs)}
+          abrirTimer={setTimerBloco} startRest={startRest} stopRest={stopRest} restTimer={restTimer} restRemaining={restRemaining}
+          onConcluir={handleFinish}
+        />
+      ) : (
       <div className="gt-focus-body">
         {treino.blocos.map((bloco, bi) => {
           if (blocoVazio(bloco)) return null;
@@ -19306,6 +19581,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
         </button>
         <div style={{ height: 76 }} />
       </div>
+      )}
 
       <div className="gt-focus-footer">
         <button className="gt-btn" onClick={handleFinish}>Concluir treino</button>
@@ -19315,6 +19591,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
         <BlocoTimer
           bloco={treino.blocos[timerBloco]}
           chave={`treino-app:blocoTimer:${selectedDate || todayISO()}:${key}:${blocoId(treino.blocos[timerBloco], timerBloco)}`}
+          anterior={resultadoAnterior ? resultadoAnterior(treino.blocos[timerBloco], blocoId(treino.blocos[timerBloco], timerBloco)) : null}
           onClose={() => setTimerBloco(null)}
           onSalvar={(res) => {
             if (onBlocoResultado) onBlocoResultado(blocoId(treino.blocos[timerBloco], timerBloco), res, flat.filter((e) => e.blocoIdx === timerBloco));
