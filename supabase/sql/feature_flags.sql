@@ -1,5 +1,5 @@
 -- Experimentos por usuário (feature flags com lista de liberados).
--- Hoje: 'ajuste_semana' (Ajustar minha semana / "Sua semana mudou" com IA).
+-- Hoje: 'ajuste_semana' (Ajustar minha semana / "Sua semana mudou" com IA) e 'blocos' (editor de sessão em blocos).
 -- Regra: só quem o admin liberar usa, e quem tem Strava conectado fica de fora (a política da API do Strava
 -- proíbe usar dados do Strava em IA). O admin (ardurso@gmail.com) sempre tem acesso, para testar.
 -- Rodar uma vez no SQL editor do Supabase. Pode rodar de novo sem problema.
@@ -40,7 +40,7 @@ security definer
 set search_path = public, auth
 as $$
   select coalesce(array_agg(f), '{}'::text[])
-  from unnest(array['ajuste_semana']) as f
+  from unnest(array['ajuste_semana', 'blocos']) as f
   where public.feature_allowed(auth.uid(), f);
 $$;
 revoke all on function public.my_features() from public, anon;
