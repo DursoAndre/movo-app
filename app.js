@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v212";
+const APP_BUILD = "v214";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1350,6 +1350,131 @@ function blocoFaseEm(rot, seg) {
   }
   return null;
 }
+// ---------- Notificações push (Web Push) ----------
+// Chave pública VAPID (a privada fica só no segredo da edge function enviar-push).
+const PUSH_VAPID_PUBLICA = "BHuWUw4R-fu9TWl0rgTRACAzuJgcb6MSruSBBW6BSPdy7T1J7dHjq4yoZf2NFjrzynPitswccrVXOFymP6pJD_0";
+// O lembrete do treino do dia depende da função agendada, que só liga com aprovação. Até lá a opção fica escondida.
+const PUSH_LEMBRETE_LIGADO = false;
+function pushSuportado() {
+  return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
+}
+// iPhone/iPad só recebem push com o app instalado na tela inicial.
+function pushPrecisaInstalar() {
+  const ios = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  return ios && !isStandaloneDisplay();
+}
+function pushChaveBytes(b64) {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+// O service worker pode não estar registrado (ex.: aba anônima); não esperar para sempre.
+function pushSwPronto() {
+  return Promise.race([navigator.serviceWorker.ready, new Promise((_, rej) => setTimeout(() => rej(new Error("sw")), 4000))]);
+}
+async function pushInscricaoAtual() {
+  if (!pushSuportado()) return null;
+  try { const reg = await pushSwPronto(); return await reg.pushManager.getSubscription(); } catch (e) { return null; }
+}
+// Pede permissão, inscreve o aparelho e guarda no servidor. Devolve { ok, erro }.
+async function pushAtivar(tipos) {
+  if (!pushSuportado()) return { ok: false, erro: "Este navegador não recebe notificações." };
+  let perm = Notification.permission;
+  if (perm === "default") { try { perm = await Notification.requestPermission(); } catch (e) {} }
+  if (perm !== "granted") return { ok: false, erro: perm === "denied" ? "As notificações estão bloqueadas para o Movo. Libere nas configurações do navegador." : "Permissão não concedida." };
+  try {
+    const reg = await pushSwPronto();
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushChaveBytes(PUSH_VAPID_PUBLICA) });
+    const j = sub.toJSON();
+    const { error } = await supabaseClient.rpc("push_salvar", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent.slice(0, 200), p_tipos: tipos || null });
+    if (error) return { ok: false, erro: "Não consegui ativar agora. Tente de novo." };
+    return { ok: true };
+  } catch (e) { return { ok: false, erro: "Não consegui ativar neste aparelho." }; }
+}
+async function pushDesativar() {
+  const sub = await pushInscricaoAtual();
+  if (!sub) return { ok: true };
+  try { await supabaseClient.rpc("push_remover", { p_endpoint: sub.endpoint }); } catch (e) {}
+  try { await sub.unsubscribe(); } catch (e) {}
+  return { ok: true };
+}
+function pushTiposLer() {
+  try { return { treinador: true, lembrete: true, ...JSON.parse(localStorage.getItem("treino-app:pushTipos") || "{}") }; } catch (e) { return { treinador: true, lembrete: true }; }
+}
+
+// Cartão "Notificações" das Configurações.
+function PushConfig({ showToast, logEvent, coachNome }) {
+  const [estado, setEstado] = useState("carregando"); // carregando | sem_suporte | instalar | bloqueado | desligado | ligado
+  const [tipos, setTipos] = useState(pushTiposLer);
+  const [ocupado, setOcupado] = useState(false);
+  async function ler() {
+    if (pushPrecisaInstalar()) return setEstado("instalar");
+    if (!pushSuportado()) return setEstado("sem_suporte");
+    if (Notification.permission === "denied") return setEstado("bloqueado");
+    const sub = await pushInscricaoAtual();
+    setEstado(sub && Notification.permission === "granted" ? "ligado" : "desligado");
+  }
+  useEffect(() => { ler(); }, []);
+  async function ativar() {
+    setOcupado(true);
+    const r = await pushAtivar(tipos);
+    setOcupado(false);
+    if (!r.ok) { showToast(r.erro); ler(); return; }
+    logEvent("push_ativado");
+    setEstado("ligado"); showToast("Notificações ativadas");
+  }
+  async function desativar() {
+    setOcupado(true); await pushDesativar(); setOcupado(false);
+    logEvent("push_desativado");
+    setEstado("desligado"); showToast("Notificações desativadas neste aparelho");
+  }
+  async function mudarTipo(k, v) {
+    const prox = { ...tipos, [k]: v };
+    setTipos(prox);
+    try { localStorage.setItem("treino-app:pushTipos", JSON.stringify(prox)); } catch (e) {}
+    const { error } = await supabaseClient.rpc("push_tipos", { p_tipos: prox });
+    if (error) showToast("Não consegui salvar agora");
+  }
+  async function testar() {
+    setOcupado(true);
+    try {
+      const { data } = await supabaseClient.functions.invoke("enviar-push", { body: { tipo: "teste" } });
+      showToast(data && data.enviado ? "Teste enviado. Deve chegar em alguns segundos." : "O teste não saiu. Tente desativar e ativar de novo.");
+    } catch (e) { showToast("O teste não saiu agora"); }
+    setOcupado(false);
+  }
+  return (
+    <div className="gt-settings-card">
+      {estado === "carregando" && <div className="gt-settings-hint" style={{ marginTop: 0 }}>Verificando…</div>}
+      {estado === "instalar" && <div className="gt-settings-hint" style={{ marginTop: 0 }}>No iPhone, as notificações só funcionam com o Movo instalado na tela inicial. Instale e abra por lá para ativar.</div>}
+      {estado === "sem_suporte" && <div className="gt-settings-hint" style={{ marginTop: 0 }}>Este navegador não recebe notificações. No celular, use o Chrome (Android) ou o app instalado (iPhone).</div>}
+      {estado === "bloqueado" && <div className="gt-settings-hint" style={{ marginTop: 0 }}>As notificações estão bloqueadas para o Movo neste aparelho. Para receber, libere nas configurações do navegador e volte aqui.</div>}
+      {estado === "desligado" && (
+        <>
+          <div className="gt-settings-hint" style={{ marginTop: 0 }}>Receba um aviso no celular quando {coachNome || "seu treinador"} enviar treino novo{PUSH_LEMBRETE_LIGADO ? " e no dia de treino" : ""}.</div>
+          <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={ativar}>{ocupado ? "Ativando…" : "Ativar notificações"}</button>
+        </>
+      )}
+      {estado === "ligado" && (
+        <>
+          <div className="gt-settings-hint gt-push-ok" style={{ marginTop: 0 }}><span aria-hidden="true">✓</span> Ativadas neste celular.</div>
+          {PUSH_LEMBRETE_LIGADO && (
+            <>
+              <label className="gt-checkbox-row"><input type="checkbox" checked={tipos.treinador !== false} onChange={(e) => mudarTipo("treinador", e.target.checked)} /> Treino novo do treinador</label>
+              <label className="gt-checkbox-row"><input type="checkbox" checked={tipos.lembrete !== false} onChange={(e) => mudarTipo("lembrete", e.target.checked)} /> Lembrete no dia de treino, se ainda não registrou</label>
+            </>
+          )}
+          <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={desativar}>Desativar neste celular</button>
+          <button type="button" className="gt-co-link" disabled={ocupado} onClick={testar}>Testar aviso</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Experimento ligado para esta conta (o App grava no aparelho a lista que o servidor libera).
 function featureLigada(nome) {
   try { const v = JSON.parse(localStorage.getItem("treino-app:features") || "null"); return Array.isArray(v) && v.includes(nome); } catch (e) { return false; }
@@ -2689,7 +2814,10 @@ const APP_CSS = `
   .gt-chevron { color:var(--text-muted); flex-shrink:0; font-size:12px; }
   .gt-item-extra-x { background:none; border:none; color:var(--warn); font-size:16px; cursor:pointer; padding:0 2px; flex-shrink:0; }
   .gt-text-muted { color:var(--text-muted); }
-  .gt-item-carga-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 14px 10px; border-top:1px solid var(--border); font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); }
+  .gt-item-carga-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 14px 10px; border-top:1px solid var(--border); font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); }
+  .gt-sessao-nota { flex-basis:100%; font-family:'Inter',system-ui,sans-serif; font-size:13px; line-height:1.4; color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; border-left:2px solid var(--border); padding-left:8px; }
+  .gt-rpe-modal .gt-rpe-nota { min-height:88px; height:88px; font-family:'Inter',system-ui,sans-serif; font-size:16px; resize:none; }
+  .gt-rpe-modal .gt-modal-actions { position:sticky; bottom:-18px; background:var(--surface); padding:12px 0 calc(12px + env(safe-area-inset-bottom)); margin-bottom:-18px; z-index:1; }
   .gt-item-carga-edit { background:none; border:none; color:var(--accent); font-size:12px; font-family:'Roboto Mono',monospace; cursor:pointer; padding:0; flex-shrink:0; }
   .gt-item-card.skipped { border-color:var(--warn); opacity:.75; }
   .gt-status-toggle { display:flex; gap:4px; flex-shrink:0; }
@@ -3721,6 +3849,37 @@ const APP_CSS = `
   .gt-co-chip.on { background:var(--accent); border-color:var(--accent); color:#14161A; font-weight:600; }
   .gt-co-chip .n { opacity:.75; margin-left:4px; font-family:'Roboto Mono',monospace; font-size:12px; }
   .gt-co-lista { display:flex; flex-direction:column; gap:6px; }
+  .gt-co-ader, .gt-co-cargaal { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px; margin-bottom:14px; }
+  .gt-co-ader .dica, .gt-co-cargaal .dica { font-size:12px; color:var(--text-muted); margin-top:8px; line-height:1.4; }
+  .gt-co-ader-total { font-size:14px; margin:4px 0 10px; }
+  .gt-co-ader-total b { font-size:22px; margin-right:4px; }
+  .gt-co-ader-sems, .gt-co-cargaal-barras { display:flex; gap:8px; align-items:flex-end; }
+  .gt-co-ader-sems .sem, .gt-co-cargaal-barras .sem { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; font-size:12px; }
+  .gt-co-ader-sems .barra, .gt-co-cargaal-barras .barra { width:100%; height:48px; background:var(--surface-2); border-radius:6px; display:flex; align-items:flex-end; overflow:hidden; }
+  .gt-co-ader-sems .barra i { display:block; width:100%; background:var(--success); }
+  .gt-co-cargaal-barras .barra i { display:block; width:100%; background:rgba(255,255,255,.18); }
+  .gt-co-cargaal-barras .sem.atual .barra i { background:var(--info); }
+  .gt-co-cargaal-barras.alerta .sem.atual .barra i { background:var(--amber); }
+  .gt-co-ader-sems small, .gt-co-cargaal-barras small { color:var(--text-muted); font-size:11px; }
+  .gt-co-cargaal-st { font-size:14px; line-height:1.4; margin:4px 0 10px; font-weight:600; }
+  .gt-co-cargaal-st.subindo, .gt-co-cargaal-st.alto { color:var(--amber); }
+  .gt-co-cargaal-st.ok { color:var(--success); }
+  .gt-co-hoje { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:10px 12px 4px; margin-bottom:14px; }
+  .gt-co-hoje-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; font-size:12px; color:var(--text-muted); }
+  .gt-co-hoje-item { display:flex; align-items:center; gap:8px; min-height:60px; border-top:1px solid var(--border); padding:6px 0; }
+  .gt-co-hoje-head + .gt-co-hoje-item { border-top:none; }
+  .gt-co-hoje-quem { flex:1; min-width:0; display:flex; align-items:center; gap:10px; background:none; border:none; padding:0; color:var(--text); text-align:left; font-family:inherit; cursor:pointer; min-height:44px; }
+  .gt-co-hoje-item .tx { flex:1; min-width:0; }
+  .gt-co-hoje-item .t { font-weight:600; font-size:15px; overflow-wrap:anywhere; }
+  .gt-co-hoje-item .d { font-size:13px; color:var(--text-muted); }
+  .gt-co-hoje-ok-btn { width:44px; height:44px; flex:none; border-radius:50%; border:1px solid var(--border); background:transparent; color:var(--text-muted); font-size:18px; cursor:pointer; }
+  .gt-co-hoje-ok { font-size:14px; color:var(--text-muted); padding:8px 0 10px; }
+  .gt-push-ok span { color:var(--success); margin-right:4px; }
+  .gt-co-hoje-ok span { color:var(--success); margin-right:4px; }
+  .gt-co-hoje-acao { min-width:96px; height:44px; flex:none; border-radius:10px; background:transparent; border:1px solid rgba(90,176,255,.5); color:var(--info); font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+  .gt-co-hoje-desfazer { font-size:13px; color:var(--text-muted); display:flex; align-items:center; gap:4px; }
+  .gt-co-hoje-mais { display:block; width:100%; text-align:center; }
+  .gt-co-hoje-item .d { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .gt-co-row { display:flex; align-items:center; gap:10px; width:100%; min-height:64px; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:14px; color:var(--text); text-align:left; cursor:pointer; font-family:inherit; }
   .gt-co-row.atencao { border-left:3px solid var(--amber); }
   .gt-co-row.tracejado { border-style:dashed; }
@@ -3759,6 +3918,12 @@ const APP_CSS = `
   .gt-co-notaitem { margin-top:8px; background:var(--surface-2); border-radius:8px; padding:8px 10px; font-size:14px; }
   .gt-co-notaitem.aluno { border-left:3px solid var(--accent); }
   .gt-co-notaitem small { color:var(--text-muted); margin-right:6px; }
+  .gt-co-sessao-aluno { margin-top:8px; padding:8px 10px; border-left:3px solid var(--accent); background:var(--surface-2); border-radius:0 8px 8px 0; font-size:14px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .gt-co-sessao-aluno small { display:block; color:var(--text-muted); font-size:12px; margin-bottom:2px; }
+  .gt-co-sessao-aluno.meu { border-left-color:rgba(255,255,255,.2); }
+  .gt-co-resposta { display:flex; gap:8px; align-items:flex-end; margin-bottom:8px; }
+  .gt-co-resposta textarea { flex:1; margin:0; }
+  .gt-co-resposta .gt-btn { min-height:44px; }
   .gt-co-carga { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
   .gt-co-carga span { flex:1; } .gt-co-carga b { font-family:'Roboto Mono',monospace; color:var(--accent); } .gt-co-carga small { color:var(--text-muted); }
   .gt-co-envio { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
@@ -10544,7 +10709,7 @@ function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, session
 // MODO TREINADOR — lógica pura (texto→ficha, diff e aplicação da semana).
 // Veja docs/PLANO_TREINADORES.md. Tudo aqui é testável sem tela.
 // ============================================================================
-const COACH_FLAGS_PADRAO = { esforcoDor: false, lote: false };
+const COACH_FLAGS_PADRAO = { esforcoDor: true, lote: false };
 // Recursos construídos mas desligados no piloto. Dá pra ligar à mão (testes / depois do OK jurídico):
 //   localStorage.setItem("treino-app:coachFlags", JSON.stringify({ esforcoDor: true }))
 function coachFlags() {
@@ -10593,6 +10758,11 @@ function coachInviteLink(code) {
     if (mudou) window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
   } catch (e) {}
 })();
+
+// Push (best-effort): avisa o aluno que chegou treino novo. Sem push configurado a função só responde enviado:false.
+function avisarPorPush(tipo, extra) {
+  try { supabaseClient.functions.invoke("enviar-push", { body: { tipo, ...(extra || {}) } }).catch(() => {}); } catch (e) {}
+}
 
 // Aviso por e-mail (best-effort): nunca atrapalha o fluxo; sem Resend configurado a função só responde enviado:false.
 function avisarPorEmail(tipo, ref) {
@@ -11387,6 +11557,60 @@ function coachUltimasCargas(detalhe) {
   return out;
 }
 
+// Aderência do aluno: dias com algo planejado (semana fixa ou plano de semanas, sem descanso) × dias em
+// que ele treinou, por semana (segunda a domingo). A semana fixa é a de hoje (a agenda não guarda
+// histórico), então é uma aproximação; hoje só conta se já treinou.
+function coachAderencia(det, hoje, semanas = 4) {
+  if (!det || det.bloqueado) return null;
+  const ativ = {};
+  (det.atividades || []).forEach((a) => { ativ[a.id] = a; });
+  const ehDescanso = (it) => it.tipo === "atividade" && ((ativ[it.id] && ativ[it.id].descanso) || /descanso/i.test(String(it.id)));
+  const ini = addDays(weekStartIso(hoje), -7 * (semanas - 1));
+  const lista = [];
+  let plan = 0, feitos = 0, extras = 0;
+  for (let w = 0; w < semanas; w++) {
+    const sem = { ini: addDays(ini, 7 * w), plan: 0, feito: 0, extra: 0 };
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(sem.ini, i);
+      if (d > hoje) break;
+      const s = (det.sessoes || {})[d];
+      const fez = !!(s && s.feito);
+      if (d === hoje && !fez) continue;
+      const itens = agendaDoDia(det.schedule || {}, det.planos || [], d).filter((it) => !ehDescanso(it));
+      const corridas = planoSessoesDoDia(det.planos || [], d).filter((x) => x.sessao.tipo !== "prova");
+      if (itens.length + corridas.length > 0) { sem.plan++; if (fez) sem.feito++; } else if (fez) sem.extra++;
+    }
+    plan += sem.plan; feitos += sem.feito; extras += sem.extra;
+    lista.push(sem);
+  }
+  return { semanas: lista, plan, feitos, extras, pct: plan ? Math.round((feitos / plan) * 100) : null };
+}
+// Carga do aluno: minutos por semana (vem com as cargas compartilhadas) e, quando ele também compartilha
+// o esforço, a mesma conta de carga do app do aluno (últimos 7 dias × média de 28 dias).
+function coachCargaAluno(det, hoje, semanas = 4) {
+  if (!det || det.bloqueado) return null;
+  const sess = det.sessoes || {};
+  const ini = addDays(weekStartIso(hoje), -7 * (semanas - 1));
+  const lista = [];
+  for (let w = 0; w < semanas; w++) {
+    const i0 = addDays(ini, 7 * w);
+    let min = 0, srpe = 0;
+    for (let i = 0; i < 7; i++) {
+      const s = sess[addDays(i0, i)];
+      if (s) Object.values(s.cargas || {}).forEach((c) => { min += Number(c && c.duracaoMin) || 0; srpe += sessionLoad(c); });
+    }
+    lista.push({ ini: i0, min, srpe });
+  }
+  const temRpe = Object.values(sess).some((s) => Object.values((s && s.cargas) || {}).some((c) => c && Number(c.rpe) > 0));
+  const acwr = temRpe ? computeACWR(sess, hoje, 7, 28) : null;
+  let dorMax = null;
+  for (let i = 0; i < 7; i++) {
+    const s = sess[addDays(hoje, -i)];
+    if (s) Object.values(s.cargas || {}).forEach((c) => { if (c && c.dor != null && c.dor !== "" && (dorMax == null || Number(c.dor) > dorMax)) dorMax = Number(c.dor); });
+  }
+  return { semanas: lista, temMin: lista.some((x) => x.min > 0), temRpe, acwr, dorMax };
+}
+
 // ---------- Painel: classificação e ordenação da lista de alunos ----------
 function coachClassificar(a, hojeISO) {
   const dias = a.dias_sem_treino;
@@ -11410,6 +11634,32 @@ function coachOrdenarAlunos(lista, hojeISO) {
     return 2;
   };
   return lista.slice().sort((x, y) => peso(x) - peso(y) || (y.dor_max_recente || 0) - (x.dor_max_recente || 0) || (y.dias_sem_treino || 0) - (x.dias_sem_treino || 0) || String(x.nome).localeCompare(String(y.nome), "pt-BR"));
+}
+// Fila "Para hoje" do treinador: um item por aluno, com o motivo mais urgente e uma ação.
+// Ordem: mensagem sem resposta, dor alta, semana recusada, sem treinar, sem plano.
+function coachParaHoje(lista, hojeISO) {
+  const out = [];
+  (lista || []).forEach((a) => {
+    if (a.status !== "ativo") return;
+    const c = coachClassificar(a, hojeISO);
+    const primeiro = String(a.nome || "").split(" ")[0];
+    let it = null;
+    const diasEnvio = a.ultimo_envio && a.ultimo_envio.quando ? Math.floor((new Date(hojeISO + "T12:00:00") - new Date(a.ultimo_envio.quando)) / 86400000) : null;
+    if (a.nao_lidas > 0) it = { ordem: 0, motivo: a.nao_lidas === 1 ? "Mensagem nova" : `${a.nao_lidas} mensagens novas`, acao: "responder", botao: "Responder" };
+    else if (!a.bloqueado && a.dor_max_recente != null && a.dor_max_recente >= 7) it = { ordem: 1, motivo: `Dor ${a.dor_max_recente}/10 recente`, acao: "abrir", botao: "Abrir" };
+    else if (a.ultimo_envio && a.ultimo_envio.status === "recusado") it = { ordem: 2, motivo: "Recusou o treino da semana", acao: "montar", botao: "Montar" };
+    else if (!a.bloqueado && c.atencao) it = { ordem: 3, motivo: c.motivo, acao: "abrir", botao: "Abrir" };
+    else if (c.semPlano) it = { ordem: 4, motivo: diasEnvio != null ? `Último treino enviado há ${diasEnvio} dias` : "Nenhum treino enviado ainda", acao: "montar", botao: "Montar" };
+    if (it) out.push({ ...it, a, primeiro, chave: `${a.link_id}:${it.acao}:${it.ordem}` });
+  });
+  return out.sort((x, y) => x.ordem - y.ordem || String(x.a.nome).localeCompare(String(y.a.nome), "pt-BR"));
+}
+// Itens que o treinador marcou como resolvidos hoje (somem da fila até amanhã).
+function coachParaHojeFeitosLer(hojeISO) {
+  try { const v = JSON.parse(localStorage.getItem("treino-app:coachParaHoje") || "{}"); return v.data === hojeISO && Array.isArray(v.chaves) ? v.chaves : []; } catch (e) { return []; }
+}
+function coachParaHojeFeitosSalvar(hojeISO, chaves) {
+  try { localStorage.setItem("treino-app:coachParaHoje", JSON.stringify({ data: hojeISO, chaves })); } catch (e) {}
 }
 function coachIniciais(nome) {
   const p = String(nome || "?").trim().split(/\s+/);
@@ -12128,10 +12378,28 @@ function CoachDiasPontos({ dias }) {
     </div>
   );
 }
-function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, onPendente, onConvidar, filaN }) {
+function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, onPendente, onConvidar, filaN, onMontar }) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const hojeISO = todayISO();
+  const [feitosHoje, setFeitosHoje] = useState(() => coachParaHojeFeitosLer(hojeISO));
+  const paraHoje = useMemo(() => coachParaHoje(lista, hojeISO), [lista, hojeISO]);
+  const filaHoje = paraHoje.filter((it) => feitosHoje.indexOf(it.chave) < 0);
+  const [oculto, setOculto] = useState(null); // último item ocultado (para desfazer)
+  const [filaTodos, setFilaTodos] = useState(false);
+  function resolverHoje(it) {
+    const prox = [...feitosHoje, it.chave];
+    setFeitosHoje(prox); coachParaHojeFeitosSalvar(hojeISO, prox); setOculto(it);
+  }
+  function desfazerOculto() {
+    if (!oculto) return;
+    const prox = feitosHoje.filter((k) => k !== oculto.chave);
+    setFeitosHoje(prox); coachParaHojeFeitosSalvar(hojeISO, prox); setOculto(null);
+  }
+  function agirHoje(it) {
+    if (it.acao === "montar" && onMontar) onMontar(it.a);
+    else onAbrir(it.a, it.acao === "responder" ? "notas" : undefined);
+  }
   const info = useMemo(() => lista.map((a) => ({ a, c: coachClassificar(a, hojeISO) })), [lista]);
   const cont = {
     todos: lista.length,
@@ -12167,12 +12435,30 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
       <div className="gt-co-tiles">
         <div><b>{ativos}</b><span>alunos ativos</span></div>
         <div><b className="ok">{treinaramHoje}</b><span>treinaram hoje</span></div>
-        <div><b className={cont.atencao ? "warn" : ""}>{cont.atencao}</b><span>precisam de você</span></div>
+        <div><b className={filaHoje.length ? "warn" : ""}>{filaHoje.length}</b><span>para hoje</span></div>
       </div>
       {(offline || filaN > 0) && (
         <div className="gt-co-offline" role="status">
           {offline ? `Sem conexão. Mostrando dados de ${coachHaQuanto(atualizadoEm)}.` : ""}{filaN > 0 ? ` ${filaN} envio${filaN > 1 ? "s" : ""} aguardando conexão.` : ""}
         </div>
+      )}
+      {paraHoje.length > 0 && (
+        <section className="gt-co-hoje" aria-label="Para hoje">
+          <div className="gt-co-hoje-head"><span className="gt-co-sec">PARA HOJE</span></div>
+          {filaHoje.length === 0 && <div className="gt-co-hoje-ok"><span aria-hidden="true">✓</span> Tudo em dia por hoje.</div>}
+          {oculto && <div className="gt-co-hoje-desfazer" role="status">{oculto.primeiro} saiu da lista até amanhã. <button type="button" className="gt-co-link" onClick={desfazerOculto}>Desfazer</button></div>}
+          {filaHoje.slice(0, filaTodos ? filaHoje.length : 5).map((it) => (
+            <div key={it.chave} className="gt-co-hoje-item">
+              <button type="button" className="gt-co-hoje-quem" onClick={() => onAbrir(it.a)} aria-label={`Abrir ${it.a.nome}. ${it.motivo}`}>
+                <div className="gt-co-avatar" style={{ background: coachCor(it.a.nome) }}>{coachIniciais(it.a.nome)}</div>
+                <div className="tx"><div className="t">{it.a.nome}</div><div className="d">{it.motivo}</div></div>
+              </button>
+              <button type="button" className="gt-co-hoje-acao" onClick={() => agirHoje(it)}>{it.botao}</button>
+              <button type="button" className="gt-co-hoje-ok-btn" aria-label={`Ocultar ${it.primeiro} até amanhã`} title="Ocultar até amanhã" onClick={() => resolverHoje(it)}>✓</button>
+            </div>
+          ))}
+          {!filaTodos && filaHoje.length > 5 && <button type="button" className="gt-co-link gt-co-hoje-mais" onClick={() => setFilaTodos(true)}>Ver mais ({filaHoje.length - 5})</button>}
+        </section>
       )}
       <input className="gt-input gt-co-busca" type="search" aria-label="Buscar aluno" placeholder="Buscar aluno" value={busca} onChange={(e) => setBusca(e.target.value)} />
       <div className="gt-co-chipsrow" role="group" aria-label="Filtros">
@@ -12215,12 +12501,16 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
   const [det, setDet] = useState(undefined);
   const [envios, setEnvios] = useState([]);
   const [notas, setNotas] = useState([]);
-  const [aba, setAba] = useState("semana");
+  const [aba, setAba] = useState(aluno.abaInicial || "semana");
+  const [resposta, setResposta] = useState("");
+  const [respBusy, setRespBusy] = useState(false);
+  const respostaRef = useRef(null);
+  useEffect(() => { if (aba === "notas" && aluno.abaInicial === "notas" && respostaRef.current) setTimeout(() => { try { respostaRef.current.focus(); } catch (e) {} }, 300); }, [aba]);
   const [erro, setErro] = useState("");
   const [carregadoEm, setCarregadoEm] = useState(0);
   const [contato, setContato] = useState("");
   async function carregar() {
-    const r = await coachCall("coach_student_detail", { p_link: aluno.link_id, p_dias: 28 });
+    const r = await coachCall("coach_student_detail", { p_link: aluno.link_id, p_dias: 42 });
     if (!r.ok) { setErro(r.erro); setDet((d) => (d === undefined ? null : d)); return; }
     setErro(""); setDet(r.data); setCarregadoEm(Date.now());
     if (r.data && r.data.permissions && r.data.permissions.ver_contato) coachCall("coach_aluno_contato", { p_link: aluno.link_id }).then((c) => setContato(c.ok && c.data ? String(c.data) : ""));
@@ -12241,6 +12531,8 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
   const cl = coachClassificar(aluno, hojeISO);
   const ultimas = det && !det.bloqueado ? coachUltimasCargas(det) : {};
   const plAluno = useMemo(() => (det && !det.bloqueado ? coachPlanoDoAluno(det, hojeISO) : null), [det, hojeISO]);
+  const ader = useMemo(() => coachAderencia(det, hojeISO), [det, hojeISO]);
+  const carga = useMemo(() => coachCargaAluno(det, hojeISO), [det, hojeISO]);
   const nomesTreino = {};
   ((det && det.treinos) || []).forEach((t) => { nomesTreino[`treino:${t.id}`] = t.nome; });
   const temCorrida = det && det.sessoes && Object.values(det.sessoes).some((s) => Object.values(s.cargas || {}).some((c) => c && Number(c.distanciaKm) > 0));
@@ -12301,10 +12593,52 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
                 ))}
               </div>
             </div>
+            {ader && ader.plan > 0 && (
+              <div className="gt-co-ader">
+                <div className="gt-co-semana-head"><span className="gt-co-sec">SEGUIU O PLANEJADO</span><span>últimas 4 semanas</span></div>
+                <div className="gt-co-ader-total"><b>{ader.pct}%</b> {ader.feitos} de {ader.plan} dias planejados{ader.extras > 0 ? ` · ${ader.extras} ${ader.extras === 1 ? "dia" : "dias"} a mais` : ""}</div>
+                <div className="gt-co-ader-sems">
+                  {ader.semanas.map((w) => (
+                    <div key={w.ini} className="sem" role="img" aria-label={`Semana de ${coachDataCurta(w.ini)}: ${w.feito} de ${w.plan} dias planejados`}>
+                      <div className="barra"><i style={{ height: `${w.plan ? Math.round((w.feito / w.plan) * 100) : 0}%` }} /></div>
+                      <b>{w.plan ? `${w.feito}/${w.plan}` : "–"}</b><small>{w.ini === ader.semanas[ader.semanas.length - 1].ini ? "esta" : coachDataCurta(w.ini)}</small>
+                    </div>
+                  ))}
+                </div>
+                <div className="dica">Dias com treino marcado na agenda e quantos {aluno.nome.split(" ")[0]} cumpriu. A semana atual conta até hoje.</div>
+              </div>
+            )}
+            {carga && carga.temMin && (() => {
+              // Com esforço: carga = minutos × esforço (a mesma conta do aviso). Sem esforço: só minutos.
+              const val = (w) => (carga.temRpe ? w.srpe : w.min);
+              const max = Math.max(...carga.semanas.map(val), 1);
+              const r = carga.acwr && carga.acwr.suficiente ? carga.acwr.ratio : null;
+              const tom = r == null ? "" : r > 1.5 ? "alto" : r > 1.3 ? "subindo" : r < 0.8 ? "baixo" : "ok";
+              const pn = aluno.nome.split(" ")[0];
+              const pct = r == null ? 0 : Math.round(Math.abs(r - 1) * 100);
+              const txt = r == null ? "" : r > 1.5 ? `${pn} treinou ${pct}% acima do normal nos últimos 7 dias. Considere aliviar.` : r > 1.3 ? `${pn} treinou ${pct}% acima do normal nos últimos 7 dias.` : r < 0.8 ? `${pn} treinou ${pct}% abaixo do normal nos últimos 7 dias.` : `${pn} está no ritmo normal nos últimos 7 dias.`;
+              return (
+                <div className="gt-co-cargaal">
+                  <div className="gt-co-semana-head"><span className="gt-co-sec">ESFORÇO SEMANAL</span><span>{carga.temRpe ? "minutos × esforço (1 a 10)" : "minutos"}</span></div>
+                  {r != null && <div className={`gt-co-cargaal-st ${tom}`}>{txt}</div>}
+                  {carga.dorMax != null && carga.dorMax >= 5 && <div className="gt-co-cargaal-st alto">Dor até {carga.dorMax}/10 nos últimos 7 dias.</div>}
+                  <div className={`gt-co-cargaal-barras ${tom === "alto" || tom === "subindo" ? "alerta" : ""}`}>
+                    {carga.semanas.map((w, i) => (
+                      <div key={w.ini} className={`sem ${i === carga.semanas.length - 1 ? "atual" : ""}`} role="img" aria-label={`Semana de ${coachDataCurta(w.ini)}: ${carga.temRpe ? `carga ${w.srpe}` : `${w.min} minutos`}`}>
+                        <b>{i === carga.semanas.length - 1 && val(w) ? (val(w) >= 1000 ? `${(val(w) / 1000).toFixed(1).replace(".", ",")} mil` : val(w)) : "\u00a0"}</b>
+                        <div className="barra"><i style={{ height: `${Math.round((val(w) / max) * 100)}%` }} /></div>
+                        <small>{i === carga.semanas.length - 1 ? "esta" : coachDataCurta(w.ini)}</small>
+                      </div>
+                    ))}
+                  </div>
+                  {!carga.temRpe && <div className="dica">Se {aluno.nome.split(" ")[0]} compartilhar o esforço, aqui aparece também se a carga está acima do normal.</div>}
+                </div>
+              );
+            })()}
             <div className="gt-co-sec">O QUE FEZ</div>
-            {datas.length === 0 && <div className="gt-empty">Nenhum treino nos últimos 28 dias.</div>}
+            {datas.length === 0 && <div className="gt-empty">Nenhum treino nas últimas 6 semanas.</div>}
             {datas.slice(0, 10).map((d) => (
-              <CoachSessaoCard key={d} data={d} sess={det.sessoes[d]} nomes={nomesTreino} notas={notas.filter((n) => n.date === d)} onComentar={comentar} />
+              <CoachSessaoCard key={d} data={d} sess={det.sessoes[d]} nomes={nomesTreino} notas={notas.filter((n) => n.date === d)} onComentar={comentar} nomeAluno={aluno.nome.split(" ")[0]} meuId={meuId} />
             ))}
           </>
         )}
@@ -12327,14 +12661,18 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
         )}
         {aba === "notas" && (
           <>
-            <div className="gt-co-sec">ENVIOS</div>
+            <div className="gt-co-sec">COMENTÁRIOS</div>
+            <div className="gt-co-resposta">
+              <textarea ref={respostaRef} className="gt-input" aria-label={`Escrever para ${aluno.nome.split(" ")[0]}`} placeholder={`Escrever para ${aluno.nome.split(" ")[0]}…`} maxLength={500} rows={2} value={resposta} onChange={(e) => setResposta(e.target.value)} />
+              <button type="button" className="gt-btn small" disabled={respBusy || !resposta.trim()} onClick={async () => { setRespBusy(true); const ok = await comentar(hojeISO, "nota", resposta.trim()); setRespBusy(false); if (ok) setResposta(""); }}>Enviar</button>
+            </div>
+            {notas.length === 0 && <div className="gt-empty">Sem comentários ainda.</div>}
+            {notas.map((n) => <CoachNotaItem key={n.id} n={n} meuId={meuId} nomeAluno={aluno.nome.split(" ")[0]} />)}
+            <div className="gt-co-sec" style={{ marginTop: 14 }}>ENVIOS</div>
             {envios.length === 0 && <div className="gt-empty">Você ainda não enviou nenhuma semana.</div>}
             {envios.slice(0, 8).map((e) => (
               <div key={e.id} className="gt-co-envio"><span>Versão {e.versao} · {coachDataCurta(e.created_at)}</span><span className={`gt-co-st ${e.status}`}>{COACH_STATUS_ENVIO[e.status] || e.status}</span>{e.motivo_recusa && <small>{e.motivo_recusa}</small>}</div>
             ))}
-            <div className="gt-co-sec" style={{ marginTop: 14 }}>COMENTÁRIOS</div>
-            {notas.length === 0 && <div className="gt-empty">Sem comentários ainda. Comente numa sessão na aba Semana.</div>}
-            {notas.map((n) => <div key={n.id} className={`gt-co-notaitem ${n.author_id === meuId ? "" : "aluno"}`}><small>{coachDataCurta(n.date)}</small> {n.texto}</div>)}
           </>
         )}
       </div>
@@ -12344,7 +12682,12 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
     </div>
   );
 }
-function CoachSessaoCard({ data, sess, nomes, notas, onComentar }) {
+// Um comentário com autor e data (o do aluno com a borda de destaque).
+function CoachNotaItem({ n, meuId, nomeAluno }) {
+  const meu = n.author_id === meuId;
+  return <div className={`gt-co-sessao-aluno ${meu ? "meu" : ""}`}><small>{meu ? "Você" : (nomeAluno || "Aluno")} · {coachDataCurta(n.created_at || n.date)}</small>{n.texto}</div>;
+}
+function CoachSessaoCard({ data, sess, nomes, notas, onComentar, nomeAluno, meuId }) {
   const [txt, setTxt] = useState("");
   const [aberto, setAberto] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -12354,6 +12697,11 @@ function CoachSessaoCard({ data, sess, nomes, notas, onComentar }) {
   const min = cargas.map((c) => Number(c.duracaoMin) || 0).reduce((a, b) => a + b, 0);
   const rpe = cargas.map((c) => Number(c.rpe) || 0).filter(Boolean)[0];
   const dor = cargas.map((c) => (c.dor != null ? Number(c.dor) : null)).filter((x) => x != null)[0];
+  // O que o aluno escreveu sobre a sessão: comentário do registro (treino/corrida) e "comentário do dia" das atividades.
+  const comentariosAluno = [
+    ...cargas.map((c) => (c && c.nota ? String(c.nota) : "")),
+    ...Object.entries(sess.log || {}).filter(([k]) => k.startsWith("atividade:")).map(([, v]) => String((v && v.comentario) || "").split("\n").filter((l) => l.indexOf("Importado do Strava") !== 0).join("\n").trim()),
+  ].filter(Boolean);
   const exs = [];
   Object.entries(sess.log || {}).forEach(([k, m]) => Object.entries(m || {}).forEach(([exId, v]) => {
     const pesos = ((v && v.sets) || []).map((s) => Number(String(s.peso).replace(",", "."))).filter((n) => n > 0);
@@ -12368,7 +12716,8 @@ function CoachSessaoCard({ data, sess, nomes, notas, onComentar }) {
     <div className="gt-co-sessao">
       <div className="gt-co-sessao-head"><b>{titulo}</b><span className="ok">Concluído</span></div>
       <div className="gt-co-sessao-meta">{coachDataCurta(data)}{min ? ` · ${min} min` : ""}{rpe ? ` · esforço ${rpe}` : ""}{dor != null ? ` · dor ${dor}` : ""}</div>
-      {notas.map((n) => <div key={n.id} className="gt-co-notaitem">{n.texto}</div>)}
+      {comentariosAluno.map((t, i) => <div key={i} className="gt-co-sessao-aluno"><small>{nomeAluno || "Aluno"} · {coachDataCurta(data)}</small>{t}</div>)}
+      {notas.map((n) => <CoachNotaItem key={n.id} n={n} meuId={meuId} nomeAluno={nomeAluno} />)}
       {!aberto
         ? <button type="button" className="gt-co-comentar" onClick={() => setAberto(true)}>Comentar esta sessão…</button>
         : (
@@ -12640,6 +12989,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     if (r.ok) {
       try { localStorage.removeItem(chaveRasc); } catch (e) {}
       logEvent(plano ? "coach_plano_enviado" : "coach_semana_enviada");
+      if (aluno.status === "ativo") avisarPorPush("treinador", { link_id: item.link_id });
       showToast(aluno.status === "pendente" ? `${plano ? "Plano guardado" : "Semana guardada"}: chega pra ${primeiroNome} quando ele aceitar` : plano ? `Plano de ${plSemanas} semanas enviado para ${primeiroNome}` : `Semana da ${primeiroNome} enviada`);
       onEnviado(); onClose();
       return;
@@ -14465,7 +14815,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
     const resto = [];
     for (const it of fila) {
       const r = await coachCall("coach_send_assignment", { p_link: it.link_id, p_tipo: it.tipo || "semana", p_payload: it.payload, p_mensagem: it.mensagem });
-      if (r.ok) showToast(`Semana da ${String(it.nome).split(" ")[0]} enviada`);
+      if (r.ok) { showToast(`Semana da ${String(it.nome).split(" ")[0]} enviada`); avisarPorPush("treinador", { link_id: it.link_id }); }
       else if (coachEhErroDeRede(r.raw)) resto.push(it);
       else showToast(`Não consegui enviar a semana de ${String(it.nome).split(" ")[0]}: ${r.erro}`);
     }
@@ -14557,7 +14907,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
             )}
             {ativo && (
               <CoachAlunosLista lista={lista} carregando={carregando} offline={offline} atualizadoEm={atualizadoEm} filaN={filaN}
-                onAbrir={(a) => setAberto(a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} />
+                onAbrir={(a, abaInicial) => setAberto(abaInicial ? { ...a, abaInicial } : a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} onMontar={(a) => setMontando(a)} />
             )}
           </>
         )}
@@ -16027,7 +16377,7 @@ function App() {
       corrida: true, date: sessao.data, label: sessao.titulo, item: { tipo: "corrida", id: chave.slice("corrida:".length) },
       duracaoMin: ex && ex.duracaoMin != null ? String(ex.duracaoMin) : sessao.duracaoMin ? String(sessao.duracaoMin) : "",
       km: ex && ex.distanciaKm ? String(ex.distanciaKm).replace(".", ",") : sessao.distanciaKm ? String(sessao.distanciaKm).replace(".", ",") : "",
-      rpe: ex && ex.rpe != null ? String(ex.rpe) : "", dor: ex && ex.dor != null ? ex.dor : null,
+      rpe: ex && ex.rpe != null ? String(ex.rpe) : "", dor: ex && ex.dor != null ? ex.dor : null, nota: ex && ex.nota ? ex.nota : "",
     });
   }
   // Registrar uma corrida que já aconteceu, sem montar treino: tipo, distância, tempo, esforço.
@@ -16922,11 +17272,14 @@ function App() {
     return { log: {}, extras: [], removed: [], cargas: {}, ...s };
   }
 
-  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm) {
+  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota) {
     const key = itemKey(item);
     const session = sessionShapeFor(dateIso);
     const entry = { duracaoMin: duracaoMin > 0 ? duracaoMin : null, rpe: rpe > 0 ? rpe : null, updatedAt: Date.now() };
     if (dor != null && dor !== "") entry.dor = Number(dor);
+    // Comentário da sessão (texto livre do aluno). Vai junto com a carga; o treinador vê se o aluno compartilha as cargas.
+    const notaLimpa = String(nota || "").trim().slice(0, 500);
+    if (notaLimpa) entry.nota = notaLimpa;
     const anterior = (session.cargas || {})[key];
     if (distanciaKm > 0) entry.distanciaKm = distanciaKm; // corrida digitada na hora (treino do plano / registro manual)
     else if (anterior && anterior.distanciaKm) entry.distanciaKm = anterior.distanciaKm; // vem do Strava; não perder ao editar duração/esforço
@@ -16945,6 +17298,7 @@ function App() {
       duracaoMin: existing && existing.duracaoMin != null ? String(existing.duracaoMin) : "",
       rpe: existing && existing.rpe != null ? String(existing.rpe) : "",
       dor: existing && existing.dor != null ? existing.dor : null,
+      nota: existing && existing.nota ? existing.nota : "",
     });
   }
 
@@ -17144,6 +17498,11 @@ function App() {
     setRpeModal({ item, date: selectedDate, label: treino ? treino.nome : "treino", duracaoMin: elapsedMin > 0 ? String(elapsedMin) : "", rpe: "", dor: null, celeb });
   }
 
+  // Nome do treinador que vê o comentário da sessão (vínculo ativo com treinos e cargas compartilhados).
+  const coachVeNota = (() => {
+    const l = (coachLinks || []).find((x) => x.status === "ativo" && (x.permissions || {}).ver_treinos !== false && (x.permissions || {}).ver_cargas !== false);
+    return l ? (l.coach_nome || "Seu treinador") : "";
+  })();
   function saveRpeModal() {
     if (!rpeModal) return;
     const dur = Number(rpeModal.duracaoMin);
@@ -17157,13 +17516,14 @@ function App() {
       const kmTxt = km > 0 ? String(Math.round(km * 100) / 100).replace(".", ",") : "";
       const sessao = { cid, data: rpeModal.date, fase: "", tipo, titulo: `${(PLANO_TIPOS[tipo] || PLANO_TIPOS.rodagem).nome}${kmTxt ? ` · ${kmTxt} km` : ""}`, distanciaKm: km > 0 ? Math.round(km * 100) / 100 : 0, duracaoMin: dur > 0 ? dur : 0, esforco: "", pace: km > 0 && dur > 0 ? planoFmtPace(dur / km) : "", detalhes: "", etapas: [], status: "feito", manual: true };
       salvarAvulso({ ...atual, sessoes: [...(atual.sessoes || []), sessao] });
-      saveCarga(rpeModal.date, { tipo: "corrida", id: `${atual.id}:${cid}` }, dur, rpe, rpeModal.dor, km);
+      saveCarga(rpeModal.date, { tipo: "corrida", id: `${atual.id}:${cid}` }, dur, rpe, rpeModal.dor, km, rpeModal.nota);
       logEvent("corrida_registrada_manual");
       logTreino("corrida", "manual");
       showToast("Corrida registrada");
-    } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "")) {
-      saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0);
-      showToast(rpeModal.corrida ? "Corrida registrada" : "Carga registrada");
+    } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim()) {
+      saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota);
+      if (String(rpeModal.nota || "").trim()) logEvent("sessao_comentario");
+      showToast(String(rpeModal.nota || "").trim() && coachVeNota ? `Salvo. ${coachVeNota} vai ver.` : rpeModal.corrida ? "Corrida registrada" : "Treino registrado");
     }
     setRpeModal(null);
   }
@@ -17711,6 +18071,7 @@ function App() {
               setRpeModal={setRpeModal}
               onSave={saveRpeModal}
               onSkip={() => setRpeModal(null)}
+              coachVeNota={coachVeNota}
             />
           )}
 
@@ -18051,6 +18412,7 @@ function App() {
                           ? <span>{[kmReal ? `${String(kmReal).replace(".", ",")} km` : "", cg.duracaoMin ? `${cg.duracaoMin} min` : "", kmReal && cg.duracaoMin ? `pace ${planoFmtPace(cg.duracaoMin / kmReal)}` : "", cg.rpe ? `esforço ${cg.rpe}` : "", cg.dor != null ? `dor ${cg.dor}` : ""].filter(Boolean).join(" · ")}</span>
                           : <span className="gt-text-muted">Duração/esforço não registrados</span>}
                         <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>{cg ? "editar ✎" : "registrar ✎"}</button>
+                        {cg && cg.nota && <div className="gt-sessao-nota">{cg.nota}</div>}
                       </div>
                     );
                   })()}
@@ -18128,6 +18490,7 @@ function App() {
                             : <span className="gt-text-muted">Duração/esforço não registrados</span>;
                         })()}
                         <button type="button" className="gt-item-carga-edit" onClick={() => openRpeModalFor(item, selectedDate, treino.nome)}>editar ✎</button>
+                        {(() => { const n = ((sessions[selectedDate]?.cargas || {})[key] || {}).nota; return n ? <div className="gt-sessao-nota">{n}</div> : null; })()}
                       </div>
                     )}
                   </div>
@@ -18860,6 +19223,7 @@ function App() {
           setRpeModal={setRpeModal}
           onSave={saveRpeModal}
           onSkip={() => setRpeModal(null)}
+          coachVeNota={coachVeNota}
         />
       )}
 
@@ -19306,6 +19670,13 @@ function App() {
                   </div>
                   <button type="button" className="gt-btn secondary small" onClick={() => { setSettingsOpen(false); setPlanoOpen(true); }}>Ver planos</button>
                 </div>
+              </div>
+            )}
+
+            {(PUSH_LEMBRETE_LIGADO || coachLinks.some((l) => l.status === "ativo")) && (
+              <div className="gt-settings-group">
+                <div className="gt-settings-group-title">Notificações</div>
+                <PushConfig showToast={showToast} logEvent={logEvent} coachNome={(coachLinks.find((l) => l.status === "ativo") || {}).coach_nome} />
               </div>
             )}
 
@@ -21525,11 +21896,14 @@ function FichaPromptModal({ prompt, setPrompt, onSave, onSkip }) {
   );
 }
 
-function RpeModal({ rpeModal, setRpeModal, onSave, onSkip }) {
+function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota }) {
   const rpeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const kmNum = parseFloat(String(rpeModal.km || "").replace(",", ".")) || 0;
   const durNum = Number(rpeModal.duracaoMin) || 0;
-  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== ""));
+  const temNota = !!String(rpeModal.nota || "").trim();
+  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota);
+  // Atividades (vôlei, natação…) já têm o "Comentário do dia" no card; aqui o comentário é de treino e corrida.
+  const comNota = !rpeModal.item || rpeModal.item.tipo !== "atividade";
   return (
     <div className="gt-modal-backdrop" onClick={onSkip}>
       <div className="gt-modal gt-rpe-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
@@ -21554,7 +21928,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip }) {
           </div>
         )}
         <h3>{rpeModal.manual ? "Registrar corrida" : rpeModal.celeb ? "Como foi? (opcional)" : `Como foi "${rpeModal.label}"?`}</h3>
-        <p>{rpeModal.manual ? "Registre a corrida que você já fez, no dia escolhido. Ela entra na sua evolução e no controle de carga." : "Isso alimenta o controle de carga (aguda/crônica) — leva 10 segundos."}</p>
+        <p>{rpeModal.manual ? "Registre a corrida que você já fez, no dia escolhido. Ela entra na sua evolução e no controle de carga." : coachVeNota ? `Ajuda ${coachVeNota} a ajustar seus próximos treinos. Leva 10 segundos.` : "Ajuda a acompanhar seu cansaço. Leva 10 segundos."}</p>
         {rpeModal.manual && (
           <>
             <div className="gt-field-label">TIPO</div>
@@ -21616,6 +21990,21 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip }) {
           ))}
         </div>
         <div className="gt-rpe-hint">0 = nenhuma dor · 10 = dor máxima. Preencha só o que quiser; o resto fica em branco.</div>
+        {comNota && (
+          <>
+            <div className="gt-field-label">COMENTÁRIO · OPCIONAL</div>
+            <textarea
+              className="gt-comment gt-rpe-nota"
+              rows={2}
+              maxLength={500}
+              aria-label="Comentário sobre a sessão"
+              placeholder={coachVeNota ? `Algo que ${coachVeNota} deva saber? Ex.: dor, troca de exercício.` : "Ex.: dormi mal, senti o joelho no agachamento"}
+              value={rpeModal.nota || ""}
+              onChange={(e) => setRpeModal({ ...rpeModal, nota: e.target.value })}
+            />
+            {coachVeNota && <div className="gt-rpe-hint">{coachVeNota} vê este comentário.</div>}
+          </>
+        )}
         <div className="gt-modal-actions">
           <button className="gt-btn" disabled={!canSave} onClick={onSave}>Salvar</button>
           <button className="gt-btn secondary" onClick={onSkip}>Pular por agora</button>

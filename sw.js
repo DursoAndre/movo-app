@@ -1,4 +1,4 @@
-const CACHE = "treino-app-v212";
+const CACHE = "treino-app-v214";
 const SHELL = [
   "./",
   "./index.html",
@@ -39,16 +39,32 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// Toque na notificação de "descanso acabou" (ver app.js) foca uma aba já
+// Push do servidor (edge function enviar-push): { title, body, url, tag }.
+self.addEventListener("push", (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data ? event.data.text() : "" }; }
+  event.waitUntil(
+    self.registration.showNotification(d.title || "Movo", {
+      body: d.body || "",
+      icon: "./icon-192.png",
+      badge: "./icon-192.png",
+      tag: d.tag || "movo",
+      data: { url: d.url || "./" },
+    })
+  );
+});
+
+// Toque na notificação (descanso acabou, push do servidor) foca uma aba já
 // aberta do app, se tiver, ou abre uma nova — sem isso o toque só fecha a
 // notificação e não leva a pessoa de volta pro treino.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "./";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
       const existing = clientsArr.find((c) => "focus" in c);
       if (existing) return existing.focus();
-      return self.clients.openWindow("./");
+      return self.clients.openWindow(url);
     })
   );
 });
