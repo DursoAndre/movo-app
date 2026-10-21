@@ -1389,10 +1389,13 @@ async function pushAtivar(tipos) {
     const j = sub.toJSON();
     const { error } = await supabaseClient.rpc("push_salvar", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent.slice(0, 200), p_tipos: tipos || null });
     if (error) return { ok: false, erro: "Não consegui ativar agora. Tente de novo." };
+    try { localStorage.removeItem("treino-app:pushDesligado"); } catch (e) {}
     return { ok: true };
   } catch (e) { return { ok: false, erro: "Não consegui ativar neste aparelho." }; }
 }
 async function pushDesativar() {
+  // Lembra que a pessoa desligou, para o app não religar sozinho.
+  try { localStorage.setItem("treino-app:pushDesligado", "1"); } catch (e) {}
   const sub = await pushInscricaoAtual();
   if (!sub) return { ok: true };
   try { await supabaseClient.rpc("push_remover", { p_endpoint: sub.endpoint }); } catch (e) {}
@@ -1405,11 +1408,17 @@ function pushTiposLer() {
 }
 // Convite para ativar avisos no momento em que fazem sentido (entrou num desafio, aceitou um treinador).
 // Aparece uma vez por motivo, só se o aparelho recebe push e a pessoa ainda não ativou nem bloqueou.
+// Notificações vêm ligadas por padrão: com a permissão já dada (ex.: no descanso entre séries),
+// inscreve o aparelho sozinho, a menos que a pessoa tenha desligado em Configurações.
 async function pushResincronizar() {
   try {
     if (!pushSuportado() || Notification.permission !== "granted") return;
     const sub = await pushInscricaoAtual();
-    if (!sub) return;
+    if (!sub) {
+      if (localStorage.getItem("treino-app:pushDesligado")) return;
+      const r = await pushAtivar(pushTiposLer());
+      return r.ok ? "ativado" : undefined;
+    }
     const j = sub.toJSON();
     await supabaseClient.rpc("push_salvar", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent.slice(0, 200), p_tipos: null });
   } catch (e) {}
@@ -1426,7 +1435,7 @@ function PushConvite({ showToast, logEvent }) {
   const [conv, setConv] = useState(null); // { motivo, coachNome }
   const [ocupado, setOcupado] = useState(false);
   // Ao abrir o app, regrava a inscrição deste aparelho (o servidor apaga as que deram erro).
-  useEffect(() => { pushResincronizar(); }, []);
+  useEffect(() => { pushResincronizar().then((r) => { if (r === "ativado") logEvent("push_ativado", { origem: "padrao" }); }); }, []);
   useEffect(() => {
     function on(e) {
       const d = (e && e.detail) || {};
