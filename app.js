@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v209";
+const APP_BUILD = "v210";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -2878,6 +2878,18 @@ const APP_CSS = `
   .gt-ag-ico { width:30px; height:30px; flex:0 0 30px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:var(--surface-2); }
   .gt-ag-ico.treino { color:var(--accent); } .gt-ag-ico.atividade { color:var(--info); }
   .gt-ag-sub { display:block; font-size:12px; color:var(--text-muted); margin-top:2px; }
+  button.gt-ag-row.gt-ag-doplano { width:100%; background:none; border:none; border-top:1px solid var(--border); color:var(--text); font:inherit; text-align:left; padding:0; cursor:pointer; }
+  .gt-ag-doplano .gt-ag-nm { flex:1; }
+  .gt-ag-doplano .seta { color:var(--text-muted); font-size:18px; padding:0 8px; }
+  .gt-co-base-nota { background:var(--surface-2); border-radius:10px; padding:10px 12px; margin:0 0 12px; font-size:14px; line-height:1.4; }
+  .gt-co-plano-aluno { background:var(--surface); border-radius:14px; padding:12px; margin:0 0 12px; display:flex; flex-direction:column; gap:6px; }
+  .gt-co-plano-aluno .gt-co-sec { margin-top:0; }
+  .gt-co-plano-aluno .t { font-weight:700; font-size:16px; }
+  .gt-co-plano-aluno .d, .gt-co-plano-aluno .dica { font-size:13px; color:var(--text-muted); }
+  .gt-co-plano-aluno-lista { list-style:none; margin:4px 0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:14px; }
+  .gt-co-plano-aluno-lista li { display:grid; grid-template-columns:76px 1fr; gap:8px; align-items:baseline; }
+  .gt-co-plano-aluno-lista span { color:var(--text-muted); font-size:13px; font-variant-numeric:tabular-nums; }
+  .gt-co-plano-aluno .gt-btn { margin-top:6px; }
   .gt-ag-link { background:none; border:none; padding:0; color:var(--accent); font-size:12px; cursor:pointer; text-decoration:underline; }
   .gt-ag-nm { flex:1; font-size:14px; min-width:0; overflow-wrap:anywhere; }
   .gt-ag-more { width:44px; height:44px; background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; }
@@ -7207,6 +7219,20 @@ function planoSessoesDoDia(planos, iso) {
 // corrida" da semana fixa; as outras atividades (vôlei, descanso) e o que veio do treinador ficam.
 const PLANO_ORIGENS = { meu: "Meu plano", modelo: "Modelo do Movo", ia: "Feito com IA", treinador: "Do treinador" };
 function planoEhSemanas(p) { return !!p && p.tipo === "semanas"; }
+// Plano que veio do treinador, mesmo depois que o vínculo acabou e ele virou "Meu plano" (exTreinador):
+// a semana do treinador continua sendo a base dele, então não soma com ela.
+function planoDoTreinador(p) { return !!p && (p.origem === "treinador" || !!p.exTreinador); }
+// Vínculo encerrado: o plano do treinador fica com o aluno como "Meu plano" (sem mudar as sessões).
+function planosSemVinculo(planos, linksAtivos) {
+  const ativos = new Set((linksAtivos || []).map((l) => l.link_id));
+  const virou = [];
+  const next = (planos || []).map((p) => {
+    if (!planoEhSemanas(p) || p.origem !== "treinador" || !p.linkId || ativos.has(p.linkId)) return p;
+    virou.push(p);
+    return { ...p, origem: "meu", exTreinador: p.coachNome || "Treinador", vinculoFimEm: todayISO() };
+  });
+  return { next, virou };
+}
 // Nome da fase na tela do plano de semanas (o dado guarda o nome técnico).
 const PLANO_FASE_NOME = { Descarga: "Semana leve", "Específico": "Pico", Polimento: "Final leve" };
 function planoFaseNome(f) { return PLANO_FASE_NOME[f] || f || ""; }
@@ -7236,7 +7262,7 @@ function planoChaveItem(dow, it) { return `${dow}:${it.tipo}:${it.id}`; }
 function agendaPlanoTira(it, pl, oc, dow) {
   const forca = it.tipo === "treino", corrida = it.tipo === "atividade" && it.id === "corrida";
   if (!forca && !corrida) return false;
-  if (agendaEntradaDoTreinador(it)) return pl.origem === "treinador";
+  if (agendaEntradaDoTreinador(it)) return planoDoTreinador(pl);
   if (Array.isArray(pl.manter) && pl.manter.includes(planoChaveItem(dow, it))) return false;
   return forca ? oc.forca : oc.corrida;
 }
@@ -7251,7 +7277,7 @@ function planoSaiFica(schedule, nomeDe, pl) {
   PLANO_ORDEM_SEMANA.forEach((dow) => ((schedule && schedule[dow]) || []).forEach((it) => {
     const nome = nomeDe(it);
     if (!nome) return;
-    if (pl.origem === "treinador" && agendaEntradaDoTreinador(it)) return;
+    if (planoDoTreinador(pl) && agendaEntradaDoTreinador(it)) return;
     const rotulo = `${it.id === "corrida" ? "Corrida" : nome} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`;
     const cobre = agendaPlanoTira(it, { ...pl, somar: false, manter: [] }, ocBase, dow);
     const tira = agendaPlanoTira(it, pl, oc, dow);
@@ -11223,6 +11249,36 @@ function coachPlanoSessoes(payload, linkId) {
   return { ...p, sessoes };
 }
 
+// "Trazer meu treinador": o plano de semanas que o aluno já segue (meu, modelo do Movo ou IA), para o
+// treinador ver e usar como ponto de partida. Devolve a semana base (a atual; se for leve, a anterior)
+// no formato da semana do treinador e quantas semanas faltam.
+function coachPlanoDoAluno(detalhe, hoje) {
+  const pl = planoSemanasAtual((detalhe && detalhe.planos) || [], hoje);
+  if (!pl || pl.origem === "treinador" || !Array.isArray(pl.sessoes)) return null;
+  const semanas = planoSemanasLista(pl);
+  const atual = hoje < pl.inicio ? 0 : Math.max(0, semanas.findIndex((w) => hoje >= w.inicio && hoje <= w.fim));
+  let base = atual;
+  while (base > 0 && /Descarga|Polimento/.test(semanas[base].fase || "")) base--;
+  const fichasAluno = {};
+  ((detalhe && detalhe.treinos) || []).forEach((t) => { fichasAluno[t.id] = t; });
+  const sem = coachSemanaVazia();
+  const refs = {};
+  (semanas[base] ? semanas[base].sessoes : []).forEach((x) => {
+    const dow = weekdayOf(x.data);
+    if (x.tipo === "treino") {
+      const f = fichasAluno[x.ref];
+      if (!f) return;
+      if (!refs[x.ref]) { refs[x.ref] = coachNovoId(); sem.fichas[refs[x.ref]] = { ...coachClonar(f), id: refs[x.ref], origem: undefined }; }
+      sem.dias[dow] = [...(sem.dias[dow] || []), { tipo: "treino", ref: refs[x.ref] }];
+      return;
+    }
+    const c = coachCorridaNorm({ ...x, etapas: x.etapas && x.etapas.length ? x.etapas : [{ distanciaM: Math.round((+x.distanciaKm || 0) * 1000), duracaoMin: +x.duracaoMin || 0 }] });
+    sem.dias[dow] = [...(sem.dias[dow] || []), { tipo: "atividade", id: "corrida", nome: "Corrida", ...(c ? { corrida: c } : {}) }];
+  });
+  const restam = Math.max(0, semanas.length - atual - 1);
+  return { plano: pl, semanas, atual, sem, restam, origemNome: PLANO_ORIGENS[pl.origem] || "Plano" };
+}
+
 // Última carga que o aluno usou em cada exercício (por nome), a partir do detalhe do aluno.
 function coachUltimasCargas(detalhe) {
   const porId = {};
@@ -12099,6 +12155,7 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
   for (let i = 6; i >= 0; i--) { const d = addDays(hojeISO, -i); dias7.push({ d, feito: !!(det && det.sessoes && det.sessoes[d] && det.sessoes[d].feito) }); }
   const cl = coachClassificar(aluno, hojeISO);
   const ultimas = det && !det.bloqueado ? coachUltimasCargas(det) : {};
+  const plAluno = useMemo(() => (det && !det.bloqueado ? coachPlanoDoAluno(det, hojeISO) : null), [det, hojeISO]);
   const nomesTreino = {};
   ((det && det.treinos) || []).forEach((t) => { nomesTreino[`treino:${t.id}`] = t.nome; });
   const temCorrida = det && det.sessoes && Object.values(det.sessoes).some((s) => Object.values(s.cargas || {}).some((c) => c && Number(c.distanciaKm) > 0));
@@ -12130,6 +12187,25 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
               <div className="gt-co-atencao" role="alert"><div className="gt-co-sec warn">⚠ ATENÇÃO</div><div>{cl.motivo}.</div>
                 <div className="gt-co-acoes"><button type="button" className="gt-btn" onClick={onMontar}>Ajustar treino</button></div></div>
             )}
+            {plAluno && (() => {
+              const w = plAluno.semanas[plAluno.atual];
+              const comecou = hojeISO >= plAluno.plano.inicio;
+              const dc = (d) => planoDataCurta(d).toLowerCase();
+              return (
+                <div className="gt-co-plano-aluno">
+                  <div className="gt-co-sec">PLANO QUE {aluno.nome.split(" ")[0].toUpperCase()} JÁ SEGUE</div>
+                  <div className="t">{plAluno.plano.nome}</div>
+                  <div className="d">{plAluno.origemNome} · {comecou ? `semana ${w.n} de ${plAluno.semanas.length} (${planoFaseNome(w.fase).toLowerCase()})` : `começa ${dc(plAluno.plano.inicio)}`} · até {dc(planoFimSemanas(plAluno.plano))}</div>
+                  {w.sessoes.length > 0 && (
+                    <ul className="gt-co-plano-aluno-lista" aria-label={comecou ? "Esta semana do plano" : "Primeira semana do plano"}>
+                      {w.sessoes.map((x) => <li key={x.cid || x.idx}><span>{planoDataCurta(x.data)}</span>{x.titulo}{x.feito ? " ✓" : ""}</li>)}
+                    </ul>
+                  )}
+                  <button type="button" className="gt-btn secondary" onClick={() => onMontar({ sem: plAluno.sem, restam: plAluno.restam, nome: plAluno.plano.nome })}>Montar a partir deste plano</button>
+                  <div className="dica">O plano de {aluno.nome.split(" ")[0]} só muda quando ele aceitar o seu.</div>
+                </div>
+              );
+            })()}
             <div className="gt-co-semana">
               <div className="gt-co-semana-head"><span className="gt-co-sec">ÚLTIMOS 7 DIAS</span><span>{dias7.filter((x) => x.feito).length} de 7 dias</span></div>
               <div className="gt-co-dias7">
@@ -12385,6 +12461,14 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       const ult = e.ok ? (e.data || []).find((x) => x.tipo === "semana") : null;
       if (ult) setUltimo(ult.payload);
       if (d.ok) setDetalhe(d.data);
+      if (aluno.basePlano) {
+        // Veio de "Montar a partir deste plano": começa da semana do plano que o aluno já segue.
+        setSem(coachClonar(aluno.basePlano.sem)); setMsg("");
+        if (planoLiberado) { setComoPlano(true); if (aluno.basePlano.restam >= 1) setPlSemanas(Math.min(24, aluno.basePlano.restam)); }
+        inicial.current = JSON.stringify({ sem: coachSemanaVazia(), msg: "" });
+        setPronto(true);
+        return;
+      }
       let rasc = null;
       try { rasc = JSON.parse(localStorage.getItem(chaveRasc) || "null"); } catch (x) {}
       const base = rasc && rasc.sem ? rasc.sem : (ult ? coachClonar(ult.payload) : coachSemanaVazia());
@@ -12536,12 +12620,13 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       )}
       <div className="gt-focus-body gt-co-aluno-body">
         {!pronto && <div className="gt-empty">Carregando…</div>}
+        {pronto && !ehModelo && aluno.basePlano && <div className="gt-co-base-nota" role="status">Semana copiada do plano de {primeiroNome} ({aluno.basePlano.nome}). Ajuste o que quiser e envie.</div>}
         {pronto && COACH_ORDEM_DIAS.map((dow) => {
           const itens = sem.dias[dow] || [];
           return (
             <div key={dow} className="gt-co-diacard">
               <div className="gt-co-diacard-head">
-                <span className="n">{COACH_DIAS[dow]} <span className={`dt ${datasSemana[dow].hoje ? "hoje" : ""}`}>{datasSemana[dow].hoje ? "hoje · " : ""}{datasSemana[dow].txt}</span>{itens.length === 0 && <span className="rest"> · Descanso</span>}</span>
+                <span className="n">{COACH_DIAS[dow]} {!(comoPlano && planoLiberado) && <span className={`dt ${datasSemana[dow].hoje ? "hoje" : ""}`}>{datasSemana[dow].hoje ? "hoje · " : ""}{datasSemana[dow].txt}</span>}{itens.length === 0 && <span className="rest">{comoPlano && planoLiberado ? "Descanso" : " · Descanso"}</span>}</span>
                 <button type="button" className="gt-co-add" aria-label={`Adicionar em ${COACH_DIAS[dow].toLowerCase()}`} onClick={() => setDiaAberto(dow)}>＋</button>
               </div>
               {itens.map((it, idx) => {
@@ -12574,8 +12659,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
             const sobem = COACH_ORDEM_DIAS.flatMap((dow) => (sem.dias[dow] || []).map((it) => (it.tipo === "atividade" ? coachCorridaNorm(it.corrida) : null)).filter((c) => c && c.modelo && c.distanciaKm).map((c) => `${c.titulo} (${PLANO_DIAS_CURTO[dow].toLowerCase()})`));
             return (
               <>
-                <div className="gt-field-label">Duração</div>
-                <div className="gt-provas-filters" role="group" aria-label="Duração">{[4, 6, 8, 12].map((n) => <button key={n} type="button" className={`gt-provas-pill ${plSemanas === n ? "on" : ""}`} aria-pressed={plSemanas === n} onClick={() => setPlSemanas(n)}>{n} sem.</button>)}</div>
+                <div className="gt-field-label">Duração (semanas)</div>
+                <div className="gt-provas-filters" role="group" aria-label="Duração">{[...new Set([4, 6, 8, 12, plSemanas])].sort((a, b) => a - b).map((n) => <button key={n} type="button" className={`gt-provas-pill ${plSemanas === n ? "on" : ""}`} aria-pressed={plSemanas === n} onClick={() => setPlSemanas(n)}>{n}</button>)}</div>
                 <div className="gt-field-label">Início</div>
                 <div className="gt-provas-filters" role="group" aria-label="Início">{[segundaEsta, segundaQueVem].map((d) => <button key={d} type="button" className={`gt-provas-pill ${plInicio === d ? "on" : ""}`} aria-pressed={plInicio === d} onClick={() => setPlInicio(d)}>{d === segundaEsta ? `Nesta semana (${dc(d)})` : `Na próxima (${dc(d)})`}</button>)}</div>
                 <ol className="gt-ps-fases" aria-hidden="true">{fases.map((f, i) => <li key={i} className={planoFaseClasse(f)}><span>{i + 1}</span></li>)}</ol>
@@ -14349,7 +14434,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
       </nav>
       {aberto && (
         <CoachAlunoView aluno={{ ...aberto, coach_uid: session.user.id }} meuId={session.user.id} refreshKey={refreshKey} showToast={showToast} treinosProprios={treinosProprios}
-          onClose={() => { setAberto(null); carregar(); }} onMontar={() => setMontando(aberto)} />
+          onClose={() => { setAberto(null); carregar(); }} onMontar={(base) => setMontando(base && base.sem ? { ...aberto, basePlano: base } : aberto)} />
       )}
       {montando && (
         <CoachComposer planoLiberado={planoLiberado} aluno={{ ...montando, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
@@ -16393,7 +16478,17 @@ function App() {
   const carregarCoachAluno = useCallback(async () => {
     if (!session) return;
     const [l, a] = await Promise.all([coachCall("coach_my_coach"), coachCall("coach_my_assignments")]);
-    if (l.ok) setCoachLinks(l.data || []);
+    if (l.ok) {
+      setCoachLinks(l.data || []);
+      const { next, virou } = planosSemVinculo(planosRef.current, l.data || []);
+      if (virou.length) {
+        savePlanos(next);
+        logEvent("plano_treinador_virou_meu");
+        const p = virou.find((x) => !x.encerradoEm && planoFimSemanas(x) >= todayISO());
+        // Espera o "Salvo" do carregamento passar, para o aviso não ser trocado por ele.
+        if (p) setTimeout(() => showToast(`Você não treina mais com ${p.coachNome || "seu treinador"}. O plano continua com você.`), 1500);
+      }
+    }
     if (a.ok) {
       setCoachAss(a.data || []);
       // reenvia a decisão de envios já aplicados aqui mas que o servidor ainda não registrou (ex.: estava offline)
@@ -18025,10 +18120,15 @@ function App() {
             )}
             {(!semanaRecolhida || verSemanaFixa) && DIAS.map((dia, idx) => {
               const itens = (schedule[idx] || []).map((it) => ({ it, nome: it.tipo === "treino" ? treinoById(it.id)?.nome : atividadeById(it.id)?.nome, descanso: it.tipo === "atividade" && !!atividadeById(it.id)?.descanso })).filter((x) => x.nome);
+              // Treinos do plano de semanas nesse dia (próxima data): sem eles, o dia vazio aparecia como "Descanso".
+              const dataPl = proximaDataDoDia(idx);
+              const plDia = planoSemanasAtivo(planos, dataPl);
+              const temCorridaFixa = itens.some((x) => x.it.tipo === "atividade" && x.it.id === "corrida");
+              const doPlanoDia = plDia ? plDia.sessoes.filter((x) => x.data === dataPl && (x.tipo === "treino" ? !itens.some((y) => y.it.tipo === "treino" && y.it.id === x.ref) : !temCorridaFixa)) : [];
                             return (
-                <div className={`gt-card gt-ag-card ${itens.length === 0 ? "vazio" : ""} ${idx === weekdayOf(todayISO()) ? "hoje" : ""}`} key={idx}>
+                <div className={`gt-card gt-ag-card ${itens.length === 0 && doPlanoDia.length === 0 ? "vazio" : ""} ${idx === weekdayOf(todayISO()) ? "hoje" : ""}`} key={idx}>
                   <div className="gt-ag-head">
-                    <span className="day-lbl">{dia}{idx === weekdayOf(todayISO()) && <span className="gt-hoje-pill">HOJE</span>}{itens.length === 0 && <span className="gt-ag-empty-inline">Descanso</span>}</span>
+                    <span className="day-lbl">{dia}{idx === weekdayOf(todayISO()) && <span className="gt-hoje-pill">HOJE</span>}{itens.length === 0 && doPlanoDia.length === 0 && <span className="gt-ag-empty-inline">Descanso</span>}</span>
                     <button type="button" className="gt-ag-add" aria-label={`Adicionar em ${dia}`} onClick={() => { setSheetDay(idx); setSheetBusca(""); setSheetNova(null); }}>＋</button>
                   </div>
                                     {itens.map(({ it, nome, descanso }) => {
@@ -18051,6 +18151,13 @@ function App() {
                       </div>
                     );
                   })}
+                  {doPlanoDia.map((x) => (
+                    <button type="button" className="gt-ag-row gt-ag-doplano" key={x.cid || x.titulo} onClick={() => { setSelectedDate(dataPl); setTab("hoje"); }}>
+                      <span className={`gt-ag-ico ${x.tipo === "treino" ? "treino" : "atividade"}`} aria-hidden="true"><Ei e={x.tipo === "treino" ? "🏋️" : "🏃"} /></span>
+                      <span className="gt-ag-nm">{x.titulo}<span className="gt-ag-sub">{planoSemanaChave(dataPl) === planoSemanaChave(todayISO()) ? "Do plano" : `Do plano · ${planoDataCurta(dataPl).toLowerCase()}`}</span></span>
+                      <span className="seta" aria-hidden="true">›</span>
+                    </button>
+                  ))}
                 </div>
               );
             })}
@@ -21098,7 +21205,7 @@ function PlanoSemanasCard({ plano, feitoFn, onMover, onRemover, onEncerrar, onTr
       <div className="gt-ps-top">
         <div>
           <div className="gt-ps-nome">{plano.nome}</div>
-          <div className="gt-ps-sub">{plano.origem === "treinador" && plano.coachNome && !String(plano.nome).includes(plano.coachNome) ? `De ${plano.coachNome} · ` : ""}{hoje < plano.inicio ? `Começa ${planoDataCurta(plano.inicio).toLowerCase()} · até ${planoDataCurta(fim).slice(4)}` : `${plano.semanas} semanas · até ${planoDataCurta(fim).toLowerCase()}`}</div>
+          <div className="gt-ps-sub">{plano.origem === "treinador" && plano.coachNome && !String(plano.nome).includes(plano.coachNome) ? `De ${plano.coachNome} · ` : ""}{plano.exTreinador ? (String(plano.nome).includes(plano.exTreinador) ? "Agora é seu · " : `Feito por ${plano.exTreinador} · agora é seu · `) : ""}{hoje < plano.inicio ? `Começa ${planoDataCurta(plano.inicio).toLowerCase()} · até ${planoDataCurta(fim).slice(4)}` : `${plano.semanas} semanas · até ${planoDataCurta(fim).toLowerCase()}`}</div>
         </div>
         <button type="button" className="gt-ps-mais" aria-label="Opções do plano" aria-expanded={acoes} onClick={() => setAcoes(!acoes)}>⋯</button>
       </div>
