@@ -7842,3 +7842,15 @@ select cron.schedule('push-desafios-semanal', '0 12 * * 1', $job$
     body := '{"tipo":"desafios"}'::jsonb
   );
 $job$);
+
+-- A edge function usa o service_role, que neste projeto só tem o que é liberado tabela a tabela.
+-- Sem isto o envio sai vazio (corrigido em 21/10, depois da v214).
+grant select, insert, update, delete on public.push_inscricoes to service_role;
+grant select, insert on public.push_envios to service_role;
+grant select (id, nome, start_date, weeks, rules, stakes) on public.challenges to service_role;
+grant select (challenge_id, user_id) on public.challenge_members to service_role;
+grant select (challenge_id, user_id, date, tipo) on public.challenge_checkins to service_role;
+grant select (challenge_id, date, from_user, to_user, status) on public.challenge_together to service_role;
+grant select (user_id, display_name) on public.app_data to service_role;
+grant select (id, coach_id, student_id, status) on public.coach_links to service_role;
+grant select (user_id, nome_exibicao) on public.coach_profiles to service_role;
