@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v214";
+const APP_BUILD = "v215";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -15297,7 +15297,8 @@ function App() {
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const [pendingFichaPrompt, setPendingFichaPrompt] = useState(null); // { item, date, treinoNome, changes }
   const pullStartYRef = useRef(null);
-  const [stravaConnected, setStravaConnected] = useState(false);
+  const [stravaConnected, setStravaConnected] = useState(() => { try { const v = localStorage.getItem("treino-app:stravaConnected"); return v === "1" ? true : v === "0" ? false : null; } catch (e) { return null; } }); // null = ainda não sei (evita piscar o que depende do Strava)
+  useEffect(() => { if (stravaConnected == null) return; try { localStorage.setItem("treino-app:stravaConnected", stravaConnected ? "1" : "0"); } catch (e) {} }, [stravaConnected]);
   // Convite do Strava: aparece uma vez na aba Hoje, só depois de concluir a configuração inicial (e de qualquer ficha aberta por ela).
   const [stravaConvite, setStravaConvite] = useState(() => { try { return localStorage.getItem(STORAGE_PREFIX + "strava_convite") === "1"; } catch (e) { return false; } });
   useEffect(() => { if (stravaConnected && stravaConvite) { setStravaConvite(false); try { localStorage.removeItem(STORAGE_PREFIX + "strava_convite"); } catch (e) {} } }, [stravaConnected, stravaConvite]);
@@ -15726,7 +15727,7 @@ function App() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [session, cloudSynced, stravaConnected]);
-  const ajusteLiberado = !!(features && features.includes("ajuste_semana")) && !stravaConnected;
+  const ajusteLiberado = !!(features && features.includes("ajuste_semana")) && cloudSynced && (stravaConnected === false || !!(session && session.user.email === ADMIN_EMAIL)); // só depois de saber do Strava e sincronizar, senão o card pisca; o Andre usa mesmo com Strava (exceção, 21/10)
   const blocosLiberado = !!(features && features.includes("blocos")); // editor de sessão em blocos (fase 1)
   const planoLiberado = !!(features && features.includes("plano")); // plano de semanas (fase 2)
 
@@ -15879,6 +15880,7 @@ function App() {
 
   function handleLogout() {
     logEvent("logout");
+    try { localStorage.removeItem("treino-app:stravaConnected"); } catch (e) {}
     supabaseClient.auth.signOut();
   }
 
@@ -18329,7 +18331,7 @@ function App() {
               <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} removidos={coachRemocoes(coachPend[0].payload, schedule, nomeNaAgenda, coachPodeAjustar).nomes} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
             {coachLinks[0] && <CoachNotaHoje notas={coachNotas} linkId={coachLinks[0].link_id} nomeCoach={coachLinks[0].coach_nome} onEnviar={coachResponder} />}
-            {stravaConvite && !stravaConnected && !templatesOpen && !treinoIAOpen && (
+            {stravaConvite && stravaConnected === false && !templatesOpen && !treinoIAOpen && (
               <div className="gt-strava-convite" role="region" aria-label="Conectar o Strava">
                 <div className="tx"><b>Já usa o Strava?</b><span>Conecte para trazer suas corridas e atividades pra agenda.</span></div>
                 <div className="ac">
@@ -19302,7 +19304,7 @@ function App() {
               {item("raio", "Treinos de corrida", () => setTreinoCorrida({ data: todayISO() }))}
               <div className="gt-menu-sec">Dados</div>
               {item("importar", "Importar histórico", () => setHistOpen(true))}
-              {!stravaConnected && <button type="button" className="gt-menu-item" onClick={ir(() => setSettingsOpen(true))}><span className="ic"><StravaIcon size={20} /></span><span className="tx">Conectar com o Strava</span></button>}
+              {stravaConnected === false && <button type="button" className="gt-menu-item" onClick={ir(() => setSettingsOpen(true))}><span className="ic"><StravaIcon size={20} /></span><span className="tx">Conectar com o Strava</span></button>}
               <div className="gt-menu-sec">Social</div>
               {item("amigos", "Amigos e ranking", () => setSettingsOpen(true))}
               <div className="gt-menu-sec">Treinador</div>
