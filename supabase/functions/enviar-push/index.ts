@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       if (!comPush.size) return json({ ok: true, pessoas: 0 });
       const { data: chs } = await admin.from("challenges").select("id,nome,start_date,weeks,rules,stakes").lte("start_date", somaDias(hoje, -1));
       // Por pessoa: os resultados das semanas que fecharam entre hoje-7 e ontem.
-      const porPessoa: Record<string, { ch: { id: string; nome: string }; num: number; idx: number; venceu: boolean; serie: number; fim: boolean; vencedor: string; count: number; pos: number; empate: boolean; ref: string }[]> = {};
+      const porPessoa: Record<string, { ch: { id: string; nome: string }; num: number; idx: number; venceu: boolean; serie: number; fim: boolean; vencedor: string; pts: number; pos: number; empate: boolean; premio: boolean; ref: string }[]> = {};
       for (const ch of (chs || []) as { id: string; nome: string; start_date: string; weeks: number; rules: Record<string, unknown>; stakes: Record<string, unknown> }[]) {
         const fimDesafio = somaDias(ch.start_date, ch.weeks * 7 - 1);
         if (fimDesafio < somaDias(hoje, -7)) continue;
@@ -132,8 +132,8 @@ Deno.serve(async (req) => {
             const v = w.winners[0];
             (porPessoa[uid] = porPessoa[uid] || []).push({
               ch: { id: ch.id, nome: ch.nome }, num: i + 1, idx: i, venceu: w.winners.indexOf(uid) >= 0, serie, fim: i === ch.weeks - 1,
-              vencedor: v ? (w.winners.length > 1 ? w.winners.map(nomeDe).join(" e ") : nomeDe(v)) : "", count: v ? (w.rows.find((x) => x.uid === v) || { count: 0 }).count : 0,
-              pos, empate: !v, ref: `${ch.id}:${i + 1}`,
+              vencedor: v ? (w.winners.length > 1 ? w.winners.map(nomeDe).join(" e ") : nomeDe(v)) : "", pts: v ? (w.rows.find((x) => x.uid === v) || { pts: 0 }).pts : 0,
+              pos, empate: !v, premio: !!(ch.stakes && (ch.stakes as Record<string, unknown>).semana), ref: `${ch.id}:${i + 1}`,
             });
           }
         }
@@ -150,15 +150,16 @@ Deno.serve(async (req) => {
         let msg;
         if (it.venceu) {
           msg = {
-            title: it.fim ? `🏆 ${it.ch.nome}: você venceu a última semana` : `🏆 ${it.ch.nome}: você venceu a semana ${it.num}`,
-            body: it.serie > 1 ? `${it.serie} semanas seguidas na frente. Toque para compartilhar.` : "Toque para compartilhar a vitória com o grupo.",
+            // Título curto (o nome do desafio pode ser longo e cortar no iPhone); o nome vai no corpo.
+            title: it.fim ? "🏆 Você venceu a última semana" : `🏆 Você venceu a semana ${it.num}`,
+            body: it.serie > 1 ? `${it.ch.nome} · ${it.serie} semanas seguidas na frente. Toque para compartilhar.` : `${it.ch.nome} · Toque para compartilhar com o grupo.`,
           };
         } else if (novos.length > 1) {
           msg = { title: "Seus desafios fecharam a semana", body: "Veja quem venceu cada um." };
         } else if (it.empate) {
-          msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: "Semana empatada. Ninguém paga nada." };
+          msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: it.premio ? "Semana empatada. Ninguém paga nada." : "Semana empatada." };
         } else {
-          msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: `${it.vencedor} venceu com ${it.count} treinos. Você ficou em ${it.pos}º.` };
+          msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: `${it.vencedor} venceu com ${it.pts} ponto${Math.abs(it.pts) === 1 ? "" : "s"}. Você ficou em ${it.pos}º.` };
         }
         const url = novos.length > 1 && !it.venceu ? `${APP}?desafios=1` : `${APP}?resultado=${it.ch.id}&semana=${it.idx}`;
         const res = await mandar(uid, "desafios", it.ref, { ...msg, url, tag: "desafios" });

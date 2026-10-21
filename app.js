@@ -1438,8 +1438,9 @@ function PushConvite({ showToast, logEvent }) {
     showToast("Pronto. Você pode mudar isso em Configurações.");
   }
   const desafio = conv.motivo === "desafio";
-  const titulo = desafio ? "Quer saber quem venceu a semana?" : `Quer saber quando ${conv.coachNome || "seu treinador"} mandar treino novo?`;
-  const texto = desafio ? "Mandamos 1 aviso por semana, na segunda às 9h, com o resultado." : "Mandamos um aviso no celular assim que o treino chegar.";
+  const coachPrimeiro = conv.coachNome ? String(conv.coachNome).trim().split(" ")[0] : "seu treinador";
+  const titulo = desafio ? "Quer saber quem venceu a semana?" : `Quer saber quando ${coachPrimeiro} mandar treino novo?`;
+  const texto = desafio ? "1 aviso por semana, toda segunda às 9h, com o resultado." : "Mandamos um aviso no celular assim que o treino chegar.";
   return (
     <div className="gt-modal-backdrop" style={{ zIndex: 80 }} onClick={agoraNao}>
       <div className="gt-modal gt-push-convite" role="dialog" aria-modal="true" aria-label="Ativar avisos" onClick={(e) => e.stopPropagation()}>
@@ -1491,7 +1492,7 @@ function PushConfig({ showToast, logEvent, coachNome, temCoach, temDesafio }) {
     }
     logEvent("push_tipo", { tipo: k, ligado: v });
   }
-  const quem = coachNome || "seu treinador";
+  const quem = coachNome ? String(coachNome).trim().split(" ")[0] : "seu treinador";
   const oQue = temCoach && temDesafio ? `Receba um aviso quando ${quem} mandar treino novo e o resultado semanal dos seus desafios.`
     : temCoach ? `Receba um aviso no celular quando ${quem} mandar treino novo.`
     : "Receba o resultado dos seus desafios toda segunda às 9h.";
@@ -1527,13 +1528,16 @@ function PushConfig({ showToast, logEvent, coachNome, temCoach, temDesafio }) {
             )}
             {temDesafio && (
               <div className="gt-co-perm">
-                <div className="tx"><div className="t">Resultado dos desafios</div><div className="d">Um aviso por semana, na segunda às 9h.</div></div>
+                <div className="tx"><div className="t">Resultado dos desafios</div><div className="d">1 aviso por semana, toda segunda às 9h.</div></div>
                 <CoachSwitch checked={tipos.desafios !== false} onChange={(v) => mudarTipo("desafios", v)} label="Resultado dos desafios" semTexto />
               </div>
             )}
           </div>
-          <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={desativar}>Desativar neste celular</button>
-          <button type="button" className="gt-co-link" disabled={ocupado} onClick={testar}>Testar aviso</button>
+          <div className="gt-push-links">
+            <button type="button" className="gt-co-link" disabled={ocupado} onClick={testar}>Testar aviso</button>
+            <span aria-hidden="true">·</span>
+            <button type="button" className="gt-co-link" disabled={ocupado} onClick={desativar}>Desligar tudo neste celular</button>
+          </div>
         </>
       )}
     </div>
@@ -3940,7 +3944,9 @@ const APP_CSS = `
   .gt-co-hoje-ok-btn { width:44px; height:44px; flex:none; border-radius:50%; border:1px solid var(--border); background:transparent; color:var(--text-muted); font-size:18px; cursor:pointer; }
   .gt-co-hoje-ok { font-size:14px; color:var(--text-muted); padding:8px 0 10px; }
   .gt-push-ok span { color:var(--success); margin-right:4px; }
-  .gt-push-tipos { margin:4px 0 8px; }
+  .gt-co-perms.gt-push-tipos { margin:4px 0 8px; padding:0; background:none; }
+  .gt-push-links { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--text-muted); }
+  .gt-push-links .gt-co-link { padding-left:0; padding-right:0; }
   .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
   .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
   .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
@@ -8710,7 +8716,7 @@ function desafioDadosCartaoSemana(ch, st, members, w) {
   return {
     titulo: ch.nome,
     subtitulo: vencedor
-      ? `Semana ${w.num} · 🏆 ${String(nomeDe(vencedor)).split(" ")[0]} venceu${serie > 1 ? ` · ${serie}ª seguida` : ""}`
+      ? `Semana ${w.num} · 🏆 ${String(nomeDe(vencedor)).split(" ")[0]} venceu${serie > 1 ? ` · ${serie} semanas seguidas` : ""}`
       : `Semana ${w.num} · ${desafioDataCurta(w.start)} a ${desafioDataCurta(w.end)}`,
     ranking,
     perdedor: perd,
