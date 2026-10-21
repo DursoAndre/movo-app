@@ -66,7 +66,7 @@ if (!sw.includes(nomeApp)) falha("não consegui ajustar o sw.js");
 fs.writeFileSync(path.join(dist, "sw.js"), sw);
 
 // 5) arquivos estáticos
-for (const f of ["manifest.json", "races.json", "runner.json", "icon-192.png", "icon-512.png", "badge-96.png", "privacidade.html", "termos.html"]) {
+for (const f of ["manifest.json", "races.json", "runner.json", "icon-192.png", "icon-512.png", "badge-96.png", "icon-mono-192.png", "icon-mono-512.png", "privacidade.html", "termos.html"]) {
   fs.copyFileSync(path.join(raiz, f), path.join(dist, f));
 }
 const tam = (f) => (fs.statSync(path.join(dist, f)).size / 1024).toFixed(0) + " KB";
