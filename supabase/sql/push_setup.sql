@@ -1,6 +1,7 @@
 -- Notificações push (Web Push, v214). O app inscreve o aparelho (push_salvar) e a edge function `enviar-push`
 -- manda: (a) "treino novo do treinador", chamado pelo app do treinador depois de enviar; (b) teste para o próprio
--- aparelho. Sem lembrete diário nem função agendada (decisão do Andre, 21/10: não cobrar o aluno de treinar).
+-- aparelho; (c) resultado semanal dos desafios, pela função agendada no fim deste arquivo (segunda 9h de Brasília,
+-- aprovada pelo Andre em 21/10). Sem lembrete diário nem cobrança de treino (decisão do Andre, 21/10).
 -- Segredos da edge function: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:).
 create table if not exists public.push_inscricoes (
   id uuid primary key default gen_random_uuid(),
@@ -9,7 +10,7 @@ create table if not exists public.push_inscricoes (
   p256dh text not null,
   auth text not null,
   ua text,
-  tipos jsonb not null default '{"treinador": true}'::jsonb,
+  tipos jsonb not null default '{"treinador": true, "desafios": true}'::jsonb,
   criado_em timestamptz not null default now(),
   ultimo_ok timestamptz,
   falhas int not null default 0
@@ -40,7 +41,7 @@ begin
   if coalesce(p_endpoint, '') !~ '^https://' or length(p_endpoint) > 1000 then raise exception 'inscrição inválida'; end if;
   if coalesce(p_p256dh, '') = '' or coalesce(p_auth, '') = '' then raise exception 'inscrição inválida'; end if;
   insert into public.push_inscricoes (user_id, endpoint, p256dh, auth, ua, tipos)
-  values (me, p_endpoint, p_p256dh, p_auth, left(p_ua, 200), coalesce(p_tipos, '{"treinador": true}'::jsonb))
+  values (me, p_endpoint, p_p256dh, p_auth, left(p_ua, 200), coalesce(p_tipos, '{"treinador": true, "desafios": true}'::jsonb))
   on conflict (endpoint) do update set user_id = me, p256dh = excluded.p256dh, auth = excluded.auth, ua = excluded.ua,
     tipos = coalesce(p_tipos, public.push_inscricoes.tipos), falhas = 0;
   return jsonb_build_object('ok', true);
@@ -62,8 +63,35 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
   update public.push_inscricoes set tipos = jsonb_build_object(
-      'treinador', coalesce((p_tipos->>'treinador')::boolean, true))
+      'treinador', coalesce((p_tipos->>'treinador')::boolean, true),
+      'desafios', coalesce((p_tipos->>'desafios')::boolean, true))
    where user_id = auth.uid();
   return jsonb_build_object('ok', true);
 end;
 $$;
+
+-- Resultado semanal dos desafios: segunda às 9h de Brasília (12h UTC). O segredo da chamada fica no Vault e a
+-- edge function confere com push_segredo_ok (mesmo esquema do alerta-saude).
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'push_cron_secret') then
+    perform vault.create_secret(encode(gen_random_bytes(24), 'hex'), 'push_cron_secret');
+  end if;
+end $$;
+
+create or replace function public.push_segredo_ok(p text)
+returns boolean language sql security definer set search_path = public, vault as $$
+  select exists (select 1 from vault.decrypted_secrets where name = 'push_cron_secret' and decrypted_secret = p);
+$$;
+revoke all on function public.push_segredo_ok(text) from public, anon, authenticated;
+grant execute on function public.push_segredo_ok(text) to service_role;
+
+select cron.unschedule('push-desafios-semanal') where exists (select 1 from cron.job where jobname = 'push-desafios-semanal');
+select cron.schedule('push-desafios-semanal', '0 12 * * 1', $job$
+  select net.http_post(
+    url := 'https://wgdhjkebfvcmgokxscvb.supabase.co/functions/v1/enviar-push',
+    headers := jsonb_build_object('Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'push_cron_secret')),
+    body := '{"tipo":"desafios"}'::jsonb
+  );
+$job$);

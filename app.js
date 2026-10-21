@@ -1400,13 +1400,63 @@ async function pushDesativar() {
   return { ok: true };
 }
 function pushTiposLer() {
-  try { return { treinador: true, ...JSON.parse(localStorage.getItem("treino-app:pushTipos") || "{}") }; } catch (e) { return { treinador: true }; }
+  const pad = { treinador: true, desafios: true };
+  try { const v = JSON.parse(localStorage.getItem("treino-app:pushTipos") || "{}"); return { ...pad, ...(v && typeof v === "object" ? v : {}) }; } catch (e) { return pad; }
+}
+// Convite para ativar avisos no momento em que fazem sentido (entrou num desafio, aceitou um treinador).
+// Aparece uma vez por motivo, só se o aparelho recebe push e a pessoa ainda não ativou nem bloqueou.
+function pushConviteDisparar(motivo, extra) {
+  try { window.dispatchEvent(new CustomEvent("movo:push-convite", { detail: { motivo, ...(extra || {}) } })); } catch (e) {}
+}
+async function pushConvitePode(motivo) {
+  try { if (localStorage.getItem("treino-app:pushConvite:" + motivo)) return false; } catch (e) { return false; }
+  if (!pushSuportado() || pushPrecisaInstalar() || Notification.permission === "denied") return false;
+  return !(await pushInscricaoAtual());
+}
+function PushConvite({ showToast, logEvent }) {
+  const [conv, setConv] = useState(null); // { motivo, coachNome }
+  const [ocupado, setOcupado] = useState(false);
+  useEffect(() => {
+    function on(e) {
+      const d = (e && e.detail) || {};
+      if (!d.motivo) return;
+      // Espera a tela anterior fechar (toast, modal de convite) antes de perguntar.
+      setTimeout(() => { pushConvitePode(d.motivo).then((ok) => { if (ok) setConv(d); }); }, 900);
+    }
+    window.addEventListener("movo:push-convite", on);
+    return () => window.removeEventListener("movo:push-convite", on);
+  }, []);
+  if (!conv) return null;
+  function marcar() { try { localStorage.setItem("treino-app:pushConvite:" + conv.motivo, new Date().toISOString()); } catch (e) {} }
+  function agoraNao() { marcar(); logEvent("push_convite_nao", { motivo: conv.motivo }); setConv(null); }
+  async function sim() {
+    setOcupado(true);
+    const r = await pushAtivar(pushTiposLer());
+    setOcupado(false); marcar(); setConv(null);
+    if (!r.ok) { showToast(r.erro); return; }
+    logEvent("push_ativado", { origem: "convite_" + conv.motivo });
+    showToast("Pronto. Você pode mudar isso em Configurações.");
+  }
+  const desafio = conv.motivo === "desafio";
+  const titulo = desafio ? "Quer saber quem venceu a semana?" : `Quer saber quando ${conv.coachNome || "seu treinador"} mandar treino novo?`;
+  const texto = desafio ? "Mandamos 1 aviso por semana, na segunda às 9h, com o resultado." : "Mandamos um aviso no celular assim que o treino chegar.";
+  return (
+    <div className="gt-modal-backdrop" style={{ zIndex: 80 }} onClick={agoraNao}>
+      <div className="gt-modal gt-push-convite" role="dialog" aria-modal="true" aria-label="Ativar avisos" onClick={(e) => e.stopPropagation()}>
+        <div className="gt-push-convite-ic" aria-hidden="true">{desafio ? "🏆" : "🔔"}</div>
+        <h3>{titulo}</h3>
+        <p>{texto}</p>
+        <button type="button" className="gt-btn" disabled={ocupado} onClick={sim}>{ocupado ? "Ativando…" : desafio ? "Avisar na segunda" : "Avisar quando chegar"}</button>
+        <button type="button" className="gt-btn secondary" disabled={ocupado} onClick={agoraNao}>Agora não</button>
+      </div>
+    </div>
+  );
 }
 
 // Cartão "Notificações" das Configurações.
-function PushConfig({ showToast, logEvent, coachNome }) {
+function PushConfig({ showToast, logEvent, coachNome, temCoach, temDesafio }) {
   const [estado, setEstado] = useState("carregando"); // carregando | sem_suporte | instalar | bloqueado | desligado | ligado
-  const [tipos] = useState(pushTiposLer);
+  const [tipos, setTipos] = useState(pushTiposLer);
   const [ocupado, setOcupado] = useState(false);
   async function ler() {
     if (pushPrecisaInstalar()) return setEstado("instalar");
@@ -1429,6 +1479,22 @@ function PushConfig({ showToast, logEvent, coachNome }) {
     logEvent("push_desativado");
     setEstado("desligado"); showToast("Notificações desativadas neste aparelho");
   }
+  async function mudarTipo(k, v) {
+    const antes = tipos, novo = { ...tipos, [k]: v };
+    setTipos(novo);
+    try { localStorage.setItem("treino-app:pushTipos", JSON.stringify(novo)); } catch (e) {}
+    const { error } = await supabaseClient.rpc("push_tipos", { p_tipos: novo });
+    if (error) {
+      setTipos(antes);
+      try { localStorage.setItem("treino-app:pushTipos", JSON.stringify(antes)); } catch (e) {}
+      showToast("Não consegui salvar agora. Tente de novo."); return;
+    }
+    logEvent("push_tipo", { tipo: k, ligado: v });
+  }
+  const quem = coachNome || "seu treinador";
+  const oQue = temCoach && temDesafio ? `Receba um aviso quando ${quem} mandar treino novo e o resultado semanal dos seus desafios.`
+    : temCoach ? `Receba um aviso no celular quando ${quem} mandar treino novo.`
+    : "Receba o resultado dos seus desafios toda segunda às 9h.";
   async function testar() {
     setOcupado(true);
     try {
@@ -1445,13 +1511,27 @@ function PushConfig({ showToast, logEvent, coachNome }) {
       {estado === "bloqueado" && <div className="gt-settings-hint" style={{ marginTop: 0 }}>As notificações estão bloqueadas para o Movo neste aparelho. Para receber, libere nas configurações do navegador e volte aqui.</div>}
       {estado === "desligado" && (
         <>
-          <div className="gt-settings-hint" style={{ marginTop: 0 }}>Receba um aviso no celular quando {coachNome || "seu treinador"} enviar treino novo.</div>
+          <div className="gt-settings-hint" style={{ marginTop: 0 }}>{oQue}</div>
           <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={ativar}>{ocupado ? "Ativando…" : "Ativar notificações"}</button>
         </>
       )}
       {estado === "ligado" && (
         <>
           <div className="gt-settings-hint gt-push-ok" style={{ marginTop: 0 }}><span aria-hidden="true">✓</span> Ativadas neste celular.</div>
+          <div className="gt-co-perms gt-push-tipos">
+            {temCoach && (
+              <div className="gt-co-perm">
+                <div className="tx"><div className="t">Treino novo</div><div className="d">Quando {quem} mandar.</div></div>
+                <CoachSwitch checked={tipos.treinador !== false} onChange={(v) => mudarTipo("treinador", v)} label="Treino novo" semTexto />
+              </div>
+            )}
+            {temDesafio && (
+              <div className="gt-co-perm">
+                <div className="tx"><div className="t">Resultado dos desafios</div><div className="d">Um aviso por semana, na segunda às 9h.</div></div>
+                <CoachSwitch checked={tipos.desafios !== false} onChange={(v) => mudarTipo("desafios", v)} label="Resultado dos desafios" semTexto />
+              </div>
+            )}
+          </div>
           <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={desativar}>Desativar neste celular</button>
           <button type="button" className="gt-co-link" disabled={ocupado} onClick={testar}>Testar aviso</button>
         </>
@@ -3860,6 +3940,11 @@ const APP_CSS = `
   .gt-co-hoje-ok-btn { width:44px; height:44px; flex:none; border-radius:50%; border:1px solid var(--border); background:transparent; color:var(--text-muted); font-size:18px; cursor:pointer; }
   .gt-co-hoje-ok { font-size:14px; color:var(--text-muted); padding:8px 0 10px; }
   .gt-push-ok span { color:var(--success); margin-right:4px; }
+  .gt-push-tipos { margin:4px 0 8px; }
+  .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
+  .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
+  .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
+  .gt-push-convite-ic { font-size:40px; line-height:1; margin-top:4px; }
   .gt-co-hoje-ok span { color:var(--success); margin-right:4px; }
   .gt-co-hoje-acao { min-width:96px; height:44px; flex:none; border-radius:10px; background:transparent; border:1px solid rgba(90,176,255,.5); color:var(--info); font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
   .gt-co-hoje-desfazer { font-size:13px; color:var(--text-muted); display:flex; align-items:center; gap:4px; }
@@ -8619,9 +8704,14 @@ function desafioDadosCartaoSemana(ch, st, members, w) {
   const rows = w.rows.slice().sort((a, b) => b.pts - a.pts || b.count - a.count);
   const ranking = rows.map((r) => ({ uid: r.user_id, nome: r.nome, pts: r.pts, cor: desafioCorDe(members, r.user_id) }));
   const perd = w.losers.length ? w.losers.map(nomeDe).join(" e ") : null;
+  // Uma pessoa só na frente: o cartão vira o da vitória dela (com a sequência, se tiver).
+  const vencedor = w.fechada && w.winners.length === 1 ? w.winners[0] : null;
+  const serie = vencedor ? desafioSerieVitorias(st, vencedor, w.idx) : 0;
   return {
     titulo: ch.nome,
-    subtitulo: `Semana ${w.num} · ${desafioDataCurta(w.start)} a ${desafioDataCurta(w.end)}`,
+    subtitulo: vencedor
+      ? `Semana ${w.num} · 🏆 ${String(nomeDe(vencedor)).split(" ")[0]} venceu${serie > 1 ? ` · ${serie}ª seguida` : ""}`
+      : `Semana ${w.num} · ${desafioDataCurta(w.start)} a ${desafioDataCurta(w.end)}`,
     ranking,
     perdedor: perd,
     aposta: perd ? (stakes.semana || null) : null,
@@ -8653,6 +8743,16 @@ function desafioSnapDe(st) {
 }
 
 // Avisos do desafio. `prev` é a foto anterior (null = primeira vez vendo: só lembretes e semana recém-fechada).
+// Quantas semanas fechadas seguidas (terminando em `ate`) a pessoa venceu.
+function desafioSerieVitorias(st, uid, ate) {
+  let n = 0;
+  for (let i = ate; i >= 0; i--) {
+    const w = st.semanas.find((x) => x.idx === i);
+    if (!w || !w.fechada || w.winners.indexOf(uid) < 0) break;
+    n++;
+  }
+  return n;
+}
 function desafioAvisos(ch, st, members, meId, today, prev) {
   const itens = [];
   const rules = st.rules;
@@ -8676,7 +8776,12 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
       const euPerdi = ultima.losers.indexOf(meId) >= 0;
       texto = `Semana ${ultima.num} fechou: 🏆 ${gan} · ☕ ${euPerdi ? "você paga" : `${per} paga`}${stakes.semana ? ` (${stakes.semana})` : ""}.`;
     }
-    itens.push({ id: `semana-${ultima.num}`, emoji: "📅", texto, acao: { tipo: "semana", idx: ultima.idx, rotulo: "Compartilhar cartão" } });
+    const venci = ultima.winners.indexOf(meId) >= 0;
+    if (venci) {
+      const serie = desafioSerieVitorias(st, meId, ultima.idx);
+      texto = `Você venceu a semana ${ultima.num}!${serie > 1 ? ` ${serie} semanas seguidas na frente.` : ""} Mostre para o grupo.`;
+    }
+    itens.push({ id: `semana-${ultima.num}`, emoji: venci ? "🏆" : "📅", texto, acao: { tipo: "semana", idx: ultima.idx, rotulo: venci ? "Compartilhar vitória" : "Compartilhar cartão" } });
   }
   if (st.status.fase === "rolando" && me.semanaCount < rules.meta && st.status.diasRestantesSemana <= 2) {
     const dias = st.status.diasRestantesSemana;
@@ -9245,7 +9350,7 @@ async function desafioRenderCartao(d) {
   g.fillText(fit(d.titulo.toUpperCase(), W - 140), 70, 250);
   g.fillStyle = "#9AA0A6";
   g.font = `500 34px ${INT}`;
-  g.fillText(d.subtitulo, 70, 306);
+  g.fillText(fit(d.subtitulo, W - 140), 70, 306);
 
   if (d.serie) {
     // Gráfico de linhas: pontos acumulados semana a semana
@@ -9468,6 +9573,10 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState("");
   const [criado, setCriado] = useState(null);
+  // Ao sair da tela de desafio criado, oferece o aviso semanal do resultado.
+  const criadoRef = useRef(false);
+  useEffect(() => { criadoRef.current = !!criado; }, [criado]);
+  useEffect(() => () => { if (criadoRef.current) pushConviteDisparar("desafio"); }, []);
   // Foto do que está preenchido: se mudou e ainda não criou, sair pergunta antes de descartar.
   const estadoAgora = JSON.stringify([nome, weekStart, startRaw, semanas, modeloId, rules, stakes]);
   const estadoInicial = useRef(null);
@@ -10511,7 +10620,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
 }
 
 // Aba "Desafios" dentro de Evolução › Ranking: lista, criar e entrar por código/convite.
-function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, sessions, atividadeById, showToast, logEvent, pendingCode, clearPendingCode, resumos, avisos, falhou }) {
+function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, sessions, atividadeById, showToast, logEvent, pendingCode, clearPendingCode, resumos, avisos, falhou, abrirCartao, onCartaoAberto }) {
   const [criarOpen, setCriarOpen] = useState(false);
   const [abertoId, setAbertoId] = useState(null);
   const [codigo, setCodigo] = useState("");
@@ -10538,6 +10647,14 @@ function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, session
     if (abertoId) { try { localStorage.setItem("treino-app:desafioUltimo", abertoId); } catch (e) {} }
   }, [abertoId]);
 
+  // Veio de um push de resultado da semana: abre o desafio e o cartão daquela semana.
+  useEffect(() => {
+    if (!abrirCartao || !resumos || !resumos[abrirCartao.chId]) return;
+    setAbertoId(abrirCartao.chId);
+    if (abrirCartao.idx != null) abrirCartaoAviso(abrirCartao.chId, { tipo: "semana", idx: abrirCartao.idx });
+    if (onCartaoAberto) onCartaoAberto();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirCartao, resumos]);
   function abrirCartaoAviso(chId, acao) {
     const r = resumos && resumos[chId];
     if (!r) return;
@@ -10571,6 +10688,7 @@ function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, session
     setEntrando(false);
     if (error) { showToast("Não consegui entrar agora"); desafioLogErro("join_challenge", error.message); return; }
     logEvent("desafio_entrou");
+    pushConviteDisparar("desafio");
     setPreview(null);
     setCodigo("");
     await reload();
@@ -11725,6 +11843,7 @@ function CoachConviteModal({ code, onClose, onDone, showToast, flags }) {
     setBusy(false);
     if (!r.ok) { setErro(r.erro); return; }
     showToast("Pronto! Você agora treina com " + prev.coach_nome);
+    pushConviteDisparar("treinador", { coachNome: prev.coach_nome });
     onDone();
   }
   async function recusar() {
@@ -14992,6 +15111,19 @@ function App() {
   const [desafiosOk, setDesafiosOk] = useState(true); // false se as funções do banco ainda não existem
   const [desafioResumos, setDesafioResumos] = useState({}); // id -> { ch, members, st } (placar de cada desafio ativo)
   const [desafioAvisos_, setDesafioAvisos] = useState({}); // id -> avisos (semana fechou, te passaram, lembrete…)
+  // Toque no push do resultado da semana: ?resultado=ID&semana=IDX (ou ?desafios=1 para a lista).
+  // Não usa ?desafio=, que é o convite (código) e é capturado na abertura.
+  const [pushDesafioAbrir, setPushDesafioAbrir] = useState(() => {
+    try {
+      const u = new URL(window.location.href);
+      const ch = u.searchParams.get("resultado"), lista = u.searchParams.get("desafios"), sem = u.searchParams.get("semana");
+      if (!ch && !lista) return null;
+      u.searchParams.delete("resultado"); u.searchParams.delete("semana"); u.searchParams.delete("desafios");
+      window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+      const idx = sem != null && sem !== "" && isFinite(Number(sem)) ? Number(sem) : null;
+      return ch ? { chId: ch, idx } : { lista: true };
+    } catch (e) { return null; }
+  });
   const [pendingInvite, setPendingInvite] = useState(() => {
     try { return localStorage.getItem("treino-app:desafioInvite") || null; } catch (e) { return null; }
   });
@@ -16877,6 +17009,14 @@ function App() {
     setTab("desafios");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingInvite, session, cloudSynced, needsOnboarding]);
+  // Chegou pelo push do resultado da semana: leva para a aba Desafios (o painel abre o cartão da semana).
+  useEffect(() => {
+    if (!pushDesafioAbrir || !session || !cloudSynced || needsOnboarding) return;
+    setTab("desafios");
+    logEvent("push_desafio_aberto");
+    if (pushDesafioAbrir.lista) setPushDesafioAbrir(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushDesafioAbrir, session, cloudSynced, needsOnboarding]);
   // Ao abrir a aba Desafios, atualiza os placares e, depois de alguns segundos, marca os avisos como vistos.
   useEffect(() => {
     if (tab !== "desafios" || !session || !cloudSynced || !desafiosOk) return;
@@ -19098,6 +19238,8 @@ function App() {
                 logEvent={logEvent}
                 pendingCode={pendingInvite}
                 clearPendingCode={clearPendingInvite}
+                abrirCartao={pushDesafioAbrir}
+                onCartaoAberto={() => setPushDesafioAbrir(null)}
                 resumos={desafioResumos}
                 avisos={desafioAvisos_}
                 falhou={desafiosFalhou}
@@ -19199,6 +19341,8 @@ function App() {
       {coachPlanoAberto && coachPendPlano && (
         <CoachPlanoRevisaoModal ass={coachPendPlano} schedule={schedule} nomeDe={nomeNaAgenda} podeAjustar={coachPodeAjustar} busy={coachBusy} onClose={() => setCoachPlanoAberto(false)} onAceitar={(manter) => coachAceitarPlano(coachPendPlano, false, manter)} onRecusar={(m) => coachRecusarPlano(coachPendPlano, m)} />
       )}
+
+      <PushConvite showToast={showToast} logEvent={logEvent} />
 
       {toast && <div className="gt-toast" role="status" aria-live="polite">{toast}</div>}
 
@@ -19658,10 +19802,11 @@ function App() {
               </div>
             )}
 
-            {coachLinks.some((l) => l.status === "ativo") && (
+            {(coachLinks.some((l) => l.status === "ativo") || Object.keys(desafioResumos).length > 0) && (
               <div className="gt-settings-group">
                 <div className="gt-settings-group-title">Notificações</div>
-                <PushConfig showToast={showToast} logEvent={logEvent} coachNome={(coachLinks.find((l) => l.status === "ativo") || {}).coach_nome} />
+                <PushConfig showToast={showToast} logEvent={logEvent} temCoach={coachLinks.some((l) => l.status === "ativo")} temDesafio={Object.keys(desafioResumos).length > 0}
+                  coachNome={(coachLinks.find((l) => l.status === "ativo") || {}).coach_nome} />
               </div>
             )}
 
