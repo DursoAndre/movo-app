@@ -1353,8 +1353,6 @@ function blocoFaseEm(rot, seg) {
 // ---------- Notificações push (Web Push) ----------
 // Chave pública VAPID (a privada fica só no segredo da edge function enviar-push).
 const PUSH_VAPID_PUBLICA = "BHuWUw4R-fu9TWl0rgTRACAzuJgcb6MSruSBBW6BSPdy7T1J7dHjq4yoZf2NFjrzynPitswccrVXOFymP6pJD_0";
-// O lembrete do treino do dia depende da função agendada, que só liga com aprovação. Até lá a opção fica escondida.
-const PUSH_LEMBRETE_LIGADO = false;
 function pushSuportado() {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
 }
@@ -1402,13 +1400,13 @@ async function pushDesativar() {
   return { ok: true };
 }
 function pushTiposLer() {
-  try { return { treinador: true, lembrete: true, ...JSON.parse(localStorage.getItem("treino-app:pushTipos") || "{}") }; } catch (e) { return { treinador: true, lembrete: true }; }
+  try { return { treinador: true, ...JSON.parse(localStorage.getItem("treino-app:pushTipos") || "{}") }; } catch (e) { return { treinador: true }; }
 }
 
 // Cartão "Notificações" das Configurações.
 function PushConfig({ showToast, logEvent, coachNome }) {
   const [estado, setEstado] = useState("carregando"); // carregando | sem_suporte | instalar | bloqueado | desligado | ligado
-  const [tipos, setTipos] = useState(pushTiposLer);
+  const [tipos] = useState(pushTiposLer);
   const [ocupado, setOcupado] = useState(false);
   async function ler() {
     if (pushPrecisaInstalar()) return setEstado("instalar");
@@ -1431,13 +1429,6 @@ function PushConfig({ showToast, logEvent, coachNome }) {
     logEvent("push_desativado");
     setEstado("desligado"); showToast("Notificações desativadas neste aparelho");
   }
-  async function mudarTipo(k, v) {
-    const prox = { ...tipos, [k]: v };
-    setTipos(prox);
-    try { localStorage.setItem("treino-app:pushTipos", JSON.stringify(prox)); } catch (e) {}
-    const { error } = await supabaseClient.rpc("push_tipos", { p_tipos: prox });
-    if (error) showToast("Não consegui salvar agora");
-  }
   async function testar() {
     setOcupado(true);
     try {
@@ -1454,19 +1445,13 @@ function PushConfig({ showToast, logEvent, coachNome }) {
       {estado === "bloqueado" && <div className="gt-settings-hint" style={{ marginTop: 0 }}>As notificações estão bloqueadas para o Movo neste aparelho. Para receber, libere nas configurações do navegador e volte aqui.</div>}
       {estado === "desligado" && (
         <>
-          <div className="gt-settings-hint" style={{ marginTop: 0 }}>Receba um aviso no celular quando {coachNome || "seu treinador"} enviar treino novo{PUSH_LEMBRETE_LIGADO ? " e no dia de treino" : ""}.</div>
+          <div className="gt-settings-hint" style={{ marginTop: 0 }}>Receba um aviso no celular quando {coachNome || "seu treinador"} enviar treino novo.</div>
           <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={ativar}>{ocupado ? "Ativando…" : "Ativar notificações"}</button>
         </>
       )}
       {estado === "ligado" && (
         <>
           <div className="gt-settings-hint gt-push-ok" style={{ marginTop: 0 }}><span aria-hidden="true">✓</span> Ativadas neste celular.</div>
-          {PUSH_LEMBRETE_LIGADO && (
-            <>
-              <label className="gt-checkbox-row"><input type="checkbox" checked={tipos.treinador !== false} onChange={(e) => mudarTipo("treinador", e.target.checked)} /> Treino novo do treinador</label>
-              <label className="gt-checkbox-row"><input type="checkbox" checked={tipos.lembrete !== false} onChange={(e) => mudarTipo("lembrete", e.target.checked)} /> Lembrete no dia de treino, se ainda não registrou</label>
-            </>
-          )}
           <button type="button" className="gt-btn secondary gt-settings-install-row" disabled={ocupado} onClick={desativar}>Desativar neste celular</button>
           <button type="button" className="gt-co-link" disabled={ocupado} onClick={testar}>Testar aviso</button>
         </>
@@ -19673,7 +19658,7 @@ function App() {
               </div>
             )}
 
-            {(PUSH_LEMBRETE_LIGADO || coachLinks.some((l) => l.status === "ativo")) && (
+            {coachLinks.some((l) => l.status === "ativo") && (
               <div className="gt-settings-group">
                 <div className="gt-settings-group-title">Notificações</div>
                 <PushConfig showToast={showToast} logEvent={logEvent} coachNome={(coachLinks.find((l) => l.status === "ativo") || {}).coach_nome} />

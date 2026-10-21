@@ -1,15 +1,15 @@
 // Notificações push (Web Push). Tipos:
 //  - "teste": manda para os aparelhos de quem chamou (botão em Configurações).
 //  - "treinador": o treinador avisa o aluno de um treino novo (body.link_id); só vínculo ativo do próprio treinador.
-//  - "lembrete": treino do dia para quem ainda não treinou; só a função agendada chama (header x-cron-secret).
-// Secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (ex.: "mailto:contato@movoapp.com.br"), PUSH_CRON_SECRET.
+// Sem lembrete diário (decisão do Andre, 21/10: não cobrar o aluno de treinar).
+// Secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (ex.: "mailto:contato@movoapp.com.br").
 // Sem as chaves VAPID responde enviado:false (nada é mandado).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 const APP = "https://app.movoapp.com.br/";
 
@@ -48,23 +48,7 @@ Deno.serve(async (req) => {
       return { aparelhos: lista.length, ok };
     }
 
-    if (tipo === "lembrete") {
-      const segredo = Deno.env.get("PUSH_CRON_SECRET");
-      if (!segredo || req.headers.get("x-cron-secret") !== segredo) return json({ ok: false, erro: "nao_autorizado" }, 401);
-      const { data, error } = await admin.rpc("push_lembretes_hoje");
-      if (error) return json({ ok: false, erro: error.message }, 400);
-      let pessoas = 0, ok = 0;
-      for (const r of (data || []) as { user_id: string; nome_treino: string }[]) {
-        const nome = r.nome_treino && r.nome_treino !== "treino" ? r.nome_treino : "seu treino";
-        const res = await mandar(r.user_id, "lembrete", new Date().toISOString().slice(0, 10), {
-          title: "Treino de hoje", body: `Hoje tem ${nome} na sua agenda. Quando terminar, registre no Movo.`, tag: "lembrete",
-        });
-        pessoas++; ok += res.ok;
-      }
-      return json({ ok: true, pessoas, enviados: ok });
-    }
-
-    // Os outros tipos exigem a pessoa logada.
+    // Todos os tipos exigem a pessoa logada.
     const auth = req.headers.get("Authorization") || "";
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
     const { data: u } = await sb.auth.getUser();
