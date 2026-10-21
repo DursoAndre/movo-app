@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v210";
+const APP_BUILD = "v211";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -452,6 +452,59 @@ function dayHasActivity(sessions, dateIso, atividadeById) {
 // --- Sequência atual: conta dias consecutivos com atividade, terminando
 // hoje (se já tiver algo) ou ontem (se hoje ainda não foi registrado —
 // a sequência continua "viva" até o dia acabar). ---
+// 1RM estimado (Epley), só para séries de até 12 repetições; arredonda a 0,5 kg na tela.
+function e1rmDe(peso, reps) { return peso > 0 && reps > 0 && reps <= 12 ? peso * (1 + (reps === 1 ? 0 : reps / 30)) : 0; }
+function kgMeio(x) { return Math.round(x * 2) / 2; }
+function kgTxt(x) { return String(kgMeio(x)).replace(".", ","); }
+// Grupo muscular de um exercício (pelo id ou pelo nome no catálogo); null fora dos grupos musculares.
+function grupoMuscularDe(ex) {
+  if (!ex) return null;
+  const nm = catNorm(ex.nome || "");
+  const cat = EXERCISE_CATALOG_FLAT.find((c) => c.id === ex.id) || EXERCISE_CATALOG_FLAT.find((c) => catNorm(c.nome) === nm)
+    || (() => { const a = CATALOGO_ALIASES.find((x) => x.norm === nm); return a ? EXERCISE_CATALOG_FLAT.find((c) => c.id === a.id) : null; })();
+  if (!cat) return null;
+  return CATALOG_GRUPOS_MUSCULARES.some((g) => g.label === cat.grupo) ? cat.grupo : null;
+}
+// Séries feitas por grupo muscular numa janela de datas [ini, fim].
+function seriesPorGrupo(sessions, treinos, ini, fim) {
+  const exPorId = {};
+  (treinos || []).forEach((t) => flattenExercicios(t).forEach((ex) => { if (!exPorId[ex.id]) exPorId[ex.id] = ex; }));
+  const out = {};
+  Object.keys(sessions || {}).forEach((d) => {
+    if (d < ini || d > fim) return;
+    const lg = (sessions[d] || {}).log || {};
+    Object.keys(lg).forEach((k) => {
+      if (k.indexOf("treino:") !== 0) return;
+      Object.keys(lg[k] || {}).forEach((exId) => {
+        const l = lg[k][exId];
+        if (!l || l.status !== "feito") return;
+        const g = grupoMuscularDe(exPorId[exId] || { id: exId });
+        if (!g) return;
+        const n = (l.sets || []).filter((st) => Number(String(st.reps || "").replace(",", ".")) > 0 || Number(String(st.peso || "").replace(",", ".")) > 0).length || (l.sets || []).length;
+        out[g] = (out[g] || 0) + n;
+      });
+    });
+  });
+  return out;
+}
+// Corridas com distância e tempo (plano, avulsas e atividades de corrida) para o pace.
+function corridasComPace(sessions, atividadeById) {
+  const out = [];
+  Object.keys(sessions || {}).forEach((d) => {
+    const cg = (sessions[d] || {}).cargas || {};
+    Object.keys(cg).forEach((k) => {
+      const c = cg[k];
+      const km = Number(c && c.distanciaKm), min = Number(c && c.duracaoMin);
+      if (!(km > 0 && min > 0)) return;
+      const ehCorrida = k.indexOf("corrida:") === 0 || (k.indexOf("atividade:") === 0 && (() => { const a = atividadeById ? atividadeById(k.slice(10)) : null; return !!a && /corrid|correr|running|\brun\b/.test(desafioNomeNorm(a.nome)); })());
+      const pace = min / km;
+      if (ehCorrida && pace >= 2.5 && pace <= 15) out.push({ data: d, km, min, pace });
+    });
+  });
+  return out.sort((a, b) => a.data.localeCompare(b.data));
+}
+function paceTxt(p) { const m = Math.floor(p), sg = Math.round((p - m) * 60); return sg === 60 ? `${m + 1}:00` : `${m}:${String(sg).padStart(2, "0")}`; }
+
 // Resumo pra tela de conclusão: séries, volume e recordes de carga (vs. todas as sessões anteriores da mesma ficha).
 function computeCelebracao(sessions, date, key, treino) {
   const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) ? n : 0; };
@@ -468,14 +521,21 @@ function computeCelebracao(sessions, date, key, treino) {
     sets.forEach((st) => { volume += num(st.peso) * num(st.reps); });
     const maxHoje = sets.reduce((m, st) => Math.max(m, num(st.peso)), 0);
     if (!(maxHoje > 0)) return;
-    let maxAntes = 0, tinha = false;
+    const melhorHoje = sets.reduce((m, st) => { const e = e1rmDe(num(st.peso), num(st.reps)); return e > m.e ? { e, peso: num(st.peso), reps: num(st.reps) } : m; }, { e: 0 });
+    // Compara com o mesmo exercício em qualquer ficha (o id do catálogo é o mesmo).
+    let maxAntes = 0, e1rmAntes = 0, tinha = false;
     Object.keys(sessions).forEach((d) => {
       if (d >= date) return;
-      const pl = (((sessions[d] || {}).log || {})[key] || {})[ex.id];
-      if (!pl || !pl.sets) return;
-      pl.sets.forEach((st) => { const w = num(st.peso); if (w > 0) { tinha = true; if (w > maxAntes) maxAntes = w; } });
+      const lg = (sessions[d] || {}).log || {};
+      Object.keys(lg).forEach((k) => {
+        if (k.indexOf("treino:") !== 0) return;
+        const pl = (lg[k] || {})[ex.id];
+        if (!pl || !pl.sets) return;
+        pl.sets.forEach((st) => { const w = num(st.peso); if (w > 0) { tinha = true; if (w > maxAntes) maxAntes = w; e1rmAntes = Math.max(e1rmAntes, e1rmDe(w, num(st.reps))); } });
+      });
     });
     if (tinha && maxHoje > maxAntes) recordes.push({ nome: ex.nome, peso: maxHoje, anterior: maxAntes });
+    else if (tinha && e1rmAntes > 0 && melhorHoje.e >= e1rmAntes * 1.01) recordes.push({ nome: ex.nome, tipo: "e1rm", peso: melhorHoje.peso, reps: melhorHoje.reps, e1rm: kgMeio(melhorHoje.e), anterior: kgMeio(e1rmAntes) });
   });
   return { series, volume: Math.round(volume), exFeitos, totalEx: flat.length, recordes };
 }
@@ -2878,6 +2938,29 @@ const APP_CSS = `
   .gt-ag-ico { width:30px; height:30px; flex:0 0 30px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:var(--surface-2); }
   .gt-ag-ico.treino { color:var(--accent); } .gt-ag-ico.atividade { color:var(--info); }
   .gt-ag-sub { display:block; font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-carga-aviso { background:rgba(245,183,59,.08); border:1px solid rgba(245,183,59,.45); border-radius:14px; padding:12px 14px; margin:0 0 12px; }
+  .gt-carga-aviso .hd { font-weight:700; font-size:15px; margin-bottom:4px; color:var(--amber); }
+  .gt-carga-aviso .tx { font-size:14px; line-height:1.45; color:var(--text); }
+  .gt-carga-aviso .ac { display:flex; gap:10px; margin-top:10px; }
+  .gt-carga-aviso .ac .gt-btn { flex:1; min-height:44px; margin:0; }
+  .gt-grupo-row { display:grid; grid-template-columns:minmax(80px,auto) 1fr auto; column-gap:12px; align-items:center; min-height:34px; font-size:14px; }
+  .gt-grupo-row .bar { position:relative; height:10px; background:rgba(255,255,255,.08); border-radius:5px; }
+  .gt-grupo-row .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--accent); border-radius:5px; }
+  .gt-grupo-row .bar em, .gt-grupo-leg em { position:absolute; top:-3px; width:2px; height:16px; background:var(--text-muted); }
+  .gt-grupo-row .n { text-align:right; font-family:'Oswald',sans-serif; font-size:16px; white-space:nowrap; }
+  .gt-grupo-row .n small { font-family:'Inter',sans-serif; font-size:12px; color:var(--text-muted); }
+  .gt-grupo-leg { position:relative; font-size:12px; color:var(--text-muted); margin-top:8px; padding-left:10px; }
+  .gt-grupo-leg em { top:1px; left:0; height:12px; }
+  .gt-pace-resumo .v, .gt-e1rm b { font-family:'Oswald',sans-serif; font-size:30px; font-weight:500; line-height:1.1; display:block; }
+  .gt-pace-resumo .u, .gt-e1rm .u { font-size:.55em; color:var(--text-muted); margin-left:2px; }
+  .gt-e1rm b.dest { color:var(--accent); }
+  .gt-pace-resumo .sb b.ok { color:var(--success); font-weight:600; }
+  .gt-hist-item .w.gt-pace-w { font-family:'Inter',sans-serif; font-weight:700; }
+  .gt-evo-tabs { scroll-margin-top:72px; }
+  .gt-pace-resumo .sb { font-size:13px; color:var(--text-muted); margin-top:4px; line-height:1.45; }
+  .gt-e1rm { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .gt-e1rm .gt-field-label { margin:0 0 4px; }
+  .gt-e1rm small { display:block; font-size:12px; color:var(--text-muted); }
   button.gt-ag-row.gt-ag-doplano { width:100%; background:none; border:none; border-top:1px solid var(--border); color:var(--text); font:inherit; text-align:left; padding:0; cursor:pointer; }
   .gt-ag-doplano .gt-ag-nm { flex:1; }
   .gt-ag-doplano .seta { color:var(--text-muted); font-size:18px; padding:0 8px; }
@@ -14500,6 +14583,7 @@ function App() {
   const [excluirOpen, setExcluirOpen] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [semanaOpen, setSemanaOpen] = useState(false); // ajustar a semana com IA
+  const [cargaDispensa, setCargaDispensa] = useState(() => { try { return localStorage.getItem("treino-app:cargaAvisoDispensa") || ""; } catch (e) { return ""; } });
   const [resumoDispensa, setResumoDispensa] = useState(() => { try { return localStorage.getItem("treino-app:resumoDispensa") || ""; } catch (e) { return ""; } });
   const [trialAviso, setTrialAviso] = useState(() => { try { return localStorage.getItem("treino-app:trialAviso") || ""; } catch (e) { return ""; } });
   const [semanaDispensa, setSemanaDispensa] = useState(() => { try { return localStorage.getItem("treino-app:semanaDispensa") || ""; } catch (e) { return ""; } });
@@ -17393,6 +17477,12 @@ function App() {
   }, [sessions, evoAtividade]);
 
   const acwrResult = useMemo(() => computeACWR(sessions, todayISO(), 7, 28), [sessions]);
+  // Troca a aba da Evolução e sobe a fileira de abas para o topo, para o conteúdo novo aparecer.
+  function evoIr(t, e) {
+    setEvoTab(t);
+    try { const fila = e.currentTarget.parentElement; e.currentTarget.scrollIntoView({ inline: "nearest", block: "nearest" }); if (fila.getBoundingClientRect().top > 160) fila.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (x) {}
+  }
+  const corridasPace = useMemo(() => corridasComPace(sessions, atividadeById), [sessions, atividades]);
   const acwrZoneInfo = useMemo(() => acwrZone(acwrResult.ratio, acwrResult.suficiente), [acwrResult.ratio, acwrResult.suficiente]);
   const avgDor7d = useMemo(() => {
     const dores = acwrResult.series.slice(-7).map((d) => d.dor).filter((d) => d != null);
@@ -17765,6 +17855,24 @@ function App() {
                 {stravaSyncing ? "Sincronizando…" : "Sincronizar Strava"}
               </button>
             )}
+
+            {selectedDate === todayISO() && loaded && acwrResult.suficiente && acwrResult.ratio > 1.3 && cargaDispensa !== planoSemanaChave(todayISO()) && (() => {
+              // Aviso de carga: só informa (fase 3). Some ao fechar e volta na semana seguinte, se ainda valer.
+              const pct = Math.round((acwrResult.ratio - 1) * 100);
+              const forte = acwrResult.ratio > 1.5;
+              const quanto = acwrResult.ratio >= 2 ? "mais que o dobro da sua média do último mês" : `${pct}% acima da sua média do último mês`;
+              const fechar = () => { const k = planoSemanaChave(todayISO()); try { localStorage.setItem("treino-app:cargaAvisoDispensa", k); } catch (e) {} setCargaDispensa(k); logEvent("carga_aviso_fechado"); };
+              return (
+                <div className="gt-carga-aviso" role="note">
+                  <div className="hd">{forte ? "Sua semana foi bem mais puxada que o normal" : "Semana mais puxada que o normal"}</div>
+                  <div className="tx">Nos últimos 7 dias você treinou {quanto}.{avgDor7d != null && avgDor7d >= 5 ? " Você também marcou dor forte depois dos treinos." : ""} {forte ? "Vale um dia leve ou de descanso antes do próximo treino forte." : "Se o corpo pedir, faça o próximo treino mais leve."}</div>
+                  <div className="ac">
+                    <button type="button" className="gt-btn secondary" onClick={() => { setTab("evolucao"); setEvoTab("carga"); }}>Ver minha carga</button>
+                    <button type="button" className="gt-btn secondary" onClick={fechar}>Fechar</button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {selectedDate === todayISO() && loaded && (() => {
               const hoje = todayISO();
@@ -18285,11 +18393,13 @@ function App() {
               );
             })()}
             <div className="gt-evo-tabs gt-evo-scroll">
-              <button className={evoTab === "frequencia" ? "active" : ""} onClick={() => setEvoTab("frequencia")}>Frequência</button>
-              <button className={evoTab === "carga" ? "active" : ""} onClick={() => setEvoTab("carga")}>Carga</button>
-              <button className={evoTab === "exercicio" ? "active" : ""} onClick={() => setEvoTab("exercicio")}>Peso</button>
-              <button className={evoTab === "atividade" ? "active" : ""} onClick={() => setEvoTab("atividade")}>Notas</button>
-              <button className={evoTab === "ranking" ? "active" : ""} onClick={() => setEvoTab("ranking")}>Ranking</button>
+              <button className={evoTab === "frequencia" ? "active" : ""} onClick={(e) => evoIr("frequencia", e)}>Frequência</button>
+              <button className={evoTab === "carga" ? "active" : ""} onClick={(e) => evoIr("carga", e)}>Carga</button>
+              <button className={evoTab === "exercicio" ? "active" : ""} onClick={(e) => evoIr("exercicio", e)}>Peso</button>
+              <button className={evoTab === "grupos" ? "active" : ""} onClick={(e) => evoIr("grupos", e)}>Séries</button>
+              {corridasPace.length > 0 && <button className={evoTab === "pace" ? "active" : ""} onClick={(e) => evoIr("pace", e)}>Pace</button>}
+              <button className={evoTab === "atividade" ? "active" : ""} onClick={(e) => evoIr("atividade", e)}>Notas</button>
+              <button className={evoTab === "ranking" ? "active" : ""} onClick={(e) => evoIr("ranking", e)}>Ranking</button>
             </div>
 
             {evoTab === "frequencia" && (
@@ -18411,6 +18521,16 @@ function App() {
                     {allExerciseNames.map(([nome, id]) => <option key={id} value={id}>{nome}</option>)}
                   </select>
                 </div>
+                {evoData.length > 0 && (() => {
+                  const melhor = evoData.reduce((m, p) => { (p.sets || []).forEach((st) => { const kg = Number(String(st.peso).replace(",", ".")), r = Number(st.reps); const e = e1rmDe(kg, r); if (e > m.e) m = { e, kg, r, date: p.date }; }); return m; }, { e: 0 });
+                  const maxKg = Math.max(...evoData.map((p) => p.pesoMax));
+                  return (
+                    <div className="gt-card gt-e1rm">
+                      <div><div className="gt-field-label">MAIOR PESO</div><b>{kgTxt(maxKg)}<span className="u"> kg</span></b></div>
+                      <div><div className="gt-field-label">MÁXIMO ESTIMADO</div><b className="dest">{melhor.e ? <>{kgTxt(melhor.e)}<span className="u"> kg</span></> : "—"}</b>{melhor.e ? <small>para 1 repetição, com base em {kgTxt(melhor.kg)} kg × {melhor.r} em {formatDateLabel(melhor.date)}</small> : <small>Precisa de séries de até 12 repetições.</small>}</div>
+                    </div>
+                  );
+                })()}
                 {evoData.length === 0 ? (
                   <div className="gt-empty">Registre a carga deste exercício no próximo treino e o gráfico aparece aqui.</div>
                 ) : (
@@ -18431,6 +18551,52 @@ function App() {
                 )}
               </div>
             )}
+
+            {evoTab === "grupos" && (() => {
+              const hoje = todayISO();
+              const ini = planoSemanaChave(hoje);
+              const atual = seriesPorGrupo(sessions, treinos, ini, hoje);
+              const antes = seriesPorGrupo(sessions, treinos, addDays(ini, -28), addDays(ini, -1));
+              const grupos = CATALOG_GRUPOS_MUSCULARES.map((g) => ({ nome: g.label, n: atual[g.label] || 0, media: Math.round(((antes[g.label] || 0) / 4) * 10) / 10 })).filter((g) => g.n > 0 || g.media > 0);
+              const max = Math.max(1, ...grupos.map((g) => Math.max(g.n, g.media)));
+              return (
+                <div className="gt-card">
+                  <div className="gt-field-label" style={{ marginTop: 0 }}>SÉRIES POR GRUPO · ESTA SEMANA</div>
+                  {grupos.length === 0 && <div className="gt-empty">Marque séries como feitas nos treinos de academia e o volume por grupo aparece aqui.</div>}
+                  {grupos.map((g) => (
+                    <div className="gt-grupo-row" key={g.nome} role="img" aria-label={`${g.nome}: ${g.n} séries esta semana${g.media > 0 ? `, média ${String(g.media).replace(".", ",")}` : ""}`}>
+                      <span className="nm">{g.nome}</span>
+                      <span className="bar" aria-hidden="true"><i style={{ width: `${(g.n / max) * 100}%` }} />{g.media > 0 && <em style={{ left: `${(g.media / max) * 100}%` }} />}</span>
+                      <span className="n">{g.n}{g.media > 0 && <small> · média {String(g.media).replace(".", ",")}</small>}</span>
+                    </div>
+                  ))}
+                  {grupos.some((g) => g.media > 0) && <div className="gt-grupo-leg"><em aria-hidden="true" /> sua média semanal no último mês</div>}
+                </div>
+              );
+            })()}
+
+            {evoTab === "pace" && (() => {
+              const ult = corridasPace.slice(-10).reverse();
+              const hoje = todayISO();
+              const media = (l) => (l.length ? l.reduce((a, c) => a + c.min, 0) / l.reduce((a, c) => a + c.km, 0) : null);
+              const rec = media(corridasPace.filter((c) => c.data > addDays(hoje, -28)));
+              const ant = media(corridasPace.filter((c) => c.data <= addDays(hoje, -28) && c.data > addDays(hoje, -56)));
+              return (
+                <div>
+                  <div className="gt-card gt-pace-resumo">
+                    <div className="gt-field-label" style={{ marginTop: 0 }}>PACE MÉDIO · ÚLTIMAS 4 SEMANAS</div>
+                    <div className="v">{rec ? <>{paceTxt(rec)}<span className="u">/km</span></> : "—"}</div>
+                    {rec && ant ? (() => { const dif = Math.round(Math.abs(ant - rec) * 60); const qt = dif >= 60 ? `${paceTxt(dif / 60)} min` : `${dif} segundos`; return <div className="sb">{dif === 0 ? "Igual às 4 semanas anteriores." : rec < ant ? <><b className="ok">{qt} mais rápido</b> por km que nas 4 semanas anteriores ({paceTxt(ant)}/km).</> : `${qt} mais lento por km que nas 4 semanas anteriores (${paceTxt(ant)}/km). Pode ser treino mais leve, e está tudo bem.`}</div>; })() : <div className="sb">Com mais semanas de corrida, aqui aparece a comparação.</div>}
+                  </div>
+                  <div className="gt-card">
+                    <div className="gt-field-label" style={{ marginTop: 0, marginBottom: 6 }}>ÚLTIMAS CORRIDAS</div>
+                    {ult.map((c, i) => (
+                      <div className="gt-hist-item" key={c.data + i}><div className="d">{formatDateLabel(c.data)} · {String(Math.round(c.km * 10) / 10).replace(".", ",")} km · {Math.round(c.min)} min</div><div className="w gt-pace-w">{paceTxt(c.pace)}/km</div></div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {evoTab === "atividade" && (
               <div>
@@ -21314,7 +21480,9 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip }) {
               <div><b>{rpeModal.celeb.volume >= 1000 ? `${(rpeModal.celeb.volume / 1000).toFixed(1).replace(".", ",")} t` : `${rpeModal.celeb.volume} kg`}</b><span>volume</span></div>
             </div>
             {rpeModal.celeb.recordes.slice(0, 3).map((r) => (
-              <div className="gt-celeb-rec" key={r.nome}>Novo recorde em {r.nome}: <b>{String(r.peso).replace(".", ",")} kg</b> (+{String(+(r.peso - r.anterior).toFixed(2)).replace(".", ",")} kg)</div>
+              r.tipo === "e1rm"
+                ? <div className="gt-celeb-rec" key={r.nome}>Melhor série em {r.nome}: <b>{kgTxt(r.peso)} kg × {r.reps}</b>. Seu máximo estimado subiu de {kgTxt(r.anterior)} para {kgTxt(r.e1rm)} kg.</div>
+                : <div className="gt-celeb-rec" key={r.nome}>Novo recorde em {r.nome}: <b>{String(r.peso).replace(".", ",")} kg</b> (+{String(+(r.peso - r.anterior).toFixed(2)).replace(".", ",")} kg)</div>
             ))}
             {rpeModal.celeb.recordes.length === 0 && <div className="gt-celeb-msg">Constância também é progresso.</div>}
             {(rpeModal.celeb.selos || []).map((n) => <div className="gt-celeb-rec" key={n}><Ei e="🏅" /> Novo selo: <b>{n}</b></div>)}
