@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v211";
+const APP_BUILD = "v212";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -3685,6 +3685,8 @@ const APP_CSS = `
   .gt-agd-st.feita { color:var(--success); } .gt-agd-st.faltou { color:var(--amber); }
   .gt-agd-item.st-faltou { opacity:.8; }
   .gt-agd-pessoas { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .gt-agd-mesma { margin:0 0 8px; }
+  .gt-agd-mesma .gt-agd-nota { margin:0 0 8px; }
   .gt-agd-novo { margin-bottom:6px; }
   .gt-agd-novo .gt-agd-campos { margin-top:8px; }
   .gt-agd-presenca { display:flex; gap:8px; width:100%; }
@@ -13828,7 +13830,7 @@ function CoachAgendaTab({ ativo, showToast, refreshKey, onPendentes, coachNome, 
           })}
         </div>
       )}
-      {editor && <CoachAgendaEditor dados={dados} ini={editor} duracaoPadrao={duracao_padrao} showToast={showToast} onClose={() => setEditor(null)} onSalvo={() => { setEditor(null); setDetalhe(null); recarregar(); }} />}
+      {editor && <CoachAgendaEditor dados={dados} alunosMovo={alunosMovo} ini={editor} duracaoPadrao={duracao_padrao} showToast={showToast} onClose={() => setEditor(null)} onSalvo={() => { setEditor(null); setDetalhe(null); recarregar(); }} />}
       {detalhe && <CoachAgendaDetalhe item={detalhe.item} data={detalhe.data} hojeS={hojeS} pessoas={pessoas} showToast={showToast} onClose={() => setDetalhe(null)} onEditar={() => { const i = detalhe.item; setDetalhe(null); setEditor({ sel: detalhe.data, item: i }); }} onMudou={() => { setDetalhe(null); recarregar(); }} />}
       {janelaAberta && <CoachAgendaJanela janela={janela} duracao={duracao_padrao} showToast={showToast} onClose={() => setJanelaAberta(false)} onSalvo={() => { setJanelaAberta(false); recarregar(); }} />}
       {alunosAberto && <CoachAgendaAlunos pessoas={pessoas} hojeS={hojeS} coachNome={coachNome} onAbrirAluno={onAbrirAluno} onMontarAluno={onMontarAluno} alunosMovo={alunosMovo} showToast={showToast} onClose={() => setAlunosAberto(false)} onMudou={recarregar} />}
@@ -13838,13 +13840,49 @@ function CoachAgendaTab({ ativo, showToast, refreshKey, onPendentes, coachNome, 
   );
 }
 
-function CoachAgendaEditor({ dados, ini, duracaoPadrao, showToast, onClose, onSalvo }) {
+function agPrimeiroNome(n) {
+  return desafioNomeNorm(String(n || "").trim().split(/\s+/)[0]);
+}
+
+// Alunos do Movo (vínculo ativo) que ainda não estão na agenda viram opção no "Novo compromisso".
+// Se o primeiro nome bate com um aluno da agenda ainda sem vínculo, pergunta se é a mesma pessoa (evita "Bruna" e "Bruna Soares").
+function agOpcoesAluno(pessoas, alunosMovo) {
+  const livres = (alunosMovo || []).filter((a) => !pessoas.some((x) => x.vinculo && x.vinculo.link_id === a.link_id));
+  const ops = [
+    ...pessoas.map((p) => {
+      // Ligado ao Movo: mostra o nome do perfil, igual à aba Alunos.
+      const a = p.vinculo && (alunosMovo || []).find((x) => x.link_id === p.vinculo.link_id);
+      return { k: p.id, nome: a ? a.nome : p.nome, pessoa: p };
+    }),
+    ...livres.map((a) => ({ k: "m:" + a.link_id, nome: a.nome, movo: a })),
+  ].sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR"));
+  const par = (op) => {
+    if (!op) return null;
+    if (op.movo) {
+      const p = pessoas.find((x) => !x.vinculo && agPrimeiroNome(x.nome) === agPrimeiroNome(op.movo.nome));
+      return p ? { pessoa: p, movo: op.movo } : null;
+    }
+    if (op.pessoa && !op.pessoa.vinculo) {
+      const a = livres.find((x) => agPrimeiroNome(x.nome) === agPrimeiroNome(op.pessoa.nome));
+      return a ? { pessoa: op.pessoa, movo: a } : null;
+    }
+    return null;
+  };
+  return { ops, par };
+}
+
+function CoachAgendaEditor({ dados, alunosMovo, ini, duracaoPadrao, showToast, onClose, onSalvo }) {
   const it = ini.item || null;
   const serie = !!(it && it.dias);
   const pessoas = dados.pessoas || [];
+  const { ops: opcoesAluno, par: parDe } = useMemo(() => agOpcoesAluno(pessoas, alunosMovo), [pessoas, alunosMovo]);
   const [tipo, setTipo] = useState(it ? it.tipo : "particular");
   const [titulo, setTitulo] = useState(it && !it.pessoa_id ? it.titulo || "" : "");
-  const [pessoaSel, setPessoaSel] = useState(it && it.pessoa_id ? it.pessoa_id : !it && pessoas.length === 0 ? "novo" : null);
+  const [pessoaSel, setPessoaSel] = useState(it && it.pessoa_id ? it.pessoa_id : !it && opcoesAluno.length === 0 ? "novo" : null);
+  const [mesma, setMesma] = useState(null); // null | true | false: resposta para "é a mesma pessoa?"
+  const ligados = useRef({}); // link_id -> pessoa_id já ligada nesta tela (se o salvar falhar depois, não liga de novo)
+  const opSel = opcoesAluno.find((o) => o.k === pessoaSel) || null;
+  const parSel = tipo === "particular" ? parDe(opSel) : null;
   const [novoNome, setNovoNome] = useState("");
   const [novoTel, setNovoTel] = useState("");
   const [novoEmail, setNovoEmail] = useState("");
@@ -13859,8 +13897,8 @@ function CoachAgendaEditor({ dados, ini, duracaoPadrao, showToast, onClose, onSa
   const horaOk = /^([01]\d|2[0-3]):[0-5]\d$/.test(hora);
   const mostraRep = !serie || escopo !== "esta";
   const mostraDia = !serie;
-  const alunoOk = tipo !== "particular" || (pessoaSel && pessoaSel !== "novo") || (pessoaSel === "novo" && novoNome.trim()) || (it && !it.pessoa_id && it.titulo);
-  const motivoDesab = !horaOk ? "Informe o horário." : !alunoOk ? "Escolha ou cadastre o aluno." : mostraRep && rep === "semana" && !dias.length ? "Escolha pelo menos um dia." : !data ? "Informe a data." : "";
+  const alunoOk = tipo !== "particular" || (pessoaSel && pessoaSel !== "novo" && (!parSel || !opSel.movo || mesma !== null)) || (pessoaSel === "novo" && novoNome.trim()) || (it && !it.pessoa_id && it.titulo);
+  const motivoDesab = !horaOk ? "Informe o horário." : !alunoOk ? (parSel && opSel.movo ? "Diga se é a mesma pessoa." : "Escolha ou cadastre o aluno.") : mostraRep && rep === "semana" && !dias.length ? "Escolha pelo menos um dia." : !data ? "Informe a data." : "";
   const choque = useMemo(() => {
     if (!horaOk || !data) return null;
     const dataRef = serie && escopo !== "tudo" ? ini.sel : data;
@@ -13871,7 +13909,23 @@ function CoachAgendaEditor({ dados, ini, duracaoPadrao, showToast, onClose, onSa
   async function salvar() {
     if (motivoDesab || salvando) return;
     setSalvando(true);
-    let pessoaId = tipo === "particular" && pessoaSel && pessoaSel !== "novo" ? pessoaSel : null;
+    let pessoaId = tipo === "particular" && opSel && opSel.pessoa ? opSel.pessoa.id : null;
+    if (tipo === "particular" && opSel && (opSel.movo || (parSel && mesma))) {
+      // Liga o aluno do Movo à agenda: junta com o cadastro manual (se for a mesma pessoa) ou cria um novo já ligado.
+      const movo = parSel && mesma ? parSel.movo : opSel.movo;
+      if (movo && ligados.current[movo.link_id]) pessoaId = ligados.current[movo.link_id];
+      else if (parSel && mesma) pessoaId = parSel.pessoa.id;
+      else if (movo) {
+        const rp = await coachCall("coach_agenda_pessoa_salvar", { p_id: null, p_nome: movo.nome, p_email: null, p_telefone: null });
+        if (!rp.ok) { setSalvando(false); showToast(rp.erro); return; }
+        pessoaId = rp.data && rp.data.id;
+      }
+      if (movo) {
+        const rv = await coachCall("coach_agenda_vincular", { p_pessoa: pessoaId, p_link: movo.link_id });
+        if (!rv.ok && !ligados.current[movo.link_id]) { setSalvando(false); showToast(rv.erro); return; }
+        ligados.current[movo.link_id] = pessoaId;
+      }
+    }
     if (tipo === "particular" && pessoaSel === "novo") {
       const rp = await coachCall("coach_agenda_pessoa_salvar", { p_id: null, p_nome: novoNome.trim(), p_email: novoEmail.trim() || null, p_telefone: novoTel.trim() || null });
       if (!rp.ok) { setSalvando(false); showToast(rp.erro); return; }
@@ -13915,9 +13969,19 @@ function CoachAgendaEditor({ dados, ini, duracaoPadrao, showToast, onClose, onSa
           <>
             <div className="gt-co-sec">ALUNO</div>
             <div className="gt-agd-pessoas" role="group" aria-label="Aluno">
-              {pessoas.map((p) => <button key={p.id} type="button" aria-pressed={pessoaSel === p.id} className={`gt-co-chip ${pessoaSel === p.id ? "on" : ""}`} onClick={() => setPessoaSel(p.id)}>{p.nome}</button>)}
+              {opcoesAluno.map((o) => <button key={o.k} type="button" aria-pressed={pessoaSel === o.k} className={`gt-co-chip ${pessoaSel === o.k ? "on" : ""}`} onClick={() => { setPessoaSel(o.k); setMesma(null); }}>{o.nome}</button>)}
               <button type="button" aria-pressed={pessoaSel === "novo"} className={`gt-co-chip ${pessoaSel === "novo" ? "on" : ""}`} onClick={() => setPessoaSel("novo")}>+ Novo aluno</button>
             </div>
+            {parSel && (
+              <div className="gt-agd-mesma" role="group" aria-label="É a mesma pessoa?">
+                <p className="gt-agd-nota">{opSel.movo ? <>É a mesma <b>{parSel.pessoa.nome}</b> que já está na sua agenda?</> : <>É a <b>{parSel.movo.nome}</b> que já usa o Movo?</>}</p>
+                <div className="gt-co-chipsrow">
+                  <button type="button" aria-pressed={mesma === true} className={`gt-co-chip ${mesma === true ? "on" : ""}`} onClick={() => setMesma(true)}>Sim, é a mesma</button>
+                  <button type="button" aria-pressed={mesma === false} className={`gt-co-chip ${mesma === false ? "on" : ""}`} onClick={() => setMesma(false)}>Não, outra pessoa</button>
+                </div>
+                {mesma === true && <p className="gt-agd-nota">As aulas e o pacote ficam ligados ao perfil no Movo.</p>}
+              </div>
+            )}
             {pessoaSel === "novo" && (
               <div className="gt-agd-novo">
                 <input className="gt-input" aria-label="Nome do aluno" placeholder="Nome do aluno" maxLength={60} value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
