@@ -3882,8 +3882,9 @@ const APP_CSS = `
   .gt-agd-st.feita { color:var(--success); } .gt-agd-st.faltou { color:var(--amber); }
   .gt-agd-item.st-faltou { opacity:.8; }
   .gt-agd-pessoas { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
-  .gt-agd-mesma { margin:0 0 8px; }
-  .gt-agd-mesma .gt-agd-nota { margin:0 0 8px; }
+  .gt-agd-mesma { margin:4px 0 16px; background:var(--surface-2); padding:12px; border-radius:14px; }
+  .gt-agd-mesma p { margin:0 0 6px; font-size:14px; line-height:1.45; color:var(--text); }
+  .gt-agd-separar { background:none; border:none; padding:4px 0; color:var(--accent); font-size:13px; font-weight:600; cursor:pointer; }
   .gt-agd-novo { margin-bottom:6px; }
   .gt-agd-novo .gt-agd-campos { margin-top:8px; }
   .gt-agd-presenca { display:flex; gap:8px; width:100%; }
@@ -14305,44 +14306,46 @@ function agPrimeiroNome(n) {
 }
 
 // Alunos do Movo (vínculo ativo) que ainda não estão na agenda viram opção no "Novo compromisso".
-// Se o primeiro nome bate com um aluno da agenda ainda sem vínculo, pergunta se é a mesma pessoa (evita "Bruna" e "Bruna Soares").
-function agOpcoesAluno(pessoas, alunosMovo) {
+// Se o primeiro nome bate com um aluno da agenda ainda sem vínculo ("Bruna" e "Bruna Soares"), vira um chip só,
+// que junta os dois ao salvar; o treinador pode "Separar" (fica lembrado neste aparelho).
+const AG_SEPARADOS = "treino-app:agSeparados";
+function agOpcoesAluno(pessoas, alunosMovo, separados) {
   const livres = (alunosMovo || []).filter((a) => !pessoas.some((x) => x.vinculo && x.vinculo.link_id === a.link_id));
-  const ops = [
-    ...pessoas.map((p) => {
+  const juntas = {};
+  const movoOps = livres.map((a) => {
+    const p = separados.includes(a.link_id) ? null : pessoas.find((x) => !x.vinculo && !juntas[x.id] && agPrimeiroNome(x.nome) === agPrimeiroNome(a.nome));
+    if (p) juntas[p.id] = true;
+    return { k: "m:" + a.link_id, nome: a.nome, movo: a, junta: p || null };
+  });
+  return [
+    ...pessoas.filter((p) => !juntas[p.id]).map((p) => {
       // Ligado ao Movo: mostra o nome do perfil, igual à aba Alunos.
       const a = p.vinculo && (alunosMovo || []).find((x) => x.link_id === p.vinculo.link_id);
       return { k: p.id, nome: a ? a.nome : p.nome, pessoa: p };
     }),
-    ...livres.map((a) => ({ k: "m:" + a.link_id, nome: a.nome, movo: a })),
+    ...movoOps,
   ].sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR"));
-  const par = (op) => {
-    if (!op) return null;
-    if (op.movo) {
-      const p = pessoas.find((x) => !x.vinculo && agPrimeiroNome(x.nome) === agPrimeiroNome(op.movo.nome));
-      return p ? { pessoa: p, movo: op.movo } : null;
-    }
-    if (op.pessoa && !op.pessoa.vinculo) {
-      const a = livres.find((x) => agPrimeiroNome(x.nome) === agPrimeiroNome(op.pessoa.nome));
-      return a ? { pessoa: op.pessoa, movo: a } : null;
-    }
-    return null;
-  };
-  return { ops, par };
 }
 
 function CoachAgendaEditor({ dados, alunosMovo, ini, duracaoPadrao, showToast, onClose, onSalvo }) {
   const it = ini.item || null;
   const serie = !!(it && it.dias);
   const pessoas = dados.pessoas || [];
-  const { ops: opcoesAluno, par: parDe } = useMemo(() => agOpcoesAluno(pessoas, alunosMovo), [pessoas, alunosMovo]);
+  const [separados, setSeparados] = useState(() => { try { return JSON.parse(localStorage.getItem(AG_SEPARADOS) || "[]"); } catch (e) { return []; } });
+  const opcoesAluno = useMemo(() => agOpcoesAluno(pessoas, alunosMovo, separados), [pessoas, alunosMovo, separados]);
   const [tipo, setTipo] = useState(it ? it.tipo : "particular");
   const [titulo, setTitulo] = useState(it && !it.pessoa_id ? it.titulo || "" : "");
-  const [pessoaSel, setPessoaSel] = useState(it && it.pessoa_id ? it.pessoa_id : !it && opcoesAluno.length === 0 ? "novo" : null);
-  const [mesma, setMesma] = useState(null); // null | true | false: resposta para "é a mesma pessoa?"
+  const [pessoaSel, setPessoaSel] = useState(() => {
+    if (it && it.pessoa_id) { const j = opcoesAluno.find((o) => o.junta && o.junta.id === it.pessoa_id); return j ? j.k : it.pessoa_id; }
+    return !it && opcoesAluno.length === 0 ? "novo" : null;
+  });
   const ligados = useRef({}); // link_id -> pessoa_id já ligada nesta tela (se o salvar falhar depois, não liga de novo)
   const opSel = opcoesAluno.find((o) => o.k === pessoaSel) || null;
-  const parSel = tipo === "particular" ? parDe(opSel) : null;
+  function separar(o) {
+    const nova = [...separados, o.movo.link_id];
+    setSeparados(nova);
+    try { localStorage.setItem(AG_SEPARADOS, JSON.stringify(nova)); } catch (e) {}
+  }
   const [novoNome, setNovoNome] = useState("");
   const [novoTel, setNovoTel] = useState("");
   const [novoEmail, setNovoEmail] = useState("");
@@ -14357,8 +14360,8 @@ function CoachAgendaEditor({ dados, alunosMovo, ini, duracaoPadrao, showToast, o
   const horaOk = /^([01]\d|2[0-3]):[0-5]\d$/.test(hora);
   const mostraRep = !serie || escopo !== "esta";
   const mostraDia = !serie;
-  const alunoOk = tipo !== "particular" || (pessoaSel && pessoaSel !== "novo" && (!parSel || !opSel.movo || mesma !== null)) || (pessoaSel === "novo" && novoNome.trim()) || (it && !it.pessoa_id && it.titulo);
-  const motivoDesab = !horaOk ? "Informe o horário." : !alunoOk ? (parSel && opSel.movo ? "Diga se é a mesma pessoa." : "Escolha ou cadastre o aluno.") : mostraRep && rep === "semana" && !dias.length ? "Escolha pelo menos um dia." : !data ? "Informe a data." : "";
+  const alunoOk = tipo !== "particular" || (pessoaSel && pessoaSel !== "novo" && opSel) || (pessoaSel === "novo" && novoNome.trim()) || (it && !it.pessoa_id && it.titulo);
+  const motivoDesab = !horaOk ? "Informe o horário." : !alunoOk ? "Escolha ou cadastre o aluno." : mostraRep && rep === "semana" && !dias.length ? "Escolha pelo menos um dia." : !data ? "Informe a data." : "";
   const choque = useMemo(() => {
     if (!horaOk || !data) return null;
     const dataRef = serie && escopo !== "tudo" ? ini.sel : data;
@@ -14370,17 +14373,17 @@ function CoachAgendaEditor({ dados, alunosMovo, ini, duracaoPadrao, showToast, o
     if (motivoDesab || salvando) return;
     setSalvando(true);
     let pessoaId = tipo === "particular" && opSel && opSel.pessoa ? opSel.pessoa.id : null;
-    if (tipo === "particular" && opSel && (opSel.movo || (parSel && mesma))) {
-      // Liga o aluno do Movo à agenda: junta com o cadastro manual (se for a mesma pessoa) ou cria um novo já ligado.
-      const movo = parSel && mesma ? parSel.movo : opSel.movo;
-      if (movo && ligados.current[movo.link_id]) pessoaId = ligados.current[movo.link_id];
-      else if (parSel && mesma) pessoaId = parSel.pessoa.id;
-      else if (movo) {
+    if (tipo === "particular" && opSel && opSel.movo) {
+      // Liga o aluno do Movo à agenda: junta com o cadastro manual de mesmo nome ou cria um novo já ligado.
+      const movo = opSel.movo;
+      if (ligados.current[movo.link_id]) pessoaId = ligados.current[movo.link_id];
+      else if (opSel.junta) pessoaId = opSel.junta.id;
+      else {
         const rp = await coachCall("coach_agenda_pessoa_salvar", { p_id: null, p_nome: movo.nome, p_email: null, p_telefone: null });
         if (!rp.ok) { setSalvando(false); showToast(rp.erro); return; }
         pessoaId = rp.data && rp.data.id;
       }
-      if (movo) {
+      {
         const rv = await coachCall("coach_agenda_vincular", { p_pessoa: pessoaId, p_link: movo.link_id });
         if (!rv.ok && !ligados.current[movo.link_id]) { setSalvando(false); showToast(rv.erro); return; }
         ligados.current[movo.link_id] = pessoaId;
@@ -14429,17 +14432,13 @@ function CoachAgendaEditor({ dados, alunosMovo, ini, duracaoPadrao, showToast, o
           <>
             <div className="gt-co-sec">ALUNO</div>
             <div className="gt-agd-pessoas" role="group" aria-label="Aluno">
-              {opcoesAluno.map((o) => <button key={o.k} type="button" aria-pressed={pessoaSel === o.k} className={`gt-co-chip ${pessoaSel === o.k ? "on" : ""}`} onClick={() => { setPessoaSel(o.k); setMesma(null); }}>{o.nome}</button>)}
+              {opcoesAluno.map((o) => <button key={o.k} type="button" aria-pressed={pessoaSel === o.k} className={`gt-co-chip ${pessoaSel === o.k ? "on" : ""}`} onClick={() => setPessoaSel(o.k)}>{o.nome}</button>)}
               <button type="button" aria-pressed={pessoaSel === "novo"} className={`gt-co-chip ${pessoaSel === "novo" ? "on" : ""}`} onClick={() => setPessoaSel("novo")}>+ Novo aluno</button>
             </div>
-            {parSel && (
-              <div className="gt-agd-mesma" role="group" aria-label="É a mesma pessoa?">
-                <p className="gt-agd-nota">{opSel.movo ? <>É a mesma <b>{parSel.pessoa.nome}</b> que já está na sua agenda?</> : <>É a <b>{parSel.movo.nome}</b> que já usa o Movo?</>}</p>
-                <div className="gt-co-chipsrow">
-                  <button type="button" aria-pressed={mesma === true} className={`gt-co-chip ${mesma === true ? "on" : ""}`} onClick={() => setMesma(true)}>Sim, é a mesma</button>
-                  <button type="button" aria-pressed={mesma === false} className={`gt-co-chip ${mesma === false ? "on" : ""}`} onClick={() => setMesma(false)}>Não, outra pessoa</button>
-                </div>
-                {mesma === true && <p className="gt-agd-nota">As aulas e o pacote ficam ligados ao perfil no Movo.</p>}
+            {opSel && opSel.junta && (
+              <div className="gt-agd-mesma">
+                <p>Juntamos com <b>{opSel.junta.nome}</b>, que já estava na sua agenda. As aulas e o pacote passam para {opSel.movo.nome}.</p>
+                <button type="button" className="gt-agd-separar" onClick={() => { separar(opSel); setPessoaSel(null); }}>Não é a mesma pessoa? Separar</button>
               </div>
             )}
             {pessoaSel === "novo" && (
