@@ -7,6 +7,7 @@ const SHELL = [
   "./runner.json",
   "./manifest.json",
   "./icon-192.png",
+  "./badge-96.png",
   "./icon-512.png",
 ];
 
@@ -47,7 +48,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(d.title || "Movo", {
       body: d.body || "",
       icon: "./icon-192.png",
-      badge: "./icon-192.png",
+      badge: "./badge-96.png",
       tag: d.tag || "movo",
       data: { url: d.url || "./" },
     })
