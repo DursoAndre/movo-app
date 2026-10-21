@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v217";
+const APP_BUILD = "v218";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1405,6 +1405,15 @@ function pushTiposLer() {
 }
 // Convite para ativar avisos no momento em que fazem sentido (entrou num desafio, aceitou um treinador).
 // Aparece uma vez por motivo, só se o aparelho recebe push e a pessoa ainda não ativou nem bloqueou.
+async function pushResincronizar() {
+  try {
+    if (!pushSuportado() || Notification.permission !== "granted") return;
+    const sub = await pushInscricaoAtual();
+    if (!sub) return;
+    const j = sub.toJSON();
+    await supabaseClient.rpc("push_salvar", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent.slice(0, 200), p_tipos: null });
+  } catch (e) {}
+}
 function pushConviteDisparar(motivo, extra) {
   try { window.dispatchEvent(new CustomEvent("movo:push-convite", { detail: { motivo, ...(extra || {}) } })); } catch (e) {}
 }
@@ -1416,6 +1425,8 @@ async function pushConvitePode(motivo) {
 function PushConvite({ showToast, logEvent }) {
   const [conv, setConv] = useState(null); // { motivo, coachNome }
   const [ocupado, setOcupado] = useState(false);
+  // Ao abrir o app, regrava a inscrição deste aparelho (o servidor apaga as que deram erro).
+  useEffect(() => { pushResincronizar(); }, []);
   useEffect(() => {
     function on(e) {
       const d = (e && e.detail) || {};
@@ -1499,7 +1510,14 @@ function PushConfig({ showToast, logEvent, coachNome, temCoach, temDesafio }) {
   async function testar() {
     setOcupado(true);
     try {
-      const { data } = await supabaseClient.functions.invoke("enviar-push", { body: { tipo: "teste" } });
+      let { data } = await supabaseClient.functions.invoke("enviar-push", { body: { tipo: "teste" } });
+      // A inscrição pode ter caído (ex.: app reinstalado): refaz neste aparelho e tenta mais uma vez.
+      if (!(data && data.enviado) && Notification.permission === "granted") {
+        await pushDesativar();
+        const r = await pushAtivar(tipos);
+        if (r.ok) ({ data } = await supabaseClient.functions.invoke("enviar-push", { body: { tipo: "teste" } }));
+        logEvent("push_reinscrito", { ok: !!(data && data.enviado) });
+      }
       showToast(data && data.enviado ? "Teste enviado. Deve chegar em alguns segundos." : "O teste não saiu. Tente desativar e ativar de novo.");
     } catch (e) { showToast("O teste não saiu agora"); }
     setOcupado(false);
