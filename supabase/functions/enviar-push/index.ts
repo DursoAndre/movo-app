@@ -4,6 +4,9 @@
 //  - "anamnese": pedido do treinador (avisa o aluno) ou resposta do aluno (avisa o treinador); body.link_id e body.evento.
 //  - "desafios": resultado das semanas de desafio que fecharam nos últimos 7 dias; só a função agendada chama
 //    (segunda às 9h de Brasília, header x-cron-secret). Um aviso por pessoa, mesmo com vários desafios.
+//  - "medidas": lembrete mensal de medidas e fotos, só para quem deixou ligado (user_lembretes) e está há 30+ dias
+//    sem registrar; a lista vem de push_medidas_devidos (no máximo 1 a cada 27 dias, para depois de 3 avisos).
+//    Só a função agendada chama (todo dia às 10h de Brasília). Exceção aprovada pelo Andre em 22/10.
 // Sem lembrete diário nem cobrança de treino (decisão do Andre, 21/10).
 // Secrets: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (ex.: "mailto:contato@movoapp.com.br"). O segredo do agendamento fica no Vault (push_segredo_ok).
 // Sem as chaves VAPID responde enviado:false (nada é mandado).
@@ -106,6 +109,24 @@ Deno.serve(async (req) => {
       }
       if (lista.length) await admin.from("push_envios").insert({ user_id: userId, tipo: tipoMsg, ref, aparelhos: ok });
       return { aparelhos: lista.length, ok };
+    }
+
+    if (tipo === "medidas") {
+      const { data: segOk } = await admin.rpc("push_segredo_ok", { p: req.headers.get("x-cron-secret") || "" });
+      if (segOk !== true) return json({ ok: false, erro: "nao_autorizado" }, 401);
+      const { data: devidos, error } = await admin.rpc("push_medidas_devidos");
+      if (error) return json({ ok: false, erro: error.message }, 500);
+      const ref = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+      let pessoas = 0;
+      for (const d of (devidos || []) as { user_id: string; dias: number }[]) {
+        const res = await mandar(d.user_id, "medidas", ref, {
+          title: "Hora de atualizar suas medidas",
+          body: `Seu último registro foi há ${d.dias} dias. Peso, medidas e fotos levam 2 minutos.`,
+          url: APP + "?abrir=medidas", tag: "medidas",
+        });
+        if (res.ok) pessoas++;
+      }
+      return json({ ok: true, pessoas });
     }
 
     if (tipo === "desafios") {
@@ -228,7 +249,9 @@ Deno.serve(async (req) => {
         const { data: p } = await admin.from("coach_profiles").select("nome_exibicao").eq("user_id", me).maybeSingle();
         const nome = String((p && p.nome_exibicao) || "Seu treinador").trim().split(" ")[0];
         para = l.student_id;
-        msg = { title: `${nome} pediu um questionário de saúde`, body: "Leva uns 3 minutos. Abra o Movo para responder.", tag: `anamnese-${linkId}` };
+        msg = a.respondida_em
+          ? { title: `${nome} pediu para atualizar seu questionário de saúde`, body: "Suas respostas já vêm preenchidas. Mude o que mudou e salve.", tag: `anamnese-${linkId}` }
+          : { title: `${nome} pediu um questionário de saúde`, body: "Leva uns 3 minutos. Abra o Movo para responder.", tag: `anamnese-${linkId}` };
       } else if (evento === "respondida" && l.student_id === me && a.respondida_em) {
         const { data: lk } = await admin.from("coach_links").select("student_label").eq("id", linkId).maybeSingle();
         const { data: ad } = await admin.from("app_data").select("display_name").eq("user_id", me).maybeSingle();

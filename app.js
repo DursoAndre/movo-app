@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v221";
+const APP_BUILD = "v222";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -4119,6 +4119,18 @@ const APP_CSS = `
   .gt-xp-selo { font-size:13px; color:var(--info); white-space:nowrap; }
   .gt-video-player { width:100%; max-height:60vh; border-radius:10px; background:#000; }
   .gt-video-off { font-size:13px; color:var(--text-muted); }
+  .gt-video-ate { font-size:12px; color:var(--text-muted); margin:2px 0 4px; }
+  .gt-dobras-op { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px 12px; margin-bottom:8px; }
+  .gt-dobras-idade { width:84px; }
+  .gt-dobras .gt-plano-dica { margin-top:8px; }
+  .gt-dobras-calc { display:flex; align-items:baseline; gap:8px; font-variant-numeric:tabular-nums; }
+  .gt-dobras-calc small { font-size:12px; color:var(--text-muted); }
+  .gt-convite-anam { margin-top:10px; }
+  .gt-evo-med-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; min-height:32px; }
+  .gt-evo-med-head .gt-co-link { padding-right:0; }
+  .gt-evo-med .gt-med-resumo { margin-bottom:8px; }
+  .gt-evo-med .gt-med-stat { background:var(--surface-2); }
+  .gt-evo-med-pe { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; color:var(--text-muted); }
   .gt-video-add { display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; border:1px dashed var(--border); border-radius:10px; font-size:14px; color:var(--text); cursor:pointer; padding:0 12px; }
   .gt-video-add.off { opacity:.5; pointer-events:none; }
   .gt-video-prog { position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:var(--surface-2); font-size:14px; overflow:hidden; }
@@ -4777,6 +4789,73 @@ function histAppDetectar(texto) {
   if (/exercise name/.test(cab) && /workout name/.test(cab) && /set order/.test(cab)) return "Strong";
   return null;
 }
+// Medidas do corpo em CSV: Hevy (measurements.csv: date, weight_kg, fat_percent, waist_cm, left_bicep_cm…),
+// planilhas com data + colunas de peso/medidas, ou formato longo (data, medida, valor, unidade).
+// Esquerda/direita viram a média. Não usa IA.
+const HIST_MED_TOKENS = [
+  ["peso", ["weight", "bodyweight", "peso"]], ["gordura", ["fat", "gordura", "bf"]], ["cintura", ["waist", "cintura"]],
+  ["abdomen", ["abdomen", "abdominal", "abdome"]], ["quadril", ["hip", "hips", "quadril"]], ["peito", ["chest", "peito", "torax"]],
+  ["braco", ["bicep", "biceps", "arm", "braco"]], ["coxa", ["thigh", "coxa"]], ["panturrilha", ["calf", "calves", "panturrilha"]],
+];
+const HIST_MED_NAO = ["exercise", "exercicio", "reps", "repeticoes", "series", "set", "sets", "workout", "treino", "carga"];
+function histMedChave(nome) {
+  const tk = histNorm(nome).split(" ");
+  const h = HIST_MED_TOKENS.find(([, ws]) => ws.some((w) => tk.includes(w)));
+  if (!h) return null;
+  const un = tk.includes("lbs") || tk.includes("lb") ? "lb" : tk.includes("in") || tk.includes("inches") ? "in" : null;
+  return { k: h[0], un };
+}
+function histMedForma(cab) {
+  const n = cab.map((c) => histNorm(c));
+  if (n.some((c) => c.split(" ").some((t) => HIST_MED_NAO.includes(t)))) return null;
+  const iData = n.findIndex((c) => /^(date|data|day|dia)( |$)/.test(c));
+  if (iData < 0) return null;
+  const iNome = n.findIndex((c) => /^(measurement|medida|name|nome|type|tipo)( |$)/.test(c));
+  const iValor = n.findIndex((c) => /^(value|valor)( |$)/.test(c));
+  if (iNome >= 0 && iValor >= 0) return { longo: true, iData, iNome, iValor, iUn: n.findIndex((c) => /^(unit|unidade)( |$)/.test(c)) };
+  const cols = cab.map((c, i) => (i === iData ? null : histMedChave(c))).map((x, i) => (x ? { ...x, i } : null)).filter(Boolean);
+  return cols.length ? { longo: false, iData, cols } : null;
+}
+function histMedDetectar(texto) {
+  const linhas = histCsvLinhas(String(texto || "").split(/\r?\n/).slice(0, 3).join("\n"));
+  if (linhas.length < 2 || histAppDetectar(texto)) return null;
+  const f = histMedForma(linhas[0]);
+  if (!f) return null;
+  return /_cm|fat_percent|weight_kg/.test(String(texto).split(/\r?\n/)[0]) ? "Hevy" : "planilha";
+}
+// -> [{ data, peso, gordura, medidas }] por dia (o último valor do dia vale), só números dentro dos limites do app.
+function histMedLer(texto) {
+  const linhas = histCsvLinhas(texto);
+  if (linhas.length < 2) return [];
+  const f = histMedForma(linhas[0]);
+  if (!f) return [];
+  const num = (v) => { const x = Number(String(v || "").trim().replace(/\s/g, "").replace(",", ".")); return isFinite(x) && x > 0 ? x : null; };
+  const conv = (v, k, un) => (v == null ? null : k === "peso" && un === "lb" ? v * 0.45359 : k !== "peso" && k !== "gordura" && un === "in" ? v * 2.54 : v);
+  const dias = {}; // data -> { chave: [valores] }
+  const porMed = (data, k, v) => { if (!data || v == null) return; const d = (dias[data] = dias[data] || {}); (d[k] = d[k] || []).push(v); };
+  linhas.slice(1).forEach((l) => {
+    const data = histAppData(l[f.iData]);
+    if (!data) return;
+    if (f.longo) {
+      const c = histMedChave(l[f.iNome]);
+      if (!c) return;
+      const un = f.iUn >= 0 ? histNorm(l[f.iUn]) : c.un;
+      porMed(data, c.k, conv(num(l[f.iValor]), c.k, un === "lbs" ? "lb" : un));
+    } else f.cols.forEach((c) => porMed(data, c.k, conv(num(l[c.i]), c.k, c.un)));
+  });
+  const lim = { peso: [20, 400], gordura: [2, 70] };
+  return Object.keys(dias).sort().map((data) => {
+    const d = dias[data], r = { data, peso: null, gordura: null, medidas: {} };
+    Object.entries(d).forEach(([k, vs]) => {
+      const media = vs.reduce((t, v) => t + v, 0) / vs.length;
+      const [a, b] = lim[k] || [10, 300];
+      const v = medNum(String(Math.round(media * 10) / 10), a, b);
+      if (v == null) return;
+      if (k === "peso" || k === "gordura") r[k] = v; else r.medidas[k] = v;
+    });
+    return r;
+  }).filter((r) => r.peso != null || r.gordura != null || Object.keys(r.medidas).length);
+}
 const HIST_MESES_EN = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 // "2024-10-21 18:30:00", "21 Oct 2024, 18:30", "Oct 21, 2024", "21/10/2024" -> "2024-10-21".
 function histAppData(s) {
@@ -4902,6 +4981,8 @@ async function histLerArquivo(file, opts) {
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
     return wb.SheetNames.map((sn) => {
       const csv = XLSX.utils.sheet_to_csv(wb.Sheets[sn], { blankrows: false });
+      const med = opts && opts.apps ? histMedDetectar(csv) : null;
+      if (med) return { nome: `${nome} · ${sn}`, tipo: "medidas", app: med, linhas: histMedLer(csv), texto: csv };
       const cab = csv.split("\n")[0] || "";
       return { nome: `${nome} · ${sn}`, tipo: "texto", texto: `Planilha, aba "${sn}":\n${csv}`, cabecalho: cab.length < 300 ? cab : "" };
     }).filter((f) => f.texto.length > 40);
@@ -4910,6 +4991,8 @@ async function histLerArquivo(file, opts) {
     const texto = await file.text();
     const app = opts && opts.apps ? histAppDetectar(texto) : null;
     if (app) return [{ nome, tipo: "app", app, texto }];
+    const med = opts && opts.apps ? histMedDetectar(texto) : null;
+    if (med) return [{ nome, tipo: "medidas", app: med, linhas: histMedLer(texto) }];
     return [{ nome, tipo: "texto", texto, cabecalho: /^(csv|tsv)$/.test(ext) ? (texto.split("\n")[0] || "").trim() : "" }];
   }
   throw new Error(`${nome}: formato não suportado. Use texto, CSV, Excel, PDF, zip do WhatsApp ou foto.`);
@@ -4966,8 +5049,35 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
   const semLimite = uso && uso.limite >= 1000;
   const podeUsar = uso && (semLimite || uso.usados < uso.limite);
   // CSV do Hevy/Strong é lido no aparelho; a IA só entra se houver outro arquivo ou texto colado.
-  const precisaIA = !fontes.length || fontes.some((f) => f.tipo !== "app") || !!colado.trim();
+  const precisaIA = !fontes.length || fontes.some((f) => f.tipo !== "app" && f.tipo !== "medidas") || !!colado.trim();
   const appsCsv = [...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))];
+  // Medidas do corpo (CSV do Hevy ou planilha): vão para Minhas medidas, um registro por dia.
+  const medFontes = fontes.filter((f) => f.tipo === "medidas");
+  const medLinhas = useMemo(() => {
+    const porDia = {};
+    medFontes.forEach((f) => (f.linhas || []).forEach((r) => { if (r.data <= hojeISO) porDia[r.data] = { ...r, app: f.app }; }));
+    return Object.values(porDia).sort((a, b) => (a.data < b.data ? -1 : 1));
+  }, [fontes]);
+  const soMedidas = medFontes.length > 0 && fontes.every((f) => f.tipo === "medidas") && !colado.trim();
+  async function aplicarMedidas() {
+    if (!medLinhas.length) return null;
+    try {
+      const { data: ja, error } = await supabaseClient.from("user_medidas").select("data").limit(2000);
+      if (error) throw error;
+      const tem = new Set((ja || []).map((x) => x.data));
+      const novas = medLinhas.filter((r) => !tem.has(r.data)).slice(-500)
+        .map((r) => ({ data: r.data, peso: r.peso, gordura: r.gordura, medidas: r.medidas, nota: r.app === "Hevy" ? "Importado do Hevy" : "Importado de planilha", fotos: [] }));
+      for (let i = 0; i < novas.length; i += 200) {
+        const { error: e2 } = await supabaseClient.from("user_medidas").insert(novas.slice(i, i + 200));
+        if (e2) throw e2;
+      }
+      onEvent("hist_import_medidas", { n: novas.length, puladas: medLinhas.length - novas.length, app: [...new Set(medFontes.map((f) => f.app))].join(",") });
+      return { n: novas.length, puladas: medLinhas.length - novas.length };
+    } catch (e) {
+      onErro("hist_import_medidas", e && e.message);
+      return { erro: true };
+    }
+  }
   const inicioRef = useRef(Date.now());
 
   async function escolherArquivos(ev) {
@@ -5018,6 +5128,15 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     setErro("");
     const { partes, cortadas } = histMontarPartes(fontes, colado, lado);
     const locais = fontes.filter((f) => f.tipo === "app").map((f) => histAppLer(f.texto, f.app, unidade, hojeISO));
+    if (!partes.length && !locais.length && soMedidas) {
+      if (!medLinhas.length) { setErro("Não encontrei medidas nesse arquivo."); return; }
+      setLendoArq(true);
+      const m = await aplicarMedidas();
+      setLendoArq(false);
+      if (!m || m.erro) { setErro("Não consegui salvar as medidas agora. Tente de novo."); return; }
+      setResumo({ sessoes: 0, medidas: m.n, medidasPuladas: m.puladas }); setImpAtual(null); setEtapa("ok");
+      return;
+    }
     if (!partes.length && !locais.length) { setErro("Escolha um arquivo ou cole o texto do seu histórico."); return; }
     if (!partes.length) {
       const j = histJuntar(locais);
@@ -5075,10 +5194,11 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     setEtapa("revisao");
   }
 
-  function confirmarImportacao() {
+  async function confirmarImportacao() {
     const impId = `imp-${Date.now().toString(36)}`;
     const res = onAplicar(plano, impId);
-    setResumo(res); setImpAtual(impId);
+    const m = await aplicarMedidas();
+    setResumo({ ...res, medidas: m && !m.erro ? m.n : 0, medidasErro: !!(m && m.erro), medidasPuladas: m && !m.erro ? m.puladas : 0 }); setImpAtual(impId);
     onEvent("hist_import_aplicado", { origem: precisaIA ? "ia" : "app", app: appsCsv.join(","), sessoes: plano.sessoes.length,
       fichas: plano.fichas.filter((f) => !f.existenteId && f.key !== "__hist").length, novos_ex: plano.novosExercicios.length,
       seg_ate_aplicar: Math.round((Date.now() - inicioRef.current) / 1000) });
@@ -5108,13 +5228,16 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
               {lendoArq ? "Lendo arquivos…" : <><Ei e="📎" /> Escolher arquivos</>}
               <input type="file" multiple style={{ display: "none" }} accept=".txt,.csv,.tsv,.md,.json,.xlsx,.xlsm,.xls,.ods,.pdf,.zip,image/*" onChange={escolherArquivos} disabled={lendoArq} />
             </label>
-            <div className="gt-plano-dica">Aceita: CSV do Hevy e do Strong (exporte nas configurações do app), prints do MFIT e de outros apps, texto/CSV, Excel, PDF, fotos e a conversa exportada do WhatsApp (.txt ou .zip).</div>
+            <div className="gt-plano-dica">Aceita: CSV do Hevy e do Strong (exporte nas configurações do app), medidas do Hevy ou de planilha (data, peso, cintura…), prints do MFIT e de outros apps, texto/CSV, Excel, PDF, fotos e a conversa exportada do WhatsApp (.txt ou .zip).</div>
             {appsCsv.length > 0 && !precisaIA && <div className="gt-plano-aviso info">{appsCsv.length === 1 ? `Arquivo do ${appsCsv[0]} reconhecido.` : `Arquivos do ${appsCsv.join(" e do ")} reconhecidos.`} A leitura é feita no seu celular, sem IA e sem contar nas importações do mês.</div>}
+            {medFontes.length > 0 && (medLinhas.length
+              ? <div className="gt-plano-aviso info">Medidas reconhecidas: {medLinhas.length} {medLinhas.length === 1 ? "registro" : "registros"}{medLinhas.length > 1 ? ` de ${fmtD(medLinhas[0].data)} a ${fmtD(medLinhas[medLinhas.length - 1].data)}` : ""}. Vão para Minhas medidas, sem IA; os dias que você já registrou ficam como estão.</div>
+              : <div className="gt-plano-aviso aviso">Não encontrei medidas válidas nesse arquivo.</div>)}
             {fontes.length > 0 && (
               <div className="gt-chips gt-hist-chips">
                 {fontes.map((f) => (
                   <div className="gt-chip" key={f.id}>
-                    <span className="tag">{f.tipo === "app" ? f.app.toUpperCase() : f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
+                    <span className="tag">{f.tipo === "app" ? f.app.toUpperCase() : f.tipo === "medidas" ? "MEDIDAS" : f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{f.nome}</span>
                     <button type="button" aria-label={`Tirar ${f.nome}`} title="Remover" onClick={() => setFontes((p) => p.filter((x) => x.id !== f.id))}>✕</button>
                   </div>
@@ -5151,7 +5274,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
             {precisaIA && uso && !semLimite && !podeUsar && <LinkPlanos />}
             {precisaIA && <div className="gt-plano-foot">O arquivo é enviado para a IA só para ler seus treinos e não fica guardado.</div>}
             <div className="gt-modal-actions" style={{ marginTop: 6 }}>
-              <button type="button" className="gt-btn" disabled={(precisaIA && !podeUsar) || lendoArq || (!fontes.length && !colado.trim())} onClick={analisar}>{precisaIA ? "Analisar com IA" : "Ler arquivo"}</button>
+              <button type="button" className="gt-btn" disabled={(precisaIA && !podeUsar) || lendoArq || (!fontes.length && !colado.trim())} onClick={analisar}>{precisaIA ? "Analisar com IA" : soMedidas ? (lendoArq ? "Salvando…" : "Importar medidas") : "Ler arquivo"}</button>
               <button type="button" className="gt-btn secondary" onClick={onClose}>Fechar</button>
             </div>
             {importacoes.length > 0 && (
@@ -5217,10 +5340,13 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 
         {etapa === "ok" && resumo && (
           <div className="gt-plano-form">
-            <div className="gt-plano-aviso info"><b>Importado ✓</b> {resumo.sessoes} {resumo.sessoes === 1 ? "treino" : "treinos"}{resumo.atividades ? `, ${resumo.atividades} ${resumo.atividades === 1 ? "atividade" : "atividades"}` : ""}{resumo.fichas ? ` e ${resumo.fichas} ${resumo.fichas === 1 ? "ficha nova" : "fichas novas"}` : ""}. Veja no calendário, em Evolução e em Minhas fichas.</div>
+            {impAtual && <div className="gt-plano-aviso info"><b>Importado ✓</b> {resumo.sessoes} {resumo.sessoes === 1 ? "treino" : "treinos"}{resumo.atividades ? `, ${resumo.atividades} ${resumo.atividades === 1 ? "atividade" : "atividades"}` : ""}{resumo.fichas ? ` e ${resumo.fichas} ${resumo.fichas === 1 ? "ficha nova" : "fichas novas"}` : ""}. Veja no calendário, em Evolução e em Minhas fichas.</div>}
+            {resumo.medidas > 0 && <div className="gt-plano-aviso info">{impAtual ? "" : <><b>Importado ✓</b> </>}{resumo.medidas} {resumo.medidas === 1 ? "registro de medidas foi" : "registros de medidas foram"} para Minhas medidas{resumo.medidasPuladas ? ` (${resumo.medidasPuladas} ${resumo.medidasPuladas === 1 ? "dia já tinha registro" : "dias já tinham registro"} e ${resumo.medidasPuladas === 1 ? "ficou" : "ficaram"} como estava)` : ""}.</div>}
+            {resumo.medidas === 0 && !impAtual && <div className="gt-plano-aviso info">Todos esses dias já tinham registro em Minhas medidas. Nada mudou.</div>}
+            {resumo.medidasErro && <div className="gt-plano-aviso aviso">Não consegui salvar as medidas agora. Importe o arquivo de medidas de novo depois.</div>}
             <div className="gt-modal-actions" style={{ marginTop: 8 }}>
               <button type="button" className="gt-btn" onClick={onClose}>Pronto</button>
-              <button type="button" className="gt-btn secondary" onClick={() => { if (window.confirm("Desfazer esta importação?")) { onDesfazer(impAtual); onEvent("hist_import_desfeito"); onClose(); } }}>Desfazer</button>
+              {impAtual && <button type="button" className="gt-btn secondary" onClick={() => { if (window.confirm("Desfazer esta importação? As medidas importadas continuam em Minhas medidas.")) { onDesfazer(impAtual); onEvent("hist_import_desfeito"); onClose(); } }}>Desfazer</button>}
             </div>
           </div>
         )}
@@ -12731,7 +12857,7 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
             {anamnese && (<>
             <div className="gt-co-sec">QUESTIONÁRIO DE SAÚDE</div>
             <div className="gt-co-perms"><div className="gt-co-perm">
-              <div className="tx"><div className="t">{anamnese.respostas ? `Respondida em ${coachDataCurta(anamnese.respondida_em)}` : "Esperando sua resposta"}</div><div className="d">Só {link.coach_nome} vê. Você pode mudar ou apagar.</div></div>
+              <div className="tx"><div className="t">{anamneseAtualizar(anamnese) ? "Pedido para atualizar" : anamnese.respostas ? `Respondida em ${coachDataCurta(anamnese.respondida_em)}` : "Esperando sua resposta"}</div><div className="d">Só {link.coach_nome} vê. Você pode mudar ou apagar.</div></div>
               <button type="button" className="gt-btn small secondary" onClick={() => onAbrirAnamnese(anamnese)}>{anamnese.respostas ? "Ver ou mudar" : "Responder"}</button>
             </div></div>
             </>)}
@@ -13300,6 +13426,27 @@ function medResumo(linha) {
   };
   return MED_RESUMO_CAMPOS.map(([t, un, fn]) => [t, un, pega(fn)]).filter((r) => r[2]);
 }
+// Dobras cutâneas (avaliação do treinador): Jackson & Pollock 3 ou 7 dobras, % de gordura pela fórmula de Siri.
+const DOBRAS_CAMPOS = [["peitoral", "Peitoral"], ["axilar", "Axilar média"], ["triceps", "Tríceps"], ["subescapular", "Subescapular"], ["abdomen", "Abdômen"], ["suprailiaca", "Suprailíaca"], ["coxa", "Coxa"]];
+const DOBRAS_P3 = { m: ["peitoral", "abdomen", "coxa"], f: ["triceps", "suprailiaca", "coxa"] };
+function dobrasCampos(protocolo, sexo) { return protocolo === 7 ? DOBRAS_CAMPOS.map(([k]) => k) : DOBRAS_P3[sexo] || []; }
+function dobrasGordura(d) {
+  if (!d || !d.sexo || !(Number(d.idade) >= 10) || !d.mm) return null;
+  const ks = dobrasCampos(d.protocolo, d.sexo);
+  if (!ks.length || ks.some((k) => !(Number(d.mm[k]) > 0))) return null;
+  const S = ks.reduce((t, k) => t + Number(d.mm[k]), 0), i = Number(d.idade);
+  const D = d.protocolo === 7
+    ? (d.sexo === "m" ? 1.112 - 0.00043499 * S + 0.00000055 * S * S - 0.00028826 * i : 1.097 - 0.00046971 * S + 0.00000056 * S * S - 0.00012828 * i)
+    : (d.sexo === "m" ? 1.10938 - 0.0008267 * S + 0.0000016 * S * S - 0.0002574 * i : 1.0994921 - 0.0009929 * S + 0.0000023 * S * S - 0.0001392 * i);
+  const g = (4.95 / D - 4.5) * 100;
+  return isFinite(g) && g >= 2 && g <= 70 ? Math.round(g * 10) / 10 : null;
+}
+// "Dobras (Pollock 3): peitoral 12 · abdômen 20 · coxa 15 mm"
+function dobrasTexto(d) {
+  if (!d || !d.mm) return "";
+  const partes = DOBRAS_CAMPOS.filter(([k]) => d.mm[k] != null).map(([k, t]) => `${t.toLowerCase()} ${medFmt(d.mm[k])}`);
+  return partes.length ? `Dobras${d.protocolo ? ` (Pollock ${d.protocolo})` : ""}: ${partes.join(" · ")} mm` : "";
+}
 function MedValores({ m }) {
   const partes = [];
   if (m.peso != null) partes.push(`${medFmt(m.peso, "kg")}`);
@@ -13452,7 +13599,7 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
 }
 
 function MedComparar({ linha, urls, onClose }) {
-  const comFoto = linha.filter((x) => x.tipo === "meu" && (x.fotos || []).length);
+  const comFoto = linha.filter((x) => (x.fotos || []).length);
   const [a, setA] = useState(comFoto.length ? comFoto[comFoto.length - 1].id : null);
   const [b, setB] = useState(comFoto.length ? comFoto[0].id : null);
   // "Antes" é sempre a data mais antiga, qualquer que seja o seletor.
@@ -13469,7 +13616,7 @@ function MedComparar({ linha, urls, onClose }) {
   const seletor = (rot, val, set) => (
     <label className="gt-med-cmp-sel"><span className="gt-field-label">{rot}</span>
       <select className="gt-input" aria-label={`Data do ${rot.toLowerCase()}`} value={val || ""} onChange={(e) => set(e.target.value)}>
-        {comFoto.map((x) => <option key={x.id} value={x.id}>{coachDataCurta(x.data)}{x.peso != null ? ` · ${medFmt(x.peso, "kg")}` : ""}</option>)}
+        {comFoto.map((x) => <option key={x.id} value={x.id}>{coachDataCurta(x.data)}{x.peso != null ? ` · ${medFmt(x.peso, "kg")}` : ""}{x.tipo === "aval" ? " · avaliação" : ""}</option>)}
       </select>
     </label>
   );
@@ -13504,13 +13651,59 @@ function MedComparar({ linha, urls, onClose }) {
   );
 }
 
-function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCompartilhar }) {
+// Card "Medidas" da Evolução: resumo do que mudou e atalho para Minhas medidas.
+function EvoMedidasCard({ onAbrir, onRegistrar }) {
+  const [linha, setLinha] = useState(undefined); // undefined carregando | null erro
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([
+      supabaseClient.from("user_medidas").select("id,data,peso,gordura,medidas").order("data", { ascending: false }).limit(60),
+      coachCall("minhas_avaliacoes"),
+    ]).then(([m, a]) => { if (vivo) setLinha(m.error ? null : medLinha(m.data || [], a.ok ? a.data || [] : [])); })
+      .catch(() => { if (vivo) setLinha(null); });
+    return () => { vivo = false; };
+  }, []);
+  if (!linha) return null;
+  const resumo = medResumo(linha);
+  const ultimo = linha.length ? linha[0].data : null;
+  const dias = ultimo ? Math.round((Date.parse(todayISO()) - Date.parse(ultimo)) / 86400000) : null;
+  return (
+    <div className="gt-card gt-evo-med">
+      <div className="gt-evo-med-head">
+        <div className="gt-field-label" style={{ margin: 0 }}>MEDIDAS</div>
+        {linha.length > 0 && <button type="button" className="gt-co-link" onClick={onAbrir}>Ver tudo</button>}
+      </div>
+      {resumo.length > 0 ? (
+        <div className="gt-med-resumo">
+          {resumo.map(([t, un, r]) => (
+            <div className="gt-med-stat" key={t}>
+              <div className="t">{t}</div>
+              <div className="v">{medFmt(r.v, un)}</div>
+              {r.desde && <div className="d">{medDelta(r.v, r.antes, un)}</div>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="gt-plano-dica" style={{ marginTop: 6 }}>{linha.length ? "Seus registros ainda não têm peso, gordura ou cintura." : "Acompanhe seu corpo, não só a carga: registre peso, medidas e fotos de vez em quando."}</div>
+      )}
+      <div className="gt-evo-med-pe">
+        <span>{ultimo ? `Último registro em ${coachDataCurta(ultimo)}${dias >= 30 ? `, há ${dias} dias` : ""}.` : ""}</span>
+        <button type="button" className={`gt-btn small ${ultimo && dias < 30 ? "secondary" : ""}`} onClick={onRegistrar}>Registrar</button>
+      </div>
+    </div>
+  );
+}
+
+function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCompartilhar, abrirForm }) {
   const [meus, setMeus] = useState(undefined); // undefined carregando, null indisponível
   const [avals, setAvals] = useState([]);
   const [avalsErro, setAvalsErro] = useState(false);
   const [urls, setUrls] = useState({});
   const [form, setForm] = useState(null);
   const [cmp, setCmp] = useState(false);
+  useEffect(() => { if (abrirForm) setForm({}); }, []);
+  const [lembrete, setLembrete] = useState(undefined); // undefined carregando | null nunca decidiu | true | false | "erro"
+  const [lembreteQ, setLembreteQ] = useState(false);
   async function carregar() {
     const [m, a] = await Promise.all([
       supabaseClient.from("user_medidas").select("*").order("data", { ascending: false }).limit(200),
@@ -13520,13 +13713,41 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
     setMeus(m.data || []);
     setAvals(a.ok ? a.data || [] : []);
     setAvalsErro(!a.ok);
-    medFotoUrls((m.data || []).flatMap((x) => x.fotos || [])).then(setUrls);
+    medFotoUrls((m.data || []).flatMap((x) => x.fotos || []).concat((a.ok ? a.data || [] : []).flatMap((x) => x.fotos || []))).then(setUrls);
   }
-  useEffect(() => { carregar(); logEvent("medidas_aberto"); }, []);
+  async function lerLembrete() {
+    const { data, error } = await supabaseClient.from("user_lembretes").select("medidas").maybeSingle();
+    setLembrete(error ? "erro" : data ? !!data.medidas : null);
+  }
+  async function gravarLembrete(on) {
+    const { error } = await supabaseClient.from("user_lembretes").upsert({ user_id: uid, medidas: on, updated_at: new Date().toISOString() });
+    if (error) { logErroModulo("lembrete_medidas", error.message); return false; }
+    setLembrete(on); logEvent("medidas_lembrete", { on });
+    return true;
+  }
+  useEffect(() => { carregar(); lerLembrete(); logEvent("medidas_aberto"); }, []);
+  // 1º registro: o lembrete já vem ligado e a pessoa escolhe na hora se mantém ou desativa.
+  async function depoisDoPrimeiro() {
+    if (lembrete !== null) return;
+    if (await gravarLembrete(true)) setLembreteQ(true);
+  }
+  async function manterLembrete() {
+    setLembreteQ(false);
+    if (pushSuportado() && !pushPrecisaInstalar() && Notification.permission !== "denied" && !(await pushInscricaoAtual())) {
+      const r = await pushAtivar(pushTiposLer());
+      if (r.ok) { logEvent("push_ativado", { origem: "lembrete_medidas" }); showToast("Lembrete ligado"); return; }
+    }
+    const recebe = pushSuportado() && !pushPrecisaInstalar() && Notification.permission === "granted";
+    showToast(recebe ? "Lembrete ligado" : "Lembrete ligado. Para receber no celular, ative as notificações em Configurações.");
+  }
+  async function mudarLembrete(on) {
+    if (on) { if (await gravarLembrete(true)) manterLembrete(); return; }
+    if (await gravarLembrete(false)) showToast("Lembrete desativado");
+  }
   const linha = useMemo(() => medLinha(meus || [], avals), [meus, avals]);
   const resumo = useMemo(() => medResumo(linha), [linha]);
   const desde = resumo.map((r) => r[2].desde).filter(Boolean).sort()[0] || null;
-  const nComFoto = (meus || []).filter((x) => (x.fotos || []).length).length;
+  const nComFoto = linha.filter((x) => (x.fotos || []).length).length;
   const coachNome = coachLink ? coachLink.coach_nome : "";
   const coachPrimeiro = coachNome ? String(coachNome).trim().split(" ")[0] : "";
   const compartilha = !!(coachLink && (coachLink.permissions || {}).ver_medidas);
@@ -13576,6 +13797,12 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
                 <button type="button" className="gt-co-link" onClick={() => mudarCompartilhar(!compartilha)}>{compartilha ? "Parar de compartilhar" : `Compartilhar com ${coachPrimeiro}`}</button>
               </div>
             )}
+            {(lembrete === true || lembrete === false || (lembrete === null && meus.length > 0)) && (
+              <div className="gt-med-share">
+                <span>{lembrete ? "Lembrete mensal ligado." : "Lembrete mensal desligado."}</span>
+                <button type="button" className="gt-co-link" onClick={() => { setLembreteQ(false); mudarLembrete(!lembrete); }}>{lembrete ? "Desligar" : "Ligar"}</button>
+              </div>
+            )}
             {avalsErro && <div className="gt-co-erro" role="alert">Não consegui trazer as avaliações do seu treinador agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
             {linha.length > 0 && <div className="gt-co-sec">HISTÓRICO</div>}
             {linha.map((x) => x.tipo === "meu" ? (
@@ -13590,6 +13817,8 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
               <div key={`aval-${x.id}`} className="gt-med-item">
                 <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b><span className="gt-med-tag">Avaliação · {x.coach_nome}</span></div>
                 <MedValores m={x} />
+                {x.dobras && <div className="gt-med-nota">{dobrasTexto(x.dobras)}</div>}
+                <MedThumbs fotos={x.fotos} urls={urls} />
                 {x.testes && <div className="gt-med-nota">Testes: {x.testes}</div>}
                 {x.nota && <div className="gt-med-nota">{x.nota}</div>}
               </div>
@@ -13599,9 +13828,20 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
       </div>
       {form && (
         <MedidaForm inicial={form} uid={uid} showToast={showToast} quemVe={quemVe} onClose={() => setForm(null)}
-          onSalvo={(tipo, extra) => { setForm(null); carregar(); logEvent("medidas_" + tipo, extra || {}); showToast(tipo === "apagado" ? "Registro apagado" : "Medidas salvas"); }} />
+          onSalvo={(tipo, extra) => { setForm(null); carregar(); logEvent("medidas_" + tipo, extra || {}); showToast(tipo === "apagado" ? "Registro apagado" : "Medidas salvas"); if (tipo === "novo") depoisDoPrimeiro(); }} />
       )}
       {cmp && <MedComparar linha={linha} urls={urls} onClose={() => setCmp(false)} />}
+      {lembreteQ && (
+        <div className="gt-modal-backdrop" style={{ zIndex: 80 }} onClick={manterLembrete}>
+          <div className="gt-modal gt-push-convite" role="dialog" aria-modal="true" aria-label="Lembrete mensal" onClick={(e) => e.stopPropagation()}>
+            <div className="gt-push-convite-ic" aria-hidden="true">📏</div>
+            <h3>Lembrete mensal ligado</h3>
+            <p>Se você passar 30 dias sem registrar, o Movo manda 1 aviso para atualizar peso, medidas e fotos. Depois de 3 avisos sem registro novo, ele para.</p>
+            <button type="button" className="gt-btn" onClick={manterLembrete}>Manter ligado</button>
+            <button type="button" className="gt-btn secondary" onClick={() => { setLembreteQ(false); mudarLembrete(false); }}>Desativar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -13632,6 +13872,8 @@ const ANAMNESE_TEXTOS = [
   ["dores", "Sente alguma dor hoje?", "Onde e quando"],
   ["obs", "Algo mais que seu treinador deve saber?", ""],
 ];
+// O treinador pediu para atualizar uma anamnese já respondida (pedido mais novo que a resposta).
+function anamneseAtualizar(x) { return !!(x && x.respostas && x.pedida_em && x.respondida_em && Date.parse(x.pedida_em) > Date.parse(x.respondida_em)); }
 function anamneseParqSim(r) { return r && Array.isArray(r.parq) ? r.parq.filter((x) => x === true).length : 0; }
 // "tontura ou desmaio, ossos ou articulações" (índices das respostas "sim").
 function anamneseSimTexto(idx) { return (idx || []).map((i) => ANAMNESE_PARQ_CURTO[i]).filter(Boolean).join(", "); }
@@ -13693,7 +13935,7 @@ function AnamneseForm({ pedido, anterior, onClose, onSalvo, compartilhaMedidas, 
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
         <div className="gt-focus-title-wrap"><div className="gt-focus-title">Questionário de saúde</div>
-          <div className="gt-focus-title-hint">{editando && pedido.respondida_em ? `Respondido em ${coachDataCurta(pedido.respondida_em)}` : `Pedido por ${pedido.coach_nome}`}</div></div>
+          <div className="gt-focus-title-hint">{anamneseAtualizar(pedido) ? `${nome} pediu para atualizar` : editando && pedido.respondida_em ? `Respondido em ${coachDataCurta(pedido.respondida_em)}` : `Pedido por ${pedido.coach_nome}`}</div></div>
       </div>
       <div className="gt-focus-body gt-anam-body">
         <div className="gt-plano-dica">Ajuda {nome} a montar um treino seguro para você. Só {nome} vê, e você pode apagar quando quiser.</div>
@@ -13728,7 +13970,7 @@ function AnamneseForm({ pedido, anterior, onClose, onSalvo, compartilhaMedidas, 
         )}
         {(erro || erroFalta) && <div className="gt-plano-erro" role="alert">{erro || erroFalta}</div>}
         <div className="gt-modal-actions" style={{ marginTop: 14 }}>
-          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Enviando…" : editando ? "Salvar alterações" : `Enviar para ${nome}`}</button>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Enviando…" : editando && !anamneseAtualizar(pedido) ? "Salvar alterações" : `Enviar para ${nome}`}</button>
         </div>
         {editando && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar minhas respostas</button>}
       </div>
@@ -13738,30 +13980,63 @@ function AnamneseForm({ pedido, anterior, onClose, onSalvo, compartilhaMedidas, 
 
 function AnamnesePedidoCard({ pedido, onResponder }) {
   const nome = String(pedido.coach_nome || "Seu treinador").trim().split(" ")[0];
+  const atualizar = anamneseAtualizar(pedido);
   return (
-    <div className="gt-co-nota gt-anam-card" role="region" aria-label="Questionário de saúde pedido">
-      <div className="gt-co-sec">{nome.toUpperCase()} PEDIU UM QUESTIONÁRIO DE SAÚDE</div>
-      <div className="gt-co-nota-txt">Leva uns 3 minutos. Ajuda {nome} a montar um treino seguro para você.</div>
-      <button type="button" className="gt-btn small" onClick={onResponder}>Responder</button>
+    <div className="gt-co-nota gt-anam-card" role="region" aria-label={atualizar ? "Pedido para atualizar o questionário de saúde" : "Questionário de saúde pedido"}>
+      <div className="gt-co-sec">{nome.toUpperCase()} {atualizar ? "PEDIU PARA ATUALIZAR SEU QUESTIONÁRIO DE SAÚDE" : "PEDIU UM QUESTIONÁRIO DE SAÚDE"}</div>
+      <div className="gt-co-nota-txt">{atualizar ? `Suas respostas de ${coachDataCurta(pedido.respondida_em)} já vêm preenchidas. Mude o que mudou e salve.` : `Leva uns 3 minutos. Ajuda ${nome} a montar um treino seguro para você.`}</div>
+      <button type="button" className="gt-btn small" onClick={onResponder}>{atualizar ? "Revisar" : "Responder"}</button>
     </div>
   );
 }
 
 // ---------- Treinador: aba Avaliação do aluno ----------
-function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
+function CoachAvaliacaoForm({ linkId, coachUid, inicial, primeiro, dobrasPadrao, onClose, onSalvo }) {
   const [data, setData] = useState(inicial.data || todayISO());
   const [peso, setPeso] = useState(inicial.peso != null ? String(inicial.peso).replace(".", ",") : "");
   const [gordura, setGordura] = useState(inicial.gordura != null ? String(inicial.gordura).replace(".", ",") : "");
   const [med, setMed] = useState(() => { const o = {}; MEDIDAS_CAMPOS.forEach(([k]) => { const v = inicial.medidas && inicial.medidas[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
   const [testes, setTestes] = useState(inicial.testes || "");
   const [nota, setNota] = useState(inicial.nota || "");
+  // Dobras: abertas se a avaliação já tem; sexo e idade vêm da última avaliação com dobras deste aluno.
+  const dIni = inicial.dobras || {};
+  const dPad = dobrasPadrao || {};
+  const [dobrasOn, setDobrasOn] = useState(!!inicial.dobras);
+  const [protocolo, setProtocolo] = useState(dIni.protocolo || dPad.protocolo || 3);
+  const [sexo, setSexo] = useState(dIni.sexo || dPad.sexo || "");
+  const [idade, setIdade] = useState(String(dIni.idade || dPad.idade || ""));
+  const [mm, setMm] = useState(() => { const o = {}; DOBRAS_CAMPOS.forEach(([k]) => { const v = dIni.mm && dIni.mm[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
+  const [fotos, setFotos] = useState(() => medFotosPorPose(inicial.fotos)); // { pose: caminho já salvo }
+  const [novas, setNovas] = useState({}); // { pose: { blob, url } }
+  const [urls, setUrls] = useState({});
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
+  const novasRef = useRef(novas); novasRef.current = novas;
+  useEffect(() => { medFotoUrls(inicial.fotos || []).then(setUrls); }, []);
+  useEffect(() => () => Object.values(novasRef.current).forEach((n) => URL.revokeObjectURL(n.url)), []);
+  const ks = dobrasCampos(protocolo, sexo);
+  const mmNum = {}; ks.forEach((k) => { const n = medNum(mm[k], 1, 90); if (n != null) mmNum[k] = n; });
+  const calc = dobrasOn ? dobrasGordura({ protocolo, sexo, idade: medNum(idade, 10, 100), mm: mmNum }) : null;
+  const fotosLigadas = midiaLigada("fotos_medidas");
+  async function addFoto(pose, ev) {
+    const f = (ev.target.files || [])[0];
+    ev.target.value = "";
+    if (!f) return;
+    try {
+      const b = await feedbackPrintReduzir(f);
+      setNovas((p) => { if (p[pose]) URL.revokeObjectURL(p[pose].url); return { ...p, [pose]: { blob: b, url: URL.createObjectURL(b) } }; });
+      setFotos((p) => { const o = { ...p }; delete o[pose]; return o; });
+    } catch (e) { setErro("Não consegui abrir essa foto."); }
+  }
+  function tirarFoto(pose) {
+    if (novas[pose]) { URL.revokeObjectURL(novas[pose].url); setNovas((p) => { const o = { ...p }; delete o[pose]; return o; }); }
+    setFotos((p) => { const o = { ...p }; delete o[pose]; return o; });
+  }
   async function salvar() {
     setErro("");
-    const pesoN = medNum(peso, 20, 400), gordN = medNum(gordura, 2, 70);
+    const pesoN = medNum(peso, 20, 400), gordN = calc != null ? calc : medNum(gordura, 2, 70);
     if (peso.trim() && pesoN == null) { setErro("Peso entre 20 e 400 kg."); return; }
-    if (gordura.trim() && gordN == null) { setErro("Gordura entre 2% e 70%."); return; }
+    if (calc == null && gordura.trim() && gordN == null) { setErro("Gordura entre 2% e 70%."); return; }
     const medidas = {};
     for (const [k, t] of MEDIDAS_CAMPOS) {
       if (!med[k].trim()) continue;
@@ -13769,12 +14044,39 @@ function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
       if (n == null) { setErro(`${t}: use centímetros, entre 10 e 300.`); return; }
       medidas[k] = n;
     }
-    if (pesoN == null && gordN == null && !Object.keys(medidas).length && !testes.trim() && !nota.trim()) { setErro("Preencha pelo menos um campo."); return; }
+    let dobras = null;
+    if (dobrasOn && ks.some((k) => mm[k].trim())) {
+      for (const k of ks) {
+        if (mm[k].trim() && medNum(mm[k], 1, 90) == null) { setErro(`${DOBRAS_CAMPOS.find((c) => c[0] === k)[1]}: use milímetros, entre 1 e 90.`); return; }
+      }
+      dobras = { protocolo, sexo: sexo || null, idade: medNum(idade, 10, 100), mm: mmNum };
+    }
+    const nFotos = Object.keys(fotos).length + Object.keys(novas).length;
+    if (pesoN == null && gordN == null && !Object.keys(medidas).length && !testes.trim() && !nota.trim() && !dobras && !nFotos) { setErro("Preencha pelo menos um campo."); return; }
     setBusy(true);
-    const r = await coachCall("coach_avaliacao_salvar", { p_link: linkId, p_id: inicial.id || null, p_data: data, p_peso: pesoN, p_gordura: gordN, p_medidas: medidas, p_testes: testes, p_nota: nota });
+    const subidas = {};
+    for (const [pose, n] of Object.entries(novas)) {
+      const nome = `${coachUid}/aval/${pose}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error } = await supabaseClient.storage.from("medidas").upload(nome, n.blob, { contentType: "image/jpeg" });
+      if (error) {
+        logErroModulo("avaliacao_foto", error.message); setBusy(false); setErro("Não consegui enviar a foto. Tente de novo.");
+        if (Object.keys(subidas).length) supabaseClient.storage.from("medidas").remove(Object.values(subidas)).catch(() => {});
+        return;
+      }
+      subidas[pose] = nome;
+    }
+    const final = { ...fotos, ...subidas };
+    const lista = MED_POSES.map(([k]) => final[k]).filter(Boolean);
+    const r = await coachCall("coach_avaliacao_salvar", { p_link: linkId, p_id: inicial.id || null, p_data: data, p_peso: pesoN, p_gordura: gordN, p_medidas: medidas, p_testes: testes, p_nota: nota, p_dobras: dobras, p_fotos: lista });
+    if (!r.ok) {
+      setBusy(false); setErro(r.erro);
+      if (Object.keys(subidas).length) supabaseClient.storage.from("medidas").remove(Object.values(subidas)).catch(() => {});
+      return;
+    }
+    const saiu = (inicial.fotos || []).filter((f) => !lista.includes(f));
+    if (saiu.length) supabaseClient.storage.from("medidas").remove(saiu).catch(() => {});
     setBusy(false);
-    if (!r.ok) { setErro(r.erro); return; }
-    onSalvo(inicial.id ? "editada" : "nova");
+    onSalvo(inicial.id ? "editada" : "nova", { dobras: !!dobras, fotos: lista.length });
   }
   async function apagar() {
     if (!window.confirm("Apagar esta avaliação?")) return;
@@ -13782,8 +14084,10 @@ function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
     const r = await coachCall("coach_avaliacao_apagar", { p_id: inicial.id });
     setBusy(false);
     if (!r.ok) { setErro(r.erro); return; }
+    if ((inicial.fotos || []).length) supabaseClient.storage.from("medidas").remove(inicial.fotos).catch(() => {});
     onSalvo("apagada");
   }
+  const pill = (val, atual, set, txt) => <button key={String(val)} type="button" aria-pressed={atual === val} className={`gt-provas-pill ${atual === val ? "on" : ""}`} onClick={() => set(val)}>{txt}</button>;
   return (
     <div className="gt-modal-backdrop" onClick={() => !busy && onClose()}>
       <div className="gt-modal gt-med-form" role="dialog" aria-modal="true" aria-label="Avaliação" onClick={(e) => e.stopPropagation()}>
@@ -13792,12 +14096,52 @@ function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
           <label><span className="gt-field-label">Data</span><input className="gt-input" type="date" value={data} max={todayISO()} onChange={(e) => setData(e.target.value)} /></label>
           <label><span className="gt-field-label">Peso (kg)</span><input className="gt-input" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
         </div>
-        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span><input className="gt-input" inputMode="decimal" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span>
+          {calc != null
+            ? <div className="gt-input gt-dobras-calc" aria-live="polite">{medFmt(calc, "%")} <small>calculada pelas dobras</small></div>
+            : <input className="gt-input" inputMode="decimal" placeholder={dobrasOn ? "Preencha as dobras ou digite" : ""} value={gordura} onChange={(e) => setGordura(e.target.value)} />}
+        </label>
+        {!dobrasOn && <button type="button" className="gt-co-link gt-med-mais" onClick={() => setDobrasOn(true)}>+ Dobras cutâneas (Pollock)</button>}
+        {dobrasOn && (
+          <div className="gt-dobras">
+            <div className="gt-co-sec gt-med-sec">DOBRAS CUTÂNEAS (MM)</div>
+            <div className="gt-dobras-op">
+              <div className="gt-provas-filters" role="group" aria-label="Protocolo" style={{ margin: 0 }}>{pill(3, protocolo, setProtocolo, "3 dobras")}{pill(7, protocolo, setProtocolo, "7 dobras")}</div>
+              <div className="gt-provas-filters" role="group" aria-label="Sexo" style={{ margin: 0 }}>{pill("m", sexo, setSexo, "Homem")}{pill("f", sexo, setSexo, "Mulher")}</div>
+              <label className="gt-dobras-idade"><span className="gt-med-lbl">Idade</span><input className="gt-input" inputMode="numeric" maxLength={3} value={idade} onChange={(e) => setIdade(e.target.value.replace(/\D/g, ""))} /></label>
+            </div>
+            {!ks.length && <div className="gt-plano-dica">Escolha o sexo para ver as dobras do protocolo de 3.</div>}
+            <div className="gt-med-grid2">
+              {DOBRAS_CAMPOS.filter(([k]) => ks.includes(k)).map(([k, t]) => (
+                <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em milímetros`} value={mm[k]} onChange={(e) => setMm({ ...mm, [k]: e.target.value })} /></label>
+              ))}
+            </div>
+            {ks.length > 0 && <div className="gt-plano-dica">{calc != null ? "Jackson e Pollock, % de gordura pela fórmula de Siri." : `Com ${protocolo === 7 ? "as 7 dobras" : "as 3 dobras"}${sexo && idade ? "" : ", o sexo e a idade"}, o Movo calcula a % de gordura.`}</div>}
+          </div>
+        )}
         <div className="gt-co-sec gt-med-sec">MEDIDAS (CM)</div>
         <div className="gt-med-grid2">
           {MEDIDAS_CAMPOS.map(([k, t]) => (
             <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
           ))}
+        </div>
+        {(fotosLigadas || MED_POSES.some(([k]) => novas[k] || fotos[k])) && <div className="gt-co-sec gt-med-sec">FOTOS</div>}
+        <div className="gt-med-fotos">
+          {MED_POSES.map(([k, t]) => {
+            const src = novas[k] ? novas[k].url : fotos[k] ? urls[fotos[k]] : null;
+            if (novas[k] || fotos[k]) return (
+              <div className="gt-med-foto" key={k}>
+                {src ? <img src={src} alt={t} /> : <span className="gt-med-foto-vazia" />}
+                <span className="gt-med-foto-pose">{t}</span>
+                <button type="button" aria-label={`Tirar foto de ${t.toLowerCase()}`} onClick={() => tirarFoto(k)}>✕</button>
+              </div>
+            );
+            if (!fotosLigadas) return null;
+            return (
+              <label className="gt-med-foto gt-med-foto-add" key={k}><span>+ {t}</span>
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => addFoto(k, e)} /></label>
+            );
+          })}
         </div>
         <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Testes</span>
           <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} placeholder="Ex.: Cooper 2.400 m · flexões 25 · sentar e alcançar 28 cm" value={testes} onChange={(e) => setTestes(e.target.value)} /></label>
@@ -13805,7 +14149,7 @@ function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
           <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} value={nota} onChange={(e) => setNota(e.target.value)} /></label>
         {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
         <div className="gt-modal-actions gt-med-acoes">
-          <div className="gt-plano-dica gt-med-quemve">{primeiro} vê esta avaliação em Minhas medidas. Anotação só sua vai na aba Notas.</div>
+          <div className="gt-plano-dica gt-med-quemve">{primeiro} vê esta avaliação, com as fotos, em Minhas medidas. Anotação só sua vai na aba Notas.</div>
           <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
           <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
         </div>
@@ -13834,12 +14178,13 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
     setAnam(a.ok ? a.data || null : "erro");
     setAvals(v.error ? "erro" : v.data || []);
     if (a.ok && a.data && a.data.respondida_em) coachAnamVista(aluno.link_id, a.data.respondida_em);
+    const fotosAval = (v.data || []).flatMap((x) => x.fotos || []).slice(0, 30);
     if (verMedidas) {
       const m = await coachCall("coach_aluno_medidas", { p_link: aluno.link_id });
       const lista = m.ok && Array.isArray(m.data) ? m.data : [];
       setMeds(lista);
-      medFotoUrls(lista.flatMap((x) => x.fotos || []).slice(0, 30)).then(setUrls);
-    } else setMeds(null);
+      medFotoUrls(fotosAval.concat(lista.flatMap((x) => x.fotos || []).slice(0, 30))).then(setUrls);
+    } else { setMeds(null); medFotoUrls(fotosAval).then(setUrls); }
   }
   useEffect(() => { carregar(); }, [aluno.link_id, verMedidas]);
   async function pedir(lembrar) {
@@ -13848,11 +14193,12 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
     setBusy(false);
     if (!r.ok) { showToast(r.erro); return; }
     avisarPorPush("anamnese", { link_id: aluno.link_id, evento: "pedido" });
-    log("coach_anamnese_pedida", { lembrete: !!lembrar });
+    log("coach_anamnese_pedida", { lembrete: !!lembrar, atualizar: !!(resp && !lembrar) });
     showToast(`Pedido enviado. ${primeiro} vê na tela Hoje.`);
     carregar();
   }
   const resp = anam && anam !== "erro" ? anam.respostas : null;
+  const atualizando = !!resp && anamneseAtualizar(anam);
   const simIdx = anamneseSimIdx(resp);
   const abertas = verAnam == null ? simIdx.length > 0 : verAnam;
   const resumo = useMemo(() => medResumo(medLinha(meds || [], Array.isArray(avals) ? avals : [])), [meds, avals]);
@@ -13876,11 +14222,14 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
       {resp && (
         <div className="gt-co-plano-aluno">
           {resp.objetivo && <div className="t">Objetivo: {resp.objetivo}</div>}
-          <div className="d">Respondida em {coachDataCurta(anam.respondida_em)}</div>
+          <div className="d">Respondida em {coachDataCurta(anam.respondida_em)}{atualizando ? `. Você pediu para atualizar em ${coachDataCurta(anam.pedida_em)}.` : ""}</div>
           {simIdx.length > 0
             ? <div className="gt-plano-aviso aviso">{primeiro} respondeu "sim" em: {anamneseSimTexto(simIdx)}. Peça liberação médica antes de treinos intensos.</div>
             : <div className="d">Nenhum "sim" nas perguntas de saúde (PAR-Q).</div>}
-          <button type="button" className="gt-co-link" onClick={() => setVerAnam(!abertas)}>{abertas ? "Esconder respostas" : "Ver respostas"}</button>
+          <div className="gt-video-acoes">
+            <button type="button" className="gt-co-link" onClick={() => setVerAnam(!abertas)}>{abertas ? "Esconder respostas" : "Ver respostas"}</button>
+            {!atualizando && <button type="button" className="gt-co-link" disabled={busy} onClick={() => { if (window.confirm(`${primeiro} vai receber um pedido para revisar as respostas. As atuais continuam aqui até ${primeiro} salvar.`)) pedir(false); }}>Pedir para atualizar</button>}
+          </div>
           {abertas && (
             <dl className="gt-anam-resp">
               {[["experiencia", "Treina há"], ["dias", "Dias por semana"], ["sono", "Sono"], ["trabalho", "No trabalho"]].map(([k, t]) => resp[k] ? <div key={k}><dt>{t}</dt><dd>{resp[k]}</dd></div> : null)}
@@ -13902,6 +14251,8 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
         <div key={a.id} className="gt-med-item toca" role="button" tabIndex={0} aria-label={`Avaliação de ${coachDataCurta(a.data)}, editar`} onClick={() => setForm(a)} onKeyDown={medTeclaAbre(() => setForm(a))}>
           <div className="gt-med-item-top"><b>{coachDataCurta(a.data)}</b><span className="gt-med-editar" aria-hidden="true">Editar</span></div>
           <MedValores m={a} />
+          {a.dobras && <div className="gt-med-nota">{dobrasTexto(a.dobras)}</div>}
+          <MedThumbs fotos={a.fotos} urls={urls} />
           {a.testes && <div className="gt-med-nota">Testes: {a.testes}</div>}
           {a.nota && <div className="gt-med-nota">{a.nota}</div>}
         </div>
@@ -13917,8 +14268,9 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
           {m.nota && <div className="gt-med-nota">{m.nota}</div>}
         </div>
       ))}
-      {form && <CoachAvaliacaoForm linkId={aluno.link_id} inicial={form} primeiro={primeiro} onClose={() => setForm(null)}
-        onSalvo={(t) => { setForm(null); carregar(); if (t !== "apagada") log("coach_avaliacao_salva", { nova: t === "nova" }); showToast(t === "apagada" ? "Avaliação apagada" : "Avaliação salva"); }} />}
+      {form && <CoachAvaliacaoForm linkId={aluno.link_id} coachUid={aluno.coach_uid} inicial={form} primeiro={primeiro} onClose={() => setForm(null)}
+        dobrasPadrao={(Array.isArray(avals) ? avals : []).map((x) => x.dobras).find(Boolean) || null}
+        onSalvo={(t, extra) => { setForm(null); carregar(); if (t !== "apagada") log("coach_avaliacao_salva", { nova: t === "nova", ...(extra || {}) }); showToast(t === "apagada" ? "Avaliação apagada" : "Avaliação salva"); }} />}
     </>
   );
 }
@@ -14017,9 +14369,11 @@ function VideoPrivado({ video, rotulo }) {
   return (
     <div className="gt-video" onClick={(e) => e.stopPropagation()}>
       <button type="button" className="gt-ex-video-toggle" onClick={abrir}>{url ? "✕ Fechar vídeo" : `▶ ${rotulo || "Ver vídeo"}${video.s ? ` · ${video.s} s` : ""}`}</button>
+      {video.em && <div className="gt-video-ate">Sem som · disponível até {coachDataCurta(addDays(video.em, VIDEO_DIAS))}</div>}
       {url === "" && <div className="gt-video-off">Carregando…</div>}
       {url === false && <div className="gt-video-off">Vídeo indisponível agora.</div>}
-      {url && <video className="gt-video-player" src={url} controls playsInline autoPlay muted preload="metadata" />}
+      {/* Vídeos vão sem som: mesmo um arquivo original com áudio toca mudo. */}
+      {url && <video className="gt-video-player" src={url} controls playsInline autoPlay muted preload="metadata" onVolumeChange={(e) => { if (!e.currentTarget.muted) e.currentTarget.muted = true; }} />}
     </div>
   );
 }
@@ -14112,13 +14466,13 @@ function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
         <div className="gt-focus-title-wrap"><div className="gt-focus-title">Meus vídeos</div><div className="gt-focus-title-hint">{lista ? `${n} de ${VIDEO_BIBLIOTECA_MAX}` : ""}</div></div>
       </div>
       <div className="gt-focus-body gt-med-body">
-        <div className="gt-plano-dica">Grave a execução de um exercício (até {VIDEO_MAX_SEG.biblioteca} s). Quando ele estiver num treino que você enviar, quem treina com você vê este vídeo junto do vídeo do catálogo.</div>
+        <div className="gt-plano-dica">Grave a execução de um exercício (até {VIDEO_MAX_SEG.biblioteca} s, sem som). Quando ele estiver num treino que você enviar, quem treina com você vê este vídeo junto do vídeo do catálogo.</div>
         {lista === undefined && <div className="gt-empty">Carregando…</div>}
         {lista === null && <div className="gt-co-erro" role="alert">Não consegui abrir agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
         {exAlvo ? (
           <div className="gt-co-plano-aluno">
             <div className="t">{exAlvo.nome}</div>
-            <div className="d">Até {VIDEO_MAX_SEG.biblioteca} s. O app reduz o tamanho antes de enviar.</div>
+            <div className="d">Até {VIDEO_MAX_SEG.biblioteca} s, sem som. O app reduz o tamanho antes de enviar.</div>
             <VideoEnviar uid={uid} pasta="biblioteca" rotulo="Escolher ou gravar vídeo" onPronto={pronto} onErro={setErro} />
             <button type="button" className="gt-co-link" onClick={() => setExAlvo(null)}>Cancelar</button>
           </div>
@@ -14147,14 +14501,17 @@ function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
 // ---------- Treinador: convidar ----------
 function CoachConvidarModal({ coachNome, onClose, onCriado, showToast, existente }) {
   const [label, setLabel] = useState("");
+  const [anam, setAnam] = useState(true);
+  const [anamOk, setAnamOk] = useState(false);
   const [criado, setCriado] = useState(existente || null);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
   async function criar() {
     setBusy(true); setErro("");
     const r = await coachCall("coach_create_invite", { p_label: label.trim() || null });
+    if (!r.ok) { setBusy(false); setErro(r.erro); return; }
+    if (anam && r.data && r.data.id) { const a = await coachCall("coach_convite_anamnese", { p_link: r.data.id, p_on: true }); setAnamOk(!!(a.ok && a.data)); }
     setBusy(false);
-    if (!r.ok) { setErro(r.erro); return; }
     setCriado(r.data); onCriado();
   }
   const link = criado ? coachInviteLink(criado.invite_code) : "";
@@ -14170,6 +14527,8 @@ function CoachConvidarModal({ coachNome, onClose, onCriado, showToast, existente
           <>
             <p>O aluno abre o link, escolhe o que você pode ver e aceita. Dá pra usar o Movo direto no navegador, sem instalar.</p>
             <input className="gt-input" aria-label="Nome do aluno" placeholder="Nome do aluno (só você vê)" maxLength={60} value={label} onChange={(e) => setLabel(e.target.value)} />
+            <label className="gt-plano-chk gt-convite-anam"><input type="checkbox" checked={anam} onChange={(e) => setAnam(e.target.checked)} />
+              <span>Pedir o questionário de saúde (anamnese)<br /><small>Chega assim que o aluno aceitar o convite.</small></span></label>
             {erro && <div className="gt-co-erro" role="alert">{erro}</div>}
             {erro && /limite de alunos/.test(erro) && <LinkPlanos texto="Ver planos" />}
             <div className="gt-modal-actions gt-modal-actions-col" style={{ marginTop: 12 }}>
@@ -14179,7 +14538,7 @@ function CoachConvidarModal({ coachNome, onClose, onCriado, showToast, existente
         ) : (
           <>
             <div className="gt-co-codigo-grande" aria-label={`Código ${criado.invite_code}`}>{criado.invite_code}</div>
-            <p>Mande o link pelo WhatsApp. O convite vale por 14 dias.</p>
+            <p>Mande o link pelo WhatsApp. O convite vale por 14 dias.{anamOk ? " O questionário de saúde chega assim que o convite for aceito." : ""}</p>
             <div className="gt-modal-actions gt-modal-actions-col">
               <button type="button" className="gt-btn" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank")}>Enviar pelo WhatsApp</button>
               <button type="button" className="gt-btn secondary" onClick={copiar}>Copiar convite</button>
@@ -19005,7 +19364,24 @@ function App() {
   const [coachNotas, setCoachNotas] = useState([]);
   const [coachConvite, setCoachConvite] = useState(() => { try { return localStorage.getItem("treino-app:coachInvite") || null; } catch (e) { return null; } });
   const [meuTreinadorOpen, setMeuTreinadorOpen] = useState(false);
-  const [medidasOpen, setMedidasOpen] = useState(false);
+  const [medidasOpen, setMedidasOpen] = useState(false); // true | "form" (já abre o registro)
+  const [evoMedKey, setEvoMedKey] = useState(0);
+  // Aviso de medidas (push) abre Minhas medidas: pela URL (?abrir=medidas) ou por mensagem do service worker com o app já aberto.
+  useEffect(() => {
+    if (!session) return;
+    try {
+      const u = new URL(window.location.href);
+      if (u.searchParams.get("abrir") === "medidas") {
+        u.searchParams.delete("abrir");
+        window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+        setMedidasOpen(true); logEvent("push_aberto", { tipo: "medidas" });
+      }
+    } catch (e) {}
+    if (!("serviceWorker" in navigator)) return;
+    const on = (e) => { if (e.data && e.data.tipo === "abrir" && e.data.alvo === "medidas") { setMedidasOpen(true); logEvent("push_aberto", { tipo: "medidas" }); } };
+    navigator.serviceWorker.addEventListener("message", on);
+    return () => navigator.serviceWorker.removeEventListener("message", on);
+  }, [!!session]);
   const [anamneses, setAnamneses] = useState([]); // pedidos de anamnese dos meus treinadores
   const [anamAberta, setAnamAberta] = useState(null);
   const [coachRevisao, setCoachRevisao] = useState(false);
@@ -20292,7 +20668,7 @@ function App() {
             {coachPend[0] && coachPendDiff && (
               <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} removidos={coachRemocoes(coachPend[0].payload, schedule, nomeNaAgenda, coachPodeAjustar).nomes} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
-            {anamneses.filter((x) => !x.respostas).slice(0, 1).map((x) => <AnamnesePedidoCard key={x.link_id} pedido={x} onResponder={() => { setAnamAberta(x); logEvent("anamnese_aberta"); }} />)}
+            {anamneses.filter((x) => !x.respostas || anamneseAtualizar(x)).slice(0, 1).map((x) => <AnamnesePedidoCard key={x.link_id} pedido={x} onResponder={() => { setAnamAberta(x); logEvent("anamnese_aberta"); }} />)}
             {coachLinks[0] && <CoachNotaHoje notas={coachNotas} linkId={coachLinks[0].link_id} nomeCoach={coachLinks[0].coach_nome} onEnviar={coachResponder} />}
             {stravaConvite && stravaConnected === false && !templatesOpen && !treinoIAOpen && (
               <div className="gt-strava-convite" role="region" aria-label="Conectar o Strava">
@@ -20914,6 +21290,7 @@ function App() {
                 <div className="gt-dsf-hint" style={{ margin: "8px 0 0" }}>Semana passada: {streakInfo.activeDaysLastWeek} dia{streakInfo.activeDaysLastWeek === 1 ? "" : "s"} ativo{streakInfo.activeDaysLastWeek === 1 ? "" : "s"}.{streakInfo.activeDaysLastWeek > 0 && streakInfo.activeDaysThisWeek > streakInfo.activeDaysLastWeek ? " Você já está na frente. 👏" : ""}</div>
               </div>
             )}
+            {session && <EvoMedidasCard key={evoMedKey} onAbrir={() => { logEvent("evo_medidas_card", { acao: "abrir" }); setMedidasOpen(true); }} onRegistrar={() => { logEvent("evo_medidas_card", { acao: "registrar" }); setMedidasOpen("form"); }} />}
             {Object.keys(sessions).length > 0 && (() => {
               const selos = computeSelos(sessions, todayISO(), atividadeById, treinos);
               const n = selos.filter((x) => x.ganho).length;
@@ -21330,7 +21707,8 @@ function App() {
           onSalvar={(r) => { salvarRitmos(r); showToast("Ritmos salvos"); }} />
       )}
       {medidasOpen && session && (
-        <MinhasMedidasTela uid={session.user.id} showToast={showToast} logEvent={logEvent} onClose={() => setMedidasOpen(false)}
+        <MinhasMedidasTela uid={session.user.id} showToast={showToast} logEvent={logEvent} onClose={() => { setMedidasOpen(false); setEvoMedKey((k) => k + 1); }}
+          abrirForm={medidasOpen === "form"}
           coachLink={coachLinks.find((l) => l.status === "ativo") || null}
           onCompartilhar={async (on) => {
             const l = coachLinks.find((x) => x.status === "ativo");
@@ -21634,7 +22012,7 @@ function App() {
           }}
           onEvent={(n, p) => logEvent(n, p)}
           onErro={(c, m) => logClientError(c, m)}
-          onClose={() => setHistOpen(false)}
+          onClose={() => { setHistOpen(false); setEvoMedKey((k) => k + 1); }}
         />
       )}
       {planoNovoAberto && (
@@ -24204,7 +24582,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
                     onPronto={(v) => { setVideoErro(""); setRpeModal((m) => ({ ...m, video: { ...v, novo: true } })); }} onErro={setVideoErro} />
                 )}
                 {videoErro && <div className="gt-plano-erro" role="alert">{videoErro}</div>}
-                <div className="gt-rpe-hint">{coachVeNota} vê o vídeo por {VIDEO_DIAS} dias. Depois ele é apagado.</div>
+                <div className="gt-rpe-hint">O vídeo vai sem som. {coachVeNota} vê por {VIDEO_DIAS} dias{rpeModal.video && rpeModal.video.em ? "" : `, até ${coachDataCurta(addDays(todayISO(), VIDEO_DIAS))}`}. Depois ele é apagado.</div>
               </div>
             )}
           </>
