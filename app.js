@@ -4237,6 +4237,7 @@ const APP_CSS = `
   .gt-co-ex-campos .stepper input { width:100%; min-width:0; height:44px; background:var(--surface-2); border:1px solid var(--border); border-left:none; border-right:none; color:var(--text); text-align:center; font-family:'Roboto Mono',monospace; font-size:14px; box-sizing:border-box; }
   .gt-co-imp-ficha { border:1px solid var(--border); border-radius:12px; padding:10px; margin:8px 0; background:var(--surface); }
   .gt-co-imp-topo { display:flex; align-items:center; gap:8px; } .gt-co-imp-topo .gt-input { flex:1; min-width:0; }
+  .gt-co-imp-cor { font-weight:600; flex:1; min-width:0; }
   .gt-co-imp-dia { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font-size:12px; color:var(--text-muted); } .gt-co-imp-dia .gt-input { width:auto; flex:1; } .gt-co-imp-dia .n { white-space:nowrap; }
   .gt-co-imp-ex { display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-top:1px solid var(--border); } .gt-co-imp-ex .l { flex:1; min-width:0; }
   .gt-co-imp-ex .nm { font-size:14px; } .gt-co-imp-ex .dt { font-size:12px; color:var(--text-muted); } .gt-co-imp-ex .og { font-size:11px; color:var(--text-muted); font-style:italic; word-break:break-word; }
@@ -12066,6 +12067,28 @@ function coachFichasDaIA(obj) {
       _dia: dia != null ? dia : null,
     });
   });
+  out.corridas = coachCorridasDaIA(obj);
+  return out;
+}
+// Treinos de corrida lidos pela IA (fase 5): {n, dia, obs, et:[{t, m|km|min|seg, pace, d} | {rep, p:[...]}]}.
+function coachCorridasDaIA(obj) {
+  const passo = (x) => x && typeof x === "object" ? {
+    tipo: x.t, distanciaM: +x.m > 0 ? +x.m : +x.km > 0 ? +x.km * 1000 : 0,
+    duracaoSeg: +x.seg > 0 ? +x.seg : +x.min > 0 ? +x.min * 60 : 0,
+    pace: typeof x.pace === "string" ? x.pace.replace(/\s+/g, "").replace(/[–]/g, "-") : "", descricao: typeof x.d === "string" ? x.d : "",
+  } : null;
+  const out = [];
+  (Array.isArray(obj && obj.corridas) ? obj.corridas : []).slice(0, 14).forEach((c, i) => {
+    if (!c || !Array.isArray(c.et)) return;
+    const etapas = c.et.map((e) => (e && Array.isArray(e.p) ? { repeticoes: e.rep, passos: e.p.map(passo) } : passo(e))).filter(Boolean);
+    const norm = planoEtapasNorm(etapas);
+    if (!norm.length) return;
+    const dur = planoEtapasSegmentos(norm, 0).reduce((t, x) => t + x.min, 0);
+    const corrida = coachCorridaNorm({ titulo: typeof c.n === "string" && c.n.trim() ? c.n.trim() : `Corrida ${i + 1}`, distanciaKm: coachEtapasKm(norm), duracaoMin: Math.round(dur), detalhes: typeof c.obs === "string" ? c.obs : "", etapas: norm });
+    if (!corrida) return;
+    const dia = typeof c.dia === "string" ? COACH_DIA_ABREV[c.dia.trim().toLowerCase().slice(0, 3)] : undefined;
+    out.push({ id: "impc-" + coachNovoId(), corrida, _dia: dia != null ? dia : null });
+  });
   return out;
 }
 
@@ -15024,7 +15047,7 @@ function CoachComposer({ aluno: alunoProp, turma, modelo, treinosProprios, ativi
         <CoachImportarFichaModal
           dowInicial={importar.dow} showToast={showToast} logEvent={logEvent}
           onClose={() => setImportar(null)}
-          onAdicionar={(lista) => { lista.forEach((x) => adicionarFicha(x.dow, x.ficha)); setImportar(null); showToast(lista.length > 1 ? `${lista.length} fichas importadas. Revise antes de enviar` : "Ficha importada. Revise antes de enviar"); }}
+          onAdicionar={(lista) => { lista.forEach((x) => (x.corrida ? addItem(x.dow, { tipo: "atividade", id: "corrida", nome: "Corrida", detalhe: coachCorridaDetalhe(x.corrida), corrida: x.corrida }) : adicionarFicha(x.dow, x.ficha))); setImportar(null); showToast(lista.length > 1 ? `${lista.length} treinos importados. Revise antes de enviar` : "Treino importado. Revise antes de enviar"); }}
         />
       )}
       {removerQ && (
@@ -15061,6 +15084,7 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
   const [erro, setErro] = useState("");
   const [lendoArq, setLendoArq] = useState(false);
   const [fichas, setFichas] = useState([]); // cada uma com: incluir, dow
+  const [corridas, setCorridas] = useState([]); // treinos de corrida lidos (fase 5): { id, corrida, incluir, dow }
   const [avisos, setAvisos] = useState([]);
   const [viaIA, setViaIA] = useState(true);
   const cancelRef = useRef(false);
@@ -15073,8 +15097,9 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     const ini = COACH_ORDEM_DIAS.indexOf(dowInicial);
     return COACH_ORDEM_DIAS[((ini < 0 ? 0 : ini) + i) % 7];
   };
-  function prepararRevisao(lista, avs, ia) {
+  function prepararRevisao(lista, avs, ia, cors) {
     setFichas(lista.map((f, i) => ({ ...f, incluir: true, dow: dowDeFicha(lista, i, f._dia) })));
+    setCorridas((cors || []).map((c, i) => ({ ...c, incluir: true, dow: dowDeFicha(cors, lista.length + i, c._dia) })));
     setAvisos(avs); setViaIA(ia); setEtapa("revisao");
   }
 
@@ -15155,8 +15180,8 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     if (cancelRef.current || !vivoRef.current) return;
     const devolver = async () => { try { await supabaseClient.rpc("refund_plan_generation", { p_id: reservaRef.current }); } catch (e) {} };
     if (!res) { await devolver(); setErro("Não consegui ler agora. Esta tentativa não conta no seu limite. Tente de novo em instantes."); setEtapa("entrada"); return; }
-    if (!res.fichas.length) { await devolver(); setErro(`Não encontrei uma ficha de treino aí.${res.avisos[0] ? " " + res.avisos[0] : ""} Esta tentativa não conta no seu limite.`); setEtapa("entrada"); return; }
-    prepararRevisao(res.fichas, res.avisos, true);
+    if (!res.fichas.length && !(res.corridas || []).length) { await devolver(); setErro(`Não encontrei uma ficha de treino aí.${res.avisos[0] ? " " + res.avisos[0] : ""} Esta tentativa não conta no seu limite.`); setEtapa("entrada"); return; }
+    prepararRevisao(res.fichas, res.avisos, true, res.corridas);
   }
 
   function atualizar(id, patch) { setFichas((l) => l.map((f) => (f.id === id ? { ...f, ...patch } : f))); }
@@ -15164,6 +15189,8 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     setFichas((l) => l.map((f) => (f.id !== id ? f : { ...f, blocos: f.blocos.map((b) => ({ ...b, exercicios: b.exercicios.filter((e) => e.id !== exId) })) })));
   }
   const escolhidas = fichas.filter((f) => f.incluir && coachContaExercicios(f) > 0);
+  const corridasEscolhidas = corridas.filter((c) => c.incluir);
+  const nEscolhidos = escolhidas.length + corridasEscolhidas.length;
   function confirmar() {
     const novos = new Set();
     const lista = escolhidas.map((f) => {
@@ -15176,7 +15203,8 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     });
     if (viaIA) Array.from(novos).slice(0, 40).forEach((n) => logExercicioLivre(n, "import_ficha"));
     logEvent(viaIA ? "coach_ficha_import_ia" : "coach_ficha_import_texto");
-    onAdicionar(lista);
+    if (corridasEscolhidas.length) logEvent("coach_corrida_import_ia");
+    onAdicionar(lista.concat(corridasEscolhidas.map((c) => ({ dow: c.dow, corrida: c.corrida }))));
   }
   function fechar() {
     if (etapa === "lendo") {
@@ -15189,12 +15217,12 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
 
   return (
     <div className="gt-modal-backdrop" onClick={fechar}>
-      <div className="gt-modal gt-plano-modal" role="dialog" aria-modal="true" aria-label="Importar ficha" onClick={(e) => e.stopPropagation()}>
-        <div className="gt-sheet-head"><h3>Importar ficha</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={fechar}>✕</button></div>
+      <div className="gt-modal gt-plano-modal" role="dialog" aria-modal="true" aria-label="Importar ficha ou planilha" onClick={(e) => e.stopPropagation()}>
+        <div className="gt-sheet-head"><h3>Importar ficha ou planilha</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={fechar}>✕</button></div>
 
         {etapa === "entrada" && (
           <div className="gt-plano-form">
-            <div className="gt-plano-dica">Traga a ficha que o aluno já tinha: foto do papel, print, PDF, planilha ou texto do WhatsApp. A IA lê, você confere e escolhe o dia de cada treino antes de enviar.</div>
+            <div className="gt-plano-dica">Traga a ficha ou a planilha de corrida que o aluno já tinha: foto do papel, print, PDF, planilha ou texto do WhatsApp. A IA lê, você confere e escolhe o dia de cada treino antes de enviar.</div>
             <label className="gt-btn secondary" style={{ textAlign: "center", cursor: "pointer" }}>
               {lendoArq ? "Lendo arquivos…" : <><Ei e="📎" /> Escolher foto ou arquivo</>}
               <input type="file" multiple style={{ display: "none" }} accept=".txt,.csv,.tsv,.md,.xlsx,.xlsm,.xls,.ods,.pdf,.zip,image/*" onChange={escolherArquivos} disabled={lendoArq} />
@@ -15253,8 +15281,24 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
                 )))}
               </div>
             ))}
+            {corridas.map((c) => (
+              <div key={c.id} className="gt-co-imp-ficha">
+                <label className="gt-co-imp-topo">
+                  <input type="checkbox" checked={c.incluir} onChange={(e) => setCorridas((l) => l.map((x) => (x.id === c.id ? { ...x, incluir: e.target.checked } : x)))} aria-label={`Incluir ${c.corrida.titulo}`} />
+                  <span className="gt-co-imp-cor"><Ei e="🏃" /> {c.corrida.titulo}</span>
+                </label>
+                <div className="gt-co-imp-dia">
+                  <span>Dia</span>
+                  <select className="gt-input" aria-label={`Dia de ${c.corrida.titulo}`} value={c.dow} onChange={(e) => setCorridas((l) => l.map((x) => (x.id === c.id ? { ...x, dow: Number(e.target.value) } : x)))}>
+                    {COACH_ORDEM_DIAS.map((d) => <option key={d} value={d}>{COACH_DIAS[d]}</option>)}
+                  </select>
+                  <span className="n">{coachCorridaMeta(c.corrida)}</span>
+                </div>
+                {c.incluir && <div className="gt-co-imp-ex"><div className="l"><div className="dt">{planoEtapasResumo(c.corrida.etapas)}</div>{c.corrida.detalhes && <div className="og">{c.corrida.detalhes}</div>}</div></div>}
+              </div>
+            ))}
             <div className="gt-modal-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="gt-btn" disabled={!escolhidas.length} onClick={confirmar}>{escolhidas.length > 1 ? `Adicionar ${escolhidas.length} fichas à semana` : "Adicionar à semana"}</button>
+              <button type="button" className="gt-btn" disabled={!nEscolhidos} onClick={confirmar}>{nEscolhidos > 1 ? `Adicionar ${nEscolhidos} treinos à semana` : "Adicionar à semana"}</button>
               <button type="button" className="gt-btn secondary" onClick={() => setEtapa("entrada")}>Voltar</button>
             </div>
           </div>
@@ -15499,7 +15543,7 @@ function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha,
         ) : (
           <>
             <button type="button" className="gt-sheet-item" onClick={onNova}><div className="tx"><div className="t">Criar ficha nova</div><div className="d">Monte exercício por exercício</div></div></button>
-            <button type="button" className="gt-sheet-item" onClick={onImportar}><div className="tx"><div className="t">Importar ficha</div><div className="d">Foto, PDF, planilha ou texto do WhatsApp</div></div></button>
+            <button type="button" className="gt-sheet-item" onClick={onImportar}><div className="tx"><div className="t">Importar ficha ou planilha</div><div className="d">Musculação ou corrida: foto, PDF, planilha ou texto</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={onCorrida}><div className="tx"><div className="t">Treino de corrida</div><div className="d">Tiros, ritmo, longão… com etapas e pace</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={() => setAtiv({ nome: "Corrida", detalhe: "" })}><div className="tx"><div className="t">Corrida ou outra atividade</div><div className="d">Com detalhe: distância, ritmo…</div></div></button>
             {naSemana.length > 0 && <div className="gt-co-sec" style={{ marginTop: 10 }}>JÁ NESTA SEMANA</div>}
