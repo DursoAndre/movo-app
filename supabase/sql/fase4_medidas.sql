@@ -251,3 +251,42 @@ end;
 $$;
 revoke execute on function public.anamnese_responder(uuid, jsonb) from public, anon;
 grant execute on function public.anamnese_responder(uuid, jsonb) to authenticated;
+
+-- 6. Treinador: anamneses respondidas nos últimos 30 dias (para "Para hoje"), com os "sim" do PAR-Q.
+create or replace function public.coach_anamneses_resumo()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('link_id', a.link_id, 'respondida_em', a.respondida_em, 'sim',
+      coalesce((select jsonb_agg(x.i - 1) from jsonb_array_elements(case when jsonb_typeof(a.respostas->'parq') = 'array'
+        then a.respostas->'parq' else '[]'::jsonb end) with ordinality as x(v, i) where x.v = 'true'::jsonb), '[]'::jsonb)))
+    from public.coach_anamneses a join public.coach_links l on l.id = a.link_id
+    where a.coach_id = auth.uid() and l.status = 'ativo' and a.respondida_em > now() - interval '30 days'), '[]'::jsonb);
+end;
+$$;
+revoke execute on function public.coach_anamneses_resumo() from public, anon;
+grant execute on function public.coach_anamneses_resumo() to authenticated;
+
+-- 7. LGPD: quando o vínculo acaba, a anamnese é apagada (ninguém mais a vê; não fica guardada sem uso).
+-- As avaliações continuam visíveis para o aluno.
+create or replace function public.anamnese_apagar_ao_encerrar()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status in ('encerrado', 'recusado') and old.status is distinct from new.status then
+    delete from public.coach_anamneses where link_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.anamnese_apagar_ao_encerrar() from public, anon, authenticated;
+do $$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'coach_links_apagar_anamnese') then
+    create trigger coach_links_apagar_anamnese after update of status on public.coach_links
+      for each row execute function public.anamnese_apagar_ao_encerrar();
+  end if;
+end $$;
+
+-- 8. Push da anamnese (edge function enviar-push, tipo "anamnese"): leituras do service_role.
+grant select (link_id, respostas, respondida_em) on public.coach_anamneses to service_role;
+grant select (student_label) on public.coach_links to service_role;

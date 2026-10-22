@@ -1683,6 +1683,18 @@ function histTitulo(s) {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 }
 // Prepara o que será criado, para a tela de revisão. Não altera nada.
+// Títulos que viram ficha nova: os que se repetem (2+ vezes nos 90 dias mais recentes do arquivo), até 8.
+// Títulos genéricos ("Morning Workout", "Treino") e o resto entram só em "Histórico importado", com as cargas.
+const HIST_TITULOS_GENERICOS = /^(morning|afternoon|evening|night|midday|lunch|late night|early morning)? ?(workout|treino|training|session)( \d+)?$|^(treino|workout)$/;
+function histTitulosRepetidos(sessoes) {
+  const datas = (sessoes || []).map((s) => s.d).filter(Boolean).sort();
+  if (!datas.length) return new Set();
+  const corte = new Date(datas[datas.length - 1] + "T12:00:00"); corte.setDate(corte.getDate() - 90);
+  const corteISO = corte.toISOString().slice(0, 10);
+  const cont = {};
+  sessoes.forEach((s) => { const k = histNorm(s.n); if (k && s.d >= corteISO && !HIST_TITULOS_GENERICOS.test(k)) cont[k] = (cont[k] || 0) + 1; });
+  return new Set(Object.keys(cont).filter((k) => cont[k] >= 2).sort((a, b) => cont[b] - cont[a]).slice(0, 8));
+}
 function histPlanejar(juntado, ctx) {
   const treinos = ctx.treinos || [], sessions = ctx.sessions || {}, schedule = ctx.schedule || {}, atividades = ctx.atividades || [];
   const seus = [];
@@ -1701,11 +1713,12 @@ function histPlanejar(juntado, ctx) {
   const fichas = new Map();
   const sessoes = [];
   const novosEx = new Map();
+  const repetidos = histTitulosRepetidos(juntado.sessoes);
   juntado.sessoes.forEach((s) => {
     let key = histNorm(s.n);
     let existente = treinos.find((t) => histNorm(t.nome) === key) || null;
     let nomeFicha = histTitulo(s.n);
-    if (!existente && !ctx.criarFichas) { key = "__hist"; nomeFicha = "Histórico importado"; }
+    if (!existente && (!ctx.criarFichas || !repetidos.has(key))) { key = "__hist"; nomeFicha = "Histórico importado"; }
     if (!fichas.has(key)) fichas.set(key, { key, nome: existente ? existente.nome : nomeFicha, existenteId: existente ? existente.id : null, ex: new Map(), nSessoes: 0, ultimaData: "" });
     const f = fichas.get(key);
     const exs = [];
@@ -4020,6 +4033,52 @@ const APP_CSS = `
   .gt-anam-resp dt { color:var(--text-muted); }
   .gt-anam-resp dd { margin:2px 0 0; }
   .gt-anam-resp .sim dd { color:var(--amber); font-weight:600; }
+  /* Revisões de UX e design (fase 4) */
+  .gt-anam .gt-provas-pill, .gt-med-cmp .gt-provas-pill { min-height:44px; padding:0 16px; font-size:14px; display:inline-flex; align-items:center; }
+  .gt-anam-parq .gt-provas-filters { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .gt-anam-parq .gt-provas-pill { justify-content:center; }
+  .gt-anam-parq .gt-provas-pill.on.sim { background:var(--amber); border-color:var(--amber); color:#14161A; }
+  .gt-anam-parq.falta { box-shadow:inset 0 0 0 1px var(--warn); }
+  .gt-anam-dias.gt-provas-filters { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .gt-anam-dias .gt-provas-pill { padding:0; justify-content:center; }
+  .gt-anam-card .gt-btn.small { min-height:40px; padding:8px 16px; font-size:14px; }
+  .gt-anam-share { margin-top:14px; flex-shrink:0; align-items:flex-start; color:var(--text); }
+  .gt-med-body > *, .gt-anam-body > * { flex-shrink:0; }
+  .gt-med-form .gt-med-acoes { position:sticky; bottom:-18px; background:var(--surface); padding:12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); margin:12px 0 -18px; z-index:1; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .gt-med-quemve { flex-basis:100%; margin:0 0 4px; }
+  .gt-med-form textarea.gt-med-ta { font-family:'Inter',sans-serif; font-size:14px; margin:0; min-height:72px; }
+  .gt-med-form .gt-sheet-head { margin-bottom:14px; }
+  .gt-med-grid2 .gt-input { height:44px; }
+  .gt-med-sec { margin-top:16px; }
+  .gt-med-foto button { width:32px; height:32px; top:2px; right:2px; }
+  .gt-med-foto-pose { position:absolute; left:0; right:0; bottom:0; font-size:11px; text-align:center; padding:2px 0; background:rgba(0,0,0,.55); color:#fff; }
+  .gt-med-stat .d { white-space:nowrap; }
+  .gt-med-stat .v { font-size:26px; }
+  .gt-med-desde { margin:-4px 0 10px; }
+  .gt-med-topo { margin-top:0; }
+  .gt-med-topo .gt-btn:first-child { flex:2; }
+  .gt-med-topo .gt-btn.secondary { flex:1; }
+  .gt-med-editar { margin-left:auto; font-size:13px; color:var(--accent); }
+  .gt-med-cmp-sel { display:flex; flex-direction:column; min-width:0; }
+  .gt-med-cmp-par + .gt-med-cmp-par { margin-top:8px; }
+  .gt-med-cmp-delta { text-align:center; margin-top:16px; }
+  .gt-med-cmp-delta .l { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); letter-spacing:.05em; }
+  .gt-med-cmp-delta .v { font-family:'Oswald',sans-serif; font-size:32px; font-variant-numeric:tabular-nums; }
+  .gt-med-cmp-delta .de { font-size:13px; color:var(--text-muted); }
+  .gt-med-resumo-linhas { font-size:14px; color:var(--text-muted); display:flex; flex-direction:column; gap:2px; margin:0 0 8px; }
+  .gt-med-resumo-linhas b { color:var(--text); font-weight:600; }
+  .gt-co-plano-aluno > .gt-co-link { align-self:flex-start; padding:0; min-height:40px; }
+  .gt-co-plano-aluno > .t { font-weight:600; font-size:15px; }
+  .gt-anam-resp { gap:0; }
+  .gt-anam-resp div { padding:8px 0; border-top:1px solid var(--border); font-size:14px; }
+  .gt-anam-resp dt { font-size:12px; }
+  .gt-plano-chk input { accent-color:var(--accent); width:20px; height:20px; flex-shrink:0; margin-top:1px; }
+  .gt-plano-chk { font-size:14px; min-height:44px; align-items:center; }
+  .gt-plano-chk small { font-size:12px; color:var(--text-muted); }
+  .gt-hist-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .gt-chip button { min-width:32px; min-height:32px; }
+  .gt-hist-notas { background:var(--surface-2); border-radius:10px; padding:10px 12px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:6px; }
+  .gt-hoje-importar { margin-top:8px; }
   .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
   .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
   .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
@@ -4836,6 +4895,8 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
   const podeUsar = uso && (semLimite || uso.usados < uso.limite);
   // CSV do Hevy/Strong é lido no aparelho; a IA só entra se houver outro arquivo ou texto colado.
   const precisaIA = !fontes.length || fontes.some((f) => f.tipo !== "app") || !!colado.trim();
+  const appsCsv = [...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))];
+  const inicioRef = useRef(Date.now());
 
   async function escolherArquivos(ev) {
     const lista = Array.from(ev.target.files || []);
@@ -4889,7 +4950,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     if (!partes.length) {
       const j = histJuntar(locais);
       if (!j.sessoes.length && !j.ativ.length) { setErro("Não encontrei treinos nesse arquivo."); return; }
-      onEvent("hist_import_app", { apps: [...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))].join(",") });
+      onEvent("hist_import_app", { apps: appsCsv.join(",") });
       setFalhas(0); setJuntado(j); setEtapa("revisao");
       return;
     }
@@ -4946,7 +5007,9 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     const impId = `imp-${Date.now().toString(36)}`;
     const res = onAplicar(plano, impId);
     setResumo(res); setImpAtual(impId);
-    onEvent("hist_import_aplicado");
+    onEvent("hist_import_aplicado", { origem: precisaIA ? "ia" : "app", app: appsCsv.join(","), sessoes: plano.sessoes.length,
+      fichas: plano.fichas.filter((f) => !f.existenteId && f.key !== "__hist").length, novos_ex: plano.novosExercicios.length,
+      seg_ate_aplicar: Math.round((Date.now() - inicioRef.current) / 1000) });
     setEtapa("ok");
   }
   function fechar() {
@@ -4968,26 +5031,34 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 
         {etapa === "inicio" && (
           <div className="gt-plano-form">
-            <div className="gt-plano-dica">Traga seus treinos de outro app, planilha, anotações ou conversa de WhatsApp. A IA lê, o app organiza e você confere tudo antes de salvar.</div>
+            <div className="gt-plano-dica">Traga seus treinos de outro app, planilha, anotações ou conversa de WhatsApp. Você confere tudo antes de salvar.</div>
             <label className="gt-btn secondary" style={{ textAlign: "center", cursor: "pointer" }}>
               {lendoArq ? "Lendo arquivos…" : <><Ei e="📎" /> Escolher arquivos</>}
               <input type="file" multiple style={{ display: "none" }} accept=".txt,.csv,.tsv,.md,.json,.xlsx,.xlsm,.xls,.ods,.pdf,.zip,image/*" onChange={escolherArquivos} disabled={lendoArq} />
             </label>
-            <div className="gt-plano-dica">Aceita: CSV do Hevy e do Strong, prints do MFIT e de outros apps, texto/CSV, Excel, PDF, fotos e a conversa exportada do WhatsApp (.txt ou .zip).</div>
-            {fontes.some((f) => f.tipo === "app") && !precisaIA && <div className="gt-plano-aviso info">Arquivo do {[...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))].join(" e ")} reconhecido. Leio aqui mesmo, sem IA e sem gastar importações do mês.</div>}
-            {fontes.map((f) => (
-              <div className="gt-chip" key={f.id} style={{ alignSelf: "flex-start" }}>
-                <span className="tag">{f.tipo === "app" ? f.app.toUpperCase() : f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{f.nome}</span>
-                <button type="button" title="Remover" onClick={() => setFontes((p) => p.filter((x) => x.id !== f.id))}>✕</button>
+            <div className="gt-plano-dica">Aceita: CSV do Hevy e do Strong (exporte nas configurações do app), prints do MFIT e de outros apps, texto/CSV, Excel, PDF, fotos e a conversa exportada do WhatsApp (.txt ou .zip).</div>
+            {appsCsv.length > 0 && !precisaIA && <div className="gt-plano-aviso info">{appsCsv.length === 1 ? `Arquivo do ${appsCsv[0]} reconhecido.` : `Arquivos do ${appsCsv.join(" e do ")} reconhecidos.`} A leitura é feita no seu celular, sem IA e sem contar nas importações do mês.</div>}
+            {fontes.length > 0 && (
+              <div className="gt-chips gt-hist-chips">
+                {fontes.map((f) => (
+                  <div className="gt-chip" key={f.id}>
+                    <span className="tag">{f.tipo === "app" ? f.app.toUpperCase() : f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{f.nome}</span>
+                    <button type="button" aria-label={`Tirar ${f.nome}`} title="Remover" onClick={() => setFontes((p) => p.filter((x) => x.id !== f.id))}>✕</button>
+                  </div>
+                ))}
               </div>
-            ))}
-            <label className="gt-plano-lbl">Ou cole o texto aqui</label>
-            <textarea className="gt-input" rows={4} placeholder="Ex.: 12/03 Treino A — supino 40kg 3x10, agachamento 60kg 3x8…" value={colado} onChange={(e) => setColado(e.target.value)} />
-            <label className="gt-plano-lbl">Unidade das cargas</label>
-            <div className="gt-provas-filters" style={{ margin: 0 }}>
-              {[["auto", "Detectar"], ["kg", "kg"], ["lb", "lb"]].map(([id, nm]) => <button key={id} type="button" className={`gt-provas-pill ${unidade === id ? "on" : ""}`} onClick={() => setUnidade(id)}>{nm}</button>)}
-            </div>
+            )}
+            {(precisaIA || colado.trim()) && (
+              <>
+                <label className="gt-plano-lbl">Ou cole o texto aqui</label>
+                <textarea className="gt-input" rows={fontes.length ? 2 : 4} placeholder="Ex.: 12/03 Treino A — supino 40kg 3x10, agachamento 60kg 3x8…" value={colado} onChange={(e) => setColado(e.target.value)} />
+                <label className="gt-plano-lbl">Unidade das cargas</label>
+                <div className="gt-provas-filters" style={{ margin: 0 }}>
+                  {[["auto", "Detectar"], ["kg", "kg"], ["lb", "lb"]].map(([id, nm]) => <button key={id} type="button" className={`gt-provas-pill ${unidade === id ? "on" : ""}`} onClick={() => setUnidade(id)}>{nm}</button>)}
+                </div>
+              </>
+            )}
             {(colado.trim() || fontes.some((f) => f.tipo === "texto")) && (
               <>
                 <label className="gt-plano-lbl">Seu nome na conversa (opcional)</label>
@@ -5045,7 +5116,9 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
               <div className="ti">{plano.sessoes.length} {plano.sessoes.length === 1 ? "treino" : "treinos"}{plano.ativ.length ? ` e ${plano.ativ.length} ${plano.ativ.length === 1 ? "atividade" : "atividades"}` : ""}</div>
               {plano.periodo && <div className="mt">de {fmtD(plano.periodo.ini)} até {fmtD(plano.periodo.fim)}</div>}
             </div>
-            <label className="gt-plano-chk"><input type="checkbox" checked={criarFichas} onChange={(e) => setCriarFichas(e.target.checked)} /> <span>Criar uma ficha para cada tipo de treino (o histórico fica ligado a elas)</span></label>
+            {(() => { const n = juntado ? histTitulosRepetidos(juntado.sessoes).size : 0; return n > 0 && (
+              <label className="gt-plano-chk"><input type="checkbox" checked={criarFichas} onChange={(e) => setCriarFichas(e.target.checked)} /> <span>Criar fichas com os treinos que você repete ({n})<br /><small>O resto entra só no histórico, com as cargas.</small></span></label>
+            ); })()}
             {juntado.ativ.length > 0 && <label className="gt-plano-chk"><input type="checkbox" checked={incluirAtiv} onChange={(e) => setIncluirAtiv(e.target.checked)} /> <span>Importar também corridas e outras atividades ({juntado.ativ.length})</span></label>}
             <label className="gt-plano-lbl">Fichas</label>
             {plano.fichas.map((f) => (
@@ -5055,10 +5128,14 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
                 <div className="gt-tc-resumo">{f.exercicios.map((e) => e.nome).join(" · ")}</div>
               </div>
             ))}
-            {plano.novosExercicios.length > 0 && <div className="gt-plano-aviso info">Exercícios que não estão no catálogo (serão criados): {plano.novosExercicios.join(", ")}.</div>}
+            {(plano.novosExercicios.length > 0 || plano.avisos.length > 0) && (
+              <div className="gt-hist-notas">
+                {plano.novosExercicios.length > 0 && <div>Exercícios novos no Movo (vamos criar como seus): {plano.novosExercicios.join(", ")}.</div>}
+                {plano.avisos.map((a, i) => <div key={i}>{a}</div>)}
+              </div>
+            )}
             {plano.puladas > 0 && <div className="gt-plano-aviso aviso">{plano.puladas === 1 ? "1 registro cai" : `${plano.puladas} registros caem`} em dias que você já preencheu e {plano.puladas === 1 ? "será mantido" : "serão mantidos"} como está (não sobrescrevo).</div>}
             {falhas > 0 && <div className="gt-plano-aviso aviso">{falhas} {falhas === 1 ? "parte do arquivo não pôde" : "partes do arquivo não puderam"} ser lida{falhas === 1 ? "" : "s"}. O período delas não entra agora; você pode importar de novo depois.</div>}
-            {plano.avisos.map((a, i) => <div className="gt-plano-aviso info" key={i}>{a}</div>)}
             <div className="gt-modal-actions" style={{ marginTop: 8 }}>
               <button type="button" className="gt-btn" disabled={!plano.sessoes.length && !plano.ativ.length} onClick={confirmarImportacao}>Importar</button>
               <button type="button" className="gt-btn secondary" onClick={() => setEtapa("inicio")}>Voltar</button>
@@ -5068,7 +5145,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 
         {etapa === "ok" && resumo && (
           <div className="gt-plano-form">
-            <div className="gt-plano-aviso info"><b>Importado ✓</b> {resumo.sessoes} treinos{resumo.atividades ? `, ${resumo.atividades} atividades` : ""}{resumo.fichas ? ` e ${resumo.fichas} fichas novas` : ""}. Veja no calendário e na aba Evolução.</div>
+            <div className="gt-plano-aviso info"><b>Importado ✓</b> {resumo.sessoes} {resumo.sessoes === 1 ? "treino" : "treinos"}{resumo.atividades ? `, ${resumo.atividades} ${resumo.atividades === 1 ? "atividade" : "atividades"}` : ""}{resumo.fichas ? ` e ${resumo.fichas} ${resumo.fichas === 1 ? "ficha nova" : "fichas novas"}` : ""}. Veja no calendário, em Evolução e em Minhas fichas.</div>
             <div className="gt-modal-actions" style={{ marginTop: 8 }}>
               <button type="button" className="gt-btn" onClick={onClose}>Pronto</button>
               <button type="button" className="gt-btn secondary" onClick={() => { if (window.confirm("Desfazer esta importação?")) { onDesfazer(impAtual); onEvent("hist_import_desfeito"); onClose(); } }}>Desfazer</button>
@@ -11129,9 +11206,9 @@ const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_do
 const COACH_PERM_ITENS = [
   { k: "ver_treinos", t: "Meus treinos e agenda", d: "Fichas, dias e histórico de sessões" },
   { k: "ver_cargas", t: "Cargas e repetições", d: "O que você levantou em cada exercício" },
-  { k: "ver_esforco_dor", t: "Esforço e dor", d: "Dado de saúde: só liga se você quiser. O treinador usa pra ajustar a carga.", sensivel: true },
+  { k: "ver_esforco_dor", t: "Esforço e dor", d: "Dado de saúde: só liga se você quiser. Seu treinador usa pra ajustar a carga.", sensivel: true },
   { k: "ver_corrida", t: "Corridas", d: "Distância, ritmo e tempo" },
-  { k: "ver_contato", t: "Meu telefone", d: "Só se você tiver preenchido. O treinador pode te chamar no WhatsApp." },
+  { k: "ver_contato", t: "Meu telefone", d: "Só se você tiver preenchido. Seu treinador pode te chamar no WhatsApp." },
   { k: "ver_medidas", t: "Medidas e fotos", d: "Dado de saúde: peso, medidas e fotos de Minhas medidas. Só liga se você quiser." },
 ];
 const COACH_DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -12047,8 +12124,9 @@ function coachOrdenarAlunos(lista, hojeISO) {
   return lista.slice().sort((x, y) => peso(x) - peso(y) || (y.dor_max_recente || 0) - (x.dor_max_recente || 0) || (y.dias_sem_treino || 0) - (x.dias_sem_treino || 0) || String(x.nome).localeCompare(String(y.nome), "pt-BR"));
 }
 // Fila "Para hoje" do treinador: um item por aluno, com o motivo mais urgente e uma ação.
-// Ordem: mensagem sem resposta, dor alta, semana recusada, sem treinar, sem plano.
-function coachParaHoje(lista, hojeISO) {
+// Ordem: mensagem sem resposta, anamnese com "sim" no PAR-Q, dor alta, anamnese respondida, semana recusada,
+// sem treinar, sem plano. anams: [{ link_id, respondida_em, sim: [índices] }] ainda não abertas pelo treinador.
+function coachParaHoje(lista, hojeISO, anams) {
   const out = [];
   (lista || []).forEach((a) => {
     if (a.status !== "ativo") return;
@@ -12056,8 +12134,11 @@ function coachParaHoje(lista, hojeISO) {
     const primeiro = String(a.nome || "").split(" ")[0];
     let it = null;
     const diasEnvio = a.ultimo_envio && a.ultimo_envio.quando ? Math.floor((new Date(hojeISO + "T12:00:00") - new Date(a.ultimo_envio.quando)) / 86400000) : null;
+    const an = (anams || []).find((x) => x.link_id === a.link_id);
     if (a.nao_lidas > 0) it = { ordem: 0, motivo: a.nao_lidas === 1 ? "Mensagem nova" : `${a.nao_lidas} mensagens novas`, acao: "responder", botao: "Responder" };
+    else if (an && (an.sim || []).length) it = { ordem: 0.5, motivo: `Anamnese: ${an.sim.length} "sim" no PAR-Q`, acao: "avaliacao", botao: "Ver" };
     else if (!a.bloqueado && a.dor_max_recente != null && a.dor_max_recente >= 7) it = { ordem: 1, motivo: `Dor ${a.dor_max_recente}/10 recente`, acao: "abrir", botao: "Abrir" };
+    else if (an) it = { ordem: 1.5, motivo: "Respondeu a anamnese", acao: "avaliacao", botao: "Ver" };
     else if (a.ultimo_envio && a.ultimo_envio.status === "recusado") it = { ordem: 2, motivo: "Recusou o treino da semana", acao: "montar", botao: "Montar" };
     else if (!a.bloqueado && c.atencao) it = { ordem: 3, motivo: c.motivo, acao: "abrir", botao: "Abrir" };
     else if (c.semPlano) it = { ordem: 4, motivo: diasEnvio != null ? `Último treino enviado há ${diasEnvio} dias` : "Nenhum treino enviado ainda", acao: "montar", botao: "Montar" };
@@ -12288,10 +12369,10 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
             </div></div>
             </>)}
             {anamnese && (<>
-            <div className="gt-co-sec">ANAMNESE</div>
+            <div className="gt-co-sec">QUESTIONÁRIO DE SAÚDE</div>
             <div className="gt-co-perms"><div className="gt-co-perm">
               <div className="tx"><div className="t">{anamnese.respostas ? `Respondida em ${coachDataCurta(anamnese.respondida_em)}` : "Esperando sua resposta"}</div><div className="d">Só {link.coach_nome} vê. Você pode mudar ou apagar.</div></div>
-              <button type="button" className="gt-btn small secondary" onClick={() => onAbrirAnamnese(anamnese)}>{anamnese.respostas ? "Ver" : "Responder"}</button>
+              <button type="button" className="gt-btn small secondary" onClick={() => onAbrirAnamnese(anamnese)}>{anamnese.respostas ? "Ver ou mudar" : "Responder"}</button>
             </div></div>
             </>)}
             <div className="gt-modal-actions gt-modal-actions-col" style={{ marginTop: 12 }}>
@@ -12744,7 +12825,16 @@ function CoachNotaHoje({ notas, linkId, nomeCoach, onEnviar }) {
 // Medidas e fotos são do aluno (tabela user_medidas, bucket privado "medidas"). O treinador só vê com a
 // permissão "ver_medidas". Avaliações são do treinador (coach_avaliacoes) e aparecem para o aluno junto.
 const MEDIDAS_CAMPOS = [["cintura", "Cintura"], ["abdomen", "Abdômen"], ["quadril", "Quadril"], ["peito", "Peito"], ["braco", "Braço"], ["coxa", "Coxa"], ["panturrilha", "Panturrilha"]];
-const MEDIDAS_MAX_FOTOS = 3;
+// Fotos com pose fixa (vai no nome do arquivo: <uid>/<pose>-<id>.jpg), para comparar frente com frente.
+const MED_POSES = [["frente", "Frente"], ["lado", "Lado"], ["costas", "Costas"]];
+function medFotoPose(caminho) { const m = /\/(frente|lado|costas)-/.exec(String(caminho || "")); return m ? m[1] : null; }
+// { frente: caminho, lado: caminho, costas: caminho }; fotos antigas sem pose ocupam as vagas livres na ordem.
+function medFotosPorPose(fotos) {
+  const out = {};
+  (fotos || []).forEach((f) => { const p = medFotoPose(f); if (p && !out[p]) out[p] = f; });
+  (fotos || []).forEach((f) => { if (medFotoPose(f)) return; const livre = MED_POSES.find(([k]) => !out[k]); if (livre) out[livre[0]] = f; });
+  return out;
+}
 function medNum(v, min, max) {
   if (v == null || String(v).trim() === "") return null;
   const n = Number(String(v).replace(",", "."));
@@ -12773,6 +12863,11 @@ function medLinha(meus, avals) {
   return [...(meus || []).map((m) => ({ ...m, tipo: "meu" })), ...(avals || []).map((a) => ({ ...a, tipo: "aval" }))]
     .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : a.tipo === "aval" ? -1 : 1));
 }
+const MED_RESUMO_CAMPOS = [
+  ["Peso", "kg", (x) => (x.peso != null ? Number(x.peso) : null)],
+  ["Gordura", "%", (x) => (x.gordura != null ? Number(x.gordura) : null)],
+  ["Cintura", "cm", (x) => (x.medidas && x.medidas.cintura != null ? Number(x.medidas.cintura) : null)],
+];
 // Resumo: valor mais recente de cada medida e a diferença para o primeiro registro dela.
 function medResumo(linha) {
   const pega = (fn) => {
@@ -12781,11 +12876,7 @@ function medResumo(linha) {
     const atual = com[0], primeiro = com[com.length - 1];
     return { v: fn(atual), desde: com.length > 1 ? primeiro.data : null, antes: com.length > 1 ? fn(primeiro) : null };
   };
-  return [
-    ["Peso", "kg", pega((x) => (x.peso != null ? Number(x.peso) : null))],
-    ["Gordura", "%", pega((x) => (x.gordura != null ? Number(x.gordura) : null))],
-    ["Cintura", "cm", pega((x) => (x.medidas && x.medidas.cintura != null ? Number(x.medidas.cintura) : null))],
-  ].filter((r) => r[2]);
+  return MED_RESUMO_CAMPOS.map(([t, un, fn]) => [t, un, pega(fn)]).filter((r) => r[2]);
 }
 function MedValores({ m }) {
   const partes = [];
@@ -12793,6 +12884,17 @@ function MedValores({ m }) {
   if (m.gordura != null) partes.push(`${medFmt(m.gordura, "%")} de gordura`);
   MEDIDAS_CAMPOS.forEach(([k, t]) => { if (m.medidas && m.medidas[k] != null) partes.push(`${t.toLowerCase()} ${medFmt(m.medidas[k], "cm")}`); });
   return partes.length ? <div className="gt-med-vals">{partes.join(" · ")}</div> : null;
+}
+function medTeclaAbre(fn) { return (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } }; }
+function MedThumbs({ fotos, urls }) {
+  if (!(fotos || []).length) return null;
+  const porPose = medFotosPorPose(fotos);
+  const lista = MED_POSES.filter(([k]) => porPose[k]);
+  return (
+    <div className="gt-med-thumbs" aria-label={lista.length === 1 ? "1 foto" : `${lista.length} fotos`}>
+      {lista.map(([k, t]) => urls[porPose[k]] ? <img key={k} src={urls[porPose[k]]} alt={t} /> : <span key={k} className="gt-med-foto-vazia" />)}
+    </div>
+  );
 }
 
 function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
@@ -12802,20 +12904,28 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
   const [med, setMed] = useState(() => { const o = {}; MEDIDAS_CAMPOS.forEach(([k]) => { const v = inicial.medidas && inicial.medidas[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
   const [maisMedidas, setMaisMedidas] = useState(MEDIDAS_CAMPOS.some(([k]) => inicial.medidas && inicial.medidas[k] != null));
   const [nota, setNota] = useState(inicial.nota || "");
-  const [fotos, setFotos] = useState(inicial.fotos || []); // caminhos já salvos
-  const [novas, setNovas] = useState([]); // { blob, url }
+  const [fotos, setFotos] = useState(() => medFotosPorPose(inicial.fotos)); // { pose: caminho já salvo }
+  const [novas, setNovas] = useState({}); // { pose: { blob, url } }
   const [urls, setUrls] = useState({});
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
+  const novasRef = useRef(novas); novasRef.current = novas;
   useEffect(() => { medFotoUrls(inicial.fotos || []).then(setUrls); }, []);
-  useEffect(() => () => novas.forEach((n) => URL.revokeObjectURL(n.url)), []);
-  const total = fotos.length + novas.length;
-  async function addFotos(ev) {
-    const arqs = Array.from(ev.target.files || []).slice(0, MEDIDAS_MAX_FOTOS - total);
+  useEffect(() => () => Object.values(novasRef.current).forEach((n) => URL.revokeObjectURL(n.url)), []);
+  const total = Object.keys(fotos).length + Object.keys(novas).length;
+  async function addFoto(pose, ev) {
+    const f = (ev.target.files || [])[0];
     ev.target.value = "";
-    const out = [];
-    for (const f of arqs) { try { const b = await feedbackPrintReduzir(f); out.push({ blob: b, url: URL.createObjectURL(b) }); } catch (e) { setErro("Não consegui abrir essa foto."); } }
-    setNovas((p) => [...p, ...out]);
+    if (!f) return;
+    try {
+      const b = await feedbackPrintReduzir(f);
+      setNovas((p) => { if (p[pose]) URL.revokeObjectURL(p[pose].url); return { ...p, [pose]: { blob: b, url: URL.createObjectURL(b) } }; });
+      setFotos((p) => { const o = { ...p }; delete o[pose]; return o; });
+    } catch (e) { setErro("Não consegui abrir essa foto."); }
+  }
+  function tirarFoto(pose) {
+    if (novas[pose]) { URL.revokeObjectURL(novas[pose].url); setNovas((p) => { const o = { ...p }; delete o[pose]; return o; }); }
+    setFotos((p) => { const o = { ...p }; delete o[pose]; return o; });
   }
   async function salvar() {
     setErro("");
@@ -12832,25 +12942,31 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
     if (pesoN == null && gordN == null && !Object.keys(medidas).length && !total) { setErro("Preencha pelo menos o peso, uma medida ou uma foto."); return; }
     if (!data || data > todayISO()) { setErro("Escolha uma data até hoje."); return; }
     setBusy(true);
-    const subidas = [];
-    for (const n of novas) {
-      const nome = `${uid}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const subidas = {};
+    for (const [pose, n] of Object.entries(novas)) {
+      const nome = `${uid}/${pose}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.jpg`;
       const { error } = await supabaseClient.storage.from("medidas").upload(nome, n.blob, { contentType: "image/jpeg" });
-      if (error) { logErroModulo("medidas_foto", error.message); setBusy(false); setErro("Não consegui enviar a foto. Tente de novo."); return; }
-      subidas.push(nome);
+      if (error) {
+        logErroModulo("medidas_foto", error.message); setBusy(false); setErro("Não consegui enviar a foto. Tente de novo.");
+        if (Object.keys(subidas).length) supabaseClient.storage.from("medidas").remove(Object.values(subidas)).catch(() => {});
+        return;
+      }
+      subidas[pose] = nome;
     }
-    const row = { data, peso: pesoN, gordura: gordN, medidas, nota: nota.trim() || null, fotos: [...fotos, ...subidas], updated_at: new Date().toISOString() };
+    const final = { ...fotos, ...subidas };
+    const lista = MED_POSES.map(([k]) => final[k]).filter(Boolean);
+    const row = { data, peso: pesoN, gordura: gordN, medidas, nota: nota.trim() || null, fotos: lista, updated_at: new Date().toISOString() };
     const q = inicial.id ? supabaseClient.from("user_medidas").update(row).eq("id", inicial.id) : supabaseClient.from("user_medidas").insert(row);
     const { error } = await q;
     if (error) {
       setBusy(false); logErroModulo("medidas_salvar", error.message); setErro("Não consegui salvar agora. Tente de novo.");
-      if (subidas.length) supabaseClient.storage.from("medidas").remove(subidas).catch(() => {});
+      if (Object.keys(subidas).length) supabaseClient.storage.from("medidas").remove(Object.values(subidas)).catch(() => {});
       return;
     }
-    const saiu = (inicial.fotos || []).filter((f) => !fotos.includes(f));
+    const saiu = (inicial.fotos || []).filter((f) => !lista.includes(f));
     if (saiu.length) supabaseClient.storage.from("medidas").remove(saiu).catch(() => {});
     setBusy(false);
-    onSalvo(inicial.id ? "editado" : "novo", { fotos: row.fotos.length });
+    onSalvo(inicial.id ? "editado" : "novo", { fotos: lista.length });
   }
   async function apagar() {
     if (!window.confirm("Apagar este registro e as fotos dele?")) return;
@@ -12872,8 +12988,8 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
         {!maisMedidas && <button type="button" className="gt-co-link gt-med-mais" onClick={() => setMaisMedidas(true)}>+ Gordura e medidas do corpo</button>}
         {maisMedidas && (
           <>
-            <label><span className="gt-field-label">Gordura (%)</span><input className="gt-input" inputMode="decimal" placeholder="Se você souber" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
-            <div className="gt-field-label" style={{ marginTop: 10 }}>Medidas (cm)</div>
+            <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span><input className="gt-input" inputMode="decimal" placeholder="Se você souber" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
+            <div className="gt-co-sec gt-med-sec">MEDIDAS (CM)</div>
             <div className="gt-med-grid2">
               {MEDIDAS_CAMPOS.map(([k, t]) => (
                 <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
@@ -12881,26 +12997,28 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
             </div>
           </>
         )}
-        <div className="gt-field-label" style={{ marginTop: 12 }}>Fotos</div>
+        <div className="gt-co-sec gt-med-sec">FOTOS</div>
         <div className="gt-med-fotos">
-          {fotos.map((f) => (
-            <div className="gt-med-foto" key={f}>{urls[f] ? <img src={urls[f]} alt="Foto do registro" /> : <span className="gt-med-foto-vazia" />}
-              <button type="button" aria-label="Tirar foto" onClick={() => setFotos(fotos.filter((x) => x !== f))}>✕</button></div>
-          ))}
-          {novas.map((n, i) => (
-            <div className="gt-med-foto" key={n.url}><img src={n.url} alt="Foto nova" />
-              <button type="button" aria-label="Tirar foto" onClick={() => { URL.revokeObjectURL(n.url); setNovas(novas.filter((_, j) => j !== i)); }}>✕</button></div>
-          ))}
-          {total < MEDIDAS_MAX_FOTOS && (
-            <label className="gt-med-foto gt-med-foto-add"><span>+ Foto</span>
-              <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={addFotos} /></label>
-          )}
+          {MED_POSES.map(([k, t]) => {
+            const src = novas[k] ? novas[k].url : fotos[k] ? urls[fotos[k]] : null;
+            if (novas[k] || fotos[k]) return (
+              <div className="gt-med-foto" key={k}>
+                {src ? <img src={src} alt={t} /> : <span className="gt-med-foto-vazia" />}
+                <span className="gt-med-foto-pose">{t}</span>
+                <button type="button" aria-label={`Tirar foto de ${t.toLowerCase()}`} onClick={() => tirarFoto(k)}>✕</button>
+              </div>
+            );
+            return (
+              <label className="gt-med-foto gt-med-foto-add" key={k}><span>+ {t}</span>
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => addFoto(k, e)} /></label>
+            );
+          })}
         </div>
-        <div className="gt-plano-dica">{quemVe}</div>
         <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Anotação</span>
           <input className="gt-input" maxLength={300} placeholder="Opcional" value={nota} onChange={(e) => setNota(e.target.value)} /></label>
         {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
-        <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+        <div className="gt-modal-actions gt-med-acoes">
+          <div className="gt-plano-dica gt-med-quemve">{quemVe}</div>
           <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
           <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
         </div>
@@ -12914,19 +13032,25 @@ function MedComparar({ linha, urls, onClose }) {
   const comFoto = linha.filter((x) => x.tipo === "meu" && (x.fotos || []).length);
   const [a, setA] = useState(comFoto.length ? comFoto[comFoto.length - 1].id : null);
   const [b, setB] = useState(comFoto.length ? comFoto[0].id : null);
-  const A = comFoto.find((x) => x.id === a), B = comFoto.find((x) => x.id === b);
-  const [pose, setPose] = useState(0);
-  const lado = (x, set, val) => (
-    <div className="gt-med-cmp-lado">
-      <select className="gt-input" aria-label="Data" value={val || ""} onChange={(e) => set(e.target.value)}>
+  // "Antes" é sempre a data mais antiga, qualquer que seja o seletor.
+  const X = comFoto.find((x) => x.id === a), Y = comFoto.find((x) => x.id === b);
+  const [A, B] = X && Y && X.data > Y.data ? [Y, X] : [X, Y];
+  const pa = medFotosPorPose(A && A.fotos), pb = medFotosPorPose(B && B.fotos);
+  const poses = MED_POSES.filter(([k]) => pa[k] && pb[k]);
+  const [pose, setPose] = useState("frente");
+  const poseAtual = poses.some(([k]) => k === pose) ? pose : poses.length ? poses[0][0] : null;
+  const foto = (por, x) => {
+    const c = poseAtual ? por[poseAtual] : Object.values(por)[0];
+    return c && urls[c] ? <img src={urls[c]} alt={`${x ? coachDataCurta(x.data) : ""}`} /> : <span className="gt-med-foto-vazia" />;
+  };
+  const seletor = (rot, val, set) => (
+    <label className="gt-med-cmp-sel"><span className="gt-field-label">{rot}</span>
+      <select className="gt-input" aria-label={`Data do ${rot.toLowerCase()}`} value={val || ""} onChange={(e) => set(e.target.value)}>
         {comFoto.map((x) => <option key={x.id} value={x.id}>{coachDataCurta(x.data)}{x.peso != null ? ` · ${medFmt(x.peso, "kg")}` : ""}</option>)}
       </select>
-      {x && (x.fotos[Math.min(pose, x.fotos.length - 1)] && urls[x.fotos[Math.min(pose, x.fotos.length - 1)]]
-        ? <img src={urls[x.fotos[Math.min(pose, x.fotos.length - 1)]]} alt={`Foto de ${coachDataCurta(x.data)}`} />
-        : <span className="gt-med-foto-vazia" />)}
-    </div>
+    </label>
   );
-  const maxPoses = Math.max(A ? A.fotos.length : 0, B ? B.fotos.length : 0);
+  const deltas = A && B && A.id !== B.id ? MED_RESUMO_CAMPOS.map(([t, un, fn]) => (fn(A) != null && fn(B) != null ? { t, un, de: fn(A), para: fn(B) } : null)).filter(Boolean) : [];
   return (
     <div className="gt-focus gt-med-cmp" role="dialog" aria-modal="true" aria-label="Comparar fotos">
       <div className="gt-focus-header">
@@ -12934,13 +13058,24 @@ function MedComparar({ linha, urls, onClose }) {
         <div className="gt-focus-title-wrap"><div className="gt-focus-title">Comparar fotos</div></div>
       </div>
       <div className="gt-focus-body">
-        <div className="gt-med-cmp-par">{lado(A, setA, a)}{lado(B, setB, b)}</div>
-        {maxPoses > 1 && (
+        <div className="gt-med-cmp-par">{seletor("Antes", a, setA)}{seletor("Depois", b, setB)}</div>
+        <div className="gt-med-cmp-par">
+          <div className="gt-med-cmp-lado">{foto(pa, A)}</div>
+          <div className="gt-med-cmp-lado">{foto(pb, B)}</div>
+        </div>
+        {poses.length > 1 && (
           <div className="gt-provas-filters" style={{ justifyContent: "center", marginTop: 10 }}>
-            {Array.from({ length: maxPoses }).map((_, i) => <button key={i} type="button" className={`gt-provas-pill ${pose === i ? "on" : ""}`} onClick={() => setPose(i)}>Foto {i + 1}</button>)}
+            {poses.map(([k, t]) => <button key={k} type="button" aria-pressed={poseAtual === k} className={`gt-provas-pill ${poseAtual === k ? "on" : ""}`} onClick={() => setPose(k)}>{t}</button>)}
           </div>
         )}
-        {A && B && A.peso != null && B.peso != null && <div className="gt-plano-dica" style={{ textAlign: "center" }}>Peso: {medDelta(B.peso, A.peso, "kg")}</div>}
+        {A && B && poses.length === 0 && <div className="gt-plano-dica" style={{ textAlign: "center" }}>Essas datas não têm foto da mesma pose.</div>}
+        {deltas.map((d) => (
+          <div className="gt-med-cmp-delta" key={d.t}>
+            <div className="l">{d.t.toUpperCase()}</div>
+            <div className="v">{medDelta(d.para, d.de, d.un)}</div>
+            <div className="de">{medFmt(d.de, d.un)} → {medFmt(d.para, d.un)}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -12949,10 +13084,10 @@ function MedComparar({ linha, urls, onClose }) {
 function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCompartilhar }) {
   const [meus, setMeus] = useState(undefined); // undefined carregando, null indisponível
   const [avals, setAvals] = useState([]);
+  const [avalsErro, setAvalsErro] = useState(false);
   const [urls, setUrls] = useState({});
   const [form, setForm] = useState(null);
   const [cmp, setCmp] = useState(false);
-  const [aberto, setAberto] = useState(null);
   async function carregar() {
     const [m, a] = await Promise.all([
       supabaseClient.from("user_medidas").select("*").order("data", { ascending: false }).limit(200),
@@ -12961,18 +13096,20 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
     if (m.error) { setMeus(null); logErroModulo("medidas_ler", m.error.message); return; }
     setMeus(m.data || []);
     setAvals(a.ok ? a.data || [] : []);
+    setAvalsErro(!a.ok);
     medFotoUrls((m.data || []).flatMap((x) => x.fotos || [])).then(setUrls);
   }
   useEffect(() => { carregar(); logEvent("medidas_aberto"); }, []);
   const linha = useMemo(() => medLinha(meus || [], avals), [meus, avals]);
   const resumo = useMemo(() => medResumo(linha), [linha]);
+  const desde = resumo.map((r) => r[2].desde).filter(Boolean).sort()[0] || null;
   const nComFoto = (meus || []).filter((x) => (x.fotos || []).length).length;
   const coachNome = coachLink ? coachLink.coach_nome : "";
   const coachPrimeiro = coachNome ? String(coachNome).trim().split(" ")[0] : "";
   const compartilha = !!(coachLink && (coachLink.permissions || {}).ver_medidas);
-  const quemVe = compartilha ? `Só você e ${coachPrimeiro} veem.` : "Só você vê.";
+  const quemVe = compartilha ? `Você e ${coachPrimeiro} veem este registro.` : "Só você vê este registro.";
   async function mudarCompartilhar(on) {
-    if (on && !window.confirm(`${coachPrimeiro} vai ver seu peso, medidas e fotos. Você pode parar quando quiser.`)) return;
+    if (on && !window.confirm(`${coachPrimeiro} vai ver seu peso, suas medidas e suas fotos, inclusive os registros antigos. Você pode parar quando quiser.`)) return;
     const ok = await onCompartilhar(on);
     if (ok) { showToast(on ? `${coachPrimeiro} agora vê suas medidas` : `${coachPrimeiro} não vê mais suas medidas`); logEvent("medidas_compartilhar", { on }); }
   }
@@ -12988,40 +13125,50 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
         {meus && (
           <>
             {resumo.length > 0 ? (
-              <div className="gt-med-resumo">
-                {resumo.map(([t, un, r]) => (
-                  <div className="gt-med-stat" key={t}>
-                    <div className="t">{t}</div>
-                    <div className="v">{medFmt(r.v, un)}</div>
-                    {r.desde && <div className="d">{medDelta(r.v, r.antes, un)} desde {coachDataCurta(r.desde)}</div>}
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className="gt-med-resumo">
+                  {resumo.map(([t, un, r]) => (
+                    <div className="gt-med-stat" key={t}>
+                      <div className="t">{t}</div>
+                      <div className="v">{medFmt(r.v, un)}</div>
+                      {r.desde && <div className="d">{medDelta(r.v, r.antes, un)}</div>}
+                    </div>
+                  ))}
+                </div>
+                {desde && <div className="gt-plano-dica gt-med-desde">Diferença desde {coachDataCurta(desde)}</div>}
+              </>
             ) : (
               <div className="gt-med-vazio">
                 <div className="t">Acompanhe seu corpo, não só a carga</div>
                 <div className="d">Registre peso, medidas e fotos de vez em quando. O Movo mostra o que mudou.</div>
               </div>
             )}
-            <button type="button" className="gt-btn" onClick={() => setForm({})}>Registrar medidas</button>
-            {nComFoto >= 2 && <button type="button" className="gt-btn secondary" style={{ marginTop: 8 }} onClick={() => { setCmp(true); logEvent("medidas_comparar"); }}>Comparar fotos</button>}
+            <div className="gt-modal-actions gt-med-topo">
+              <button type="button" className="gt-btn" onClick={() => setForm({})}>Registrar medidas</button>
+              {nComFoto >= 2 && <button type="button" className="gt-btn secondary" onClick={() => { setCmp(true); logEvent("medidas_comparar"); }}>Comparar fotos</button>}
+            </div>
             {coachLink && (
               <div className="gt-med-share">
                 <span>{compartilha ? `${coachPrimeiro} vê suas medidas e fotos.` : `${coachPrimeiro} não vê suas medidas.`}</span>
                 <button type="button" className="gt-co-link" onClick={() => mudarCompartilhar(!compartilha)}>{compartilha ? "Parar de compartilhar" : `Compartilhar com ${coachPrimeiro}`}</button>
               </div>
             )}
+            {avalsErro && <div className="gt-co-erro" role="alert">Não consegui trazer as avaliações do seu treinador agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
             {linha.length > 0 && <div className="gt-co-sec">HISTÓRICO</div>}
-            {linha.map((x) => (
-              <div key={`${x.tipo}-${x.id}`} className={`gt-med-item ${x.tipo === "meu" ? "toca" : ""}`} role={x.tipo === "meu" ? "button" : undefined} tabIndex={x.tipo === "meu" ? 0 : undefined}
-                onClick={() => x.tipo === "meu" ? setForm(x) : setAberto(aberto === x.id ? null : x.id)}>
-                <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b>{x.tipo === "aval" && <span className="gt-med-tag">Avaliação · {x.coach_nome}</span>}</div>
+            {linha.map((x) => x.tipo === "meu" ? (
+              <div key={`meu-${x.id}`} className="gt-med-item toca" role="button" tabIndex={0} aria-label={`Registro de ${coachDataCurta(x.data)}, editar`}
+                onClick={() => setForm(x)} onKeyDown={medTeclaAbre(() => setForm(x))}>
+                <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b><span className="gt-med-editar" aria-hidden="true">Editar</span></div>
                 <MedValores m={x} />
-                {x.tipo === "meu" && (x.fotos || []).length > 0 && (
-                  <div className="gt-med-thumbs">{x.fotos.map((f) => urls[f] ? <img key={f} src={urls[f]} alt="" /> : <span key={f} className="gt-med-foto-vazia" />)}</div>
-                )}
+                <MedThumbs fotos={x.fotos} urls={urls} />
                 {x.nota && <div className="gt-med-nota">{x.nota}</div>}
-                {x.tipo === "aval" && x.testes && <div className="gt-med-nota">Testes: {x.testes}</div>}
+              </div>
+            ) : (
+              <div key={`aval-${x.id}`} className="gt-med-item">
+                <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b><span className="gt-med-tag">Avaliação · {x.coach_nome}</span></div>
+                <MedValores m={x} />
+                {x.testes && <div className="gt-med-nota">Testes: {x.testes}</div>}
+                {x.nota && <div className="gt-med-nota">{x.nota}</div>}
               </div>
             ))}
           </>
@@ -13037,6 +13184,7 @@ function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCom
 }
 
 // ---------- Anamnese ----------
+// O aluno vê "Questionário de saúde"; o treinador vê "Anamnese".
 const ANAMNESE_PARQ = [
   "Algum médico já disse que você tem problema no coração e que só deve fazer exercício com orientação?",
   "Você sente dor no peito quando faz atividade física?",
@@ -13046,6 +13194,7 @@ const ANAMNESE_PARQ = [
   "Toma algum remédio para pressão ou para o coração?",
   "Existe algum outro motivo para você não fazer atividade física?",
 ];
+const ANAMNESE_PARQ_CURTO = ["problema no coração", "dor no peito ao treinar", "dor no peito em repouso", "tontura ou desmaio", "ossos ou articulações", "remédio para pressão ou coração", "outro motivo"];
 const ANAMNESE_ESCOLHAS = {
   experiencia: ["Nunca treinei", "Menos de 1 ano", "1 a 3 anos", "Mais de 3 anos"],
   dias: ["1", "2", "3", "4", "5", "6", "7"],
@@ -13061,31 +13210,52 @@ const ANAMNESE_TEXTOS = [
   ["obs", "Algo mais que seu treinador deve saber?", ""],
 ];
 function anamneseParqSim(r) { return r && Array.isArray(r.parq) ? r.parq.filter((x) => x === true).length : 0; }
+// "tontura ou desmaio, ossos ou articulações" (índices das respostas "sim").
+function anamneseSimTexto(idx) { return (idx || []).map((i) => ANAMNESE_PARQ_CURTO[i]).filter(Boolean).join(", "); }
+function anamneseSimIdx(r) { return r && Array.isArray(r.parq) ? r.parq.map((x, i) => (x === true ? i : -1)).filter((i) => i >= 0) : []; }
+// Anamneses que o treinador já abriu: { link_id: respondida_em }, para o aviso em "Para hoje" sumir depois de ver.
+function coachAnamVistasLer() { try { return JSON.parse(localStorage.getItem("treino-app:coachAnamVistas") || "{}") || {}; } catch (e) { return {}; } }
+function coachAnamVista(linkId, respondidaEm) {
+  try { const v = coachAnamVistasLer(); v[linkId] = respondidaEm; localStorage.setItem("treino-app:coachAnamVistas", JSON.stringify(v)); } catch (e) {}
+}
 
-function AnamneseForm({ pedido, anterior, onClose, onSalvo, showToast }) {
+function AnamneseForm({ pedido, anterior, onClose, onSalvo, compartilhaMedidas, onCompartilharMedidas }) {
   const base = (pedido.respostas || anterior || {});
   const [r, setR] = useState({ objetivo: "", experiencia: "", dias: "", sono: "", trabalho: "", lesoes: "", cirurgias: "", doencas: "", remedios: "", dores: "", obs: "", ...base, parq: Array.isArray(base.parq) ? base.parq.slice(0, 7) : [null, null, null, null, null, null, null] });
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
+  const [faltando, setFaltando] = useState(false);
+  const [compartilhar, setCompartilhar] = useState(false);
+  const parqRefs = useRef([]);
   const nome = String(pedido.coach_nome || "seu treinador").trim().split(" ")[0];
+  const editando = !!pedido.respostas;
   const set = (k, v) => setR((p) => ({ ...p, [k]: v }));
   const escolha = (k, titulo) => (
     <>
       <div className="gt-field-label" style={{ marginTop: 12 }}>{titulo}</div>
-      <div className="gt-provas-filters" style={{ margin: 0 }}>
+      <div className={`gt-provas-filters ${k === "dias" ? "gt-anam-dias" : ""}`} role="group" aria-label={titulo} style={{ margin: 0 }}>
         {ANAMNESE_ESCOLHAS[k].map((op) => <button key={op} type="button" aria-pressed={r[k] === op} className={`gt-provas-pill ${r[k] === op ? "on" : ""}`} onClick={() => set(k, r[k] === op ? "" : op)}>{op}</button>)}
       </div>
     </>
   );
+  const nFalta = r.parq.filter((x) => x !== true && x !== false).length;
+  const erroFalta = faltando && nFalta ? (nFalta === 1 ? "Falta responder 1 pergunta de saúde." : `Falta responder ${nFalta} perguntas de saúde.`) : "";
   async function salvar() {
-    if (r.parq.some((x) => x !== true && x !== false)) { setErro("Responda as 7 perguntas de saúde."); return; }
+    if (nFalta) {
+      setFaltando(true); setErro("");
+      const i = r.parq.findIndex((x) => x !== true && x !== false);
+      try { parqRefs.current[i].scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+      return;
+    }
     setBusy(true); setErro("");
     const limpo = {};
     Object.entries(r).forEach(([k, v]) => { if (k === "parq") limpo.parq = v; else if (typeof v === "string" && v.trim()) limpo[k] = v.trim().slice(0, 500); });
     const res = await coachCall("anamnese_responder", { p_link: pedido.link_id, p_respostas: limpo });
+    if (!res.ok || !res.data) { setBusy(false); setErro(res.erro || "Não consegui enviar agora."); return; }
+    avisarPorPush("anamnese", { link_id: pedido.link_id, evento: "respondida" });
+    if (compartilhar && onCompartilharMedidas) await onCompartilharMedidas();
     setBusy(false);
-    if (!res.ok || !res.data) { setErro(res.erro || "Não consegui enviar agora."); return; }
-    onSalvo(limpo);
+    onSalvo(limpo, { editando, compartilhou: compartilhar });
   }
   async function apagar() {
     if (!window.confirm(`Apagar suas respostas? ${nome} deixa de ver.`)) return;
@@ -13093,13 +13263,14 @@ function AnamneseForm({ pedido, anterior, onClose, onSalvo, showToast }) {
     const res = await coachCall("anamnese_responder", { p_link: pedido.link_id, p_respostas: null });
     setBusy(false);
     if (!res.ok) { setErro(res.erro); return; }
-    onSalvo(null);
+    onSalvo(null, {});
   }
   return (
-    <div className="gt-focus gt-anam" role="dialog" aria-modal="true" aria-label="Anamnese">
+    <div className="gt-focus gt-anam" role="dialog" aria-modal="true" aria-label="Questionário de saúde">
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
-        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Anamnese</div><div className="gt-focus-title-hint">Pedida por {pedido.coach_nome}</div></div>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Questionário de saúde</div>
+          <div className="gt-focus-title-hint">{editando && pedido.respondida_em ? `Respondido em ${coachDataCurta(pedido.respondida_em)}` : `Pedido por ${pedido.coach_nome}`}</div></div>
       </div>
       <div className="gt-focus-body gt-anam-body">
         <div className="gt-plano-dica">Ajuda {nome} a montar um treino seguro para você. Só {nome} vê, e você pode apagar quando quiser.</div>
@@ -13110,25 +13281,33 @@ function AnamneseForm({ pedido, anterior, onClose, onSalvo, showToast }) {
         {escolha("sono", "Quanto você dorme")}
         {escolha("trabalho", "No trabalho você fica")}
         <div className="gt-co-sec">SAÚDE</div>
-        {ANAMNESE_PARQ.map((q, i) => (
-          <div className="gt-anam-parq" key={i}>
-            <div className="q">{q}</div>
-            <div className="gt-provas-filters" style={{ margin: 0 }}>
-              {[[true, "Sim"], [false, "Não"]].map(([v, t]) => <button key={t} type="button" aria-pressed={r.parq[i] === v} className={`gt-provas-pill ${r.parq[i] === v ? "on" : ""}`} onClick={() => set("parq", r.parq.map((x, j) => (j === i ? v : x)))}>{t}</button>)}
+        <div className="gt-plano-dica" style={{ marginTop: -4 }}>Responda Sim ou Não em todas.</div>
+        {ANAMNESE_PARQ.map((q, i) => {
+          const falta = faltando && r.parq[i] !== true && r.parq[i] !== false;
+          return (
+            <div className={`gt-anam-parq ${falta ? "falta" : ""}`} key={i} ref={(el) => { parqRefs.current[i] = el; }}>
+              <div className="q" id={`anam-q${i}`}>{q}</div>
+              <div className="gt-provas-filters" role="group" aria-labelledby={`anam-q${i}`} style={{ margin: 0 }}>
+                {[[true, "Sim"], [false, "Não"]].map(([v, t]) => <button key={t} type="button" aria-pressed={r.parq[i] === v} className={`gt-provas-pill ${r.parq[i] === v ? "on" : ""} ${v ? "sim" : ""}`} onClick={() => set("parq", r.parq.map((x, j) => (j === i ? v : x)))}>{t}</button>)}
+              </div>
             </div>
-          </div>
-        ))}
-        {anamneseParqSim(r) > 0 && <div className="gt-plano-aviso aviso">Com algum "sim", converse com um médico antes de treinar pesado. {nome} vai saber disso.</div>}
+          );
+        })}
+        {anamneseParqSim(r) > 0 && <div className="gt-plano-aviso aviso">Você marcou "sim" em alguma pergunta. Antes de treinos intensos, vale falar com um médico. {nome} vai ver isso nas respostas.</div>}
         <div className="gt-co-sec">HISTÓRICO</div>
         {ANAMNESE_TEXTOS.map(([k, t, ph]) => (
           <label key={k}><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>{t}</span>
             <input className="gt-input" maxLength={500} placeholder={ph || "Opcional"} value={r[k]} onChange={(e) => set(k, e.target.value)} /></label>
         ))}
-        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        {onCompartilharMedidas && !compartilhaMedidas && (
+          <label className="gt-plano-chk gt-anam-share"><input type="checkbox" checked={compartilhar} onChange={(e) => setCompartilhar(e.target.checked)} />
+            <span>Compartilhar minhas medidas e fotos com {nome}<br /><small>{nome} vai ver seu peso, suas medidas e suas fotos, inclusive os registros antigos. Você pode parar quando quiser, em Minhas medidas.</small></span></label>
+        )}
+        {(erro || erroFalta) && <div className="gt-plano-erro" role="alert">{erro || erroFalta}</div>}
         <div className="gt-modal-actions" style={{ marginTop: 14 }}>
-          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Enviando…" : `Enviar para ${nome}`}</button>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Enviando…" : editando ? "Salvar alterações" : `Enviar para ${nome}`}</button>
         </div>
-        {pedido.respostas && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar minhas respostas</button>}
+        {editando && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar minhas respostas</button>}
       </div>
     </div>
   );
@@ -13137,16 +13316,16 @@ function AnamneseForm({ pedido, anterior, onClose, onSalvo, showToast }) {
 function AnamnesePedidoCard({ pedido, onResponder }) {
   const nome = String(pedido.coach_nome || "Seu treinador").trim().split(" ")[0];
   return (
-    <div className="gt-co-nota gt-anam-card" role="region" aria-label="Anamnese pedida">
-      <div className="gt-co-sec">{nome.toUpperCase()} PEDIU SUA ANAMNESE</div>
-      <div className="gt-co-nota-txt">Perguntas rápidas sobre sua saúde e rotina, para o treino ser seguro.</div>
+    <div className="gt-co-nota gt-anam-card" role="region" aria-label="Questionário de saúde pedido">
+      <div className="gt-co-sec">{nome.toUpperCase()} PEDIU UM QUESTIONÁRIO DE SAÚDE</div>
+      <div className="gt-co-nota-txt">Leva uns 3 minutos. Ajuda {nome} a montar um treino seguro para você.</div>
       <button type="button" className="gt-btn small" onClick={onResponder}>Responder</button>
     </div>
   );
 }
 
 // ---------- Treinador: aba Avaliação do aluno ----------
-function CoachAvaliacaoForm({ linkId, inicial, onClose, onSalvo, showToast }) {
+function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
   const [data, setData] = useState(inicial.data || todayISO());
   const [peso, setPeso] = useState(inicial.peso != null ? String(inicial.peso).replace(".", ",") : "");
   const [gordura, setGordura] = useState(inicial.gordura != null ? String(inicial.gordura).replace(".", ",") : "");
@@ -13191,7 +13370,7 @@ function CoachAvaliacaoForm({ linkId, inicial, onClose, onSalvo, showToast }) {
           <label><span className="gt-field-label">Peso (kg)</span><input className="gt-input" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
         </div>
         <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span><input className="gt-input" inputMode="decimal" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
-        <div className="gt-field-label" style={{ marginTop: 10 }}>Medidas (cm)</div>
+        <div className="gt-co-sec gt-med-sec">MEDIDAS (CM)</div>
         <div className="gt-med-grid2">
           {MEDIDAS_CAMPOS.map(([k, t]) => (
             <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
@@ -13199,11 +13378,11 @@ function CoachAvaliacaoForm({ linkId, inicial, onClose, onSalvo, showToast }) {
         </div>
         <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Testes</span>
           <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} placeholder="Ex.: Cooper 2.400 m · flexões 25 · sentar e alcançar 28 cm" value={testes} onChange={(e) => setTestes(e.target.value)} /></label>
-        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Observações</span>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Observações ({primeiro} vê)</span>
           <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} value={nota} onChange={(e) => setNota(e.target.value)} /></label>
-        <div className="gt-plano-dica">O aluno vê esta avaliação em Minhas medidas.</div>
         {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
-        <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+        <div className="gt-modal-actions gt-med-acoes">
+          <div className="gt-plano-dica gt-med-quemve">{primeiro} vê esta avaliação em Minhas medidas. Anotação só sua vai na aba Notas.</div>
           <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
           <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
         </div>
@@ -13214,22 +13393,24 @@ function CoachAvaliacaoForm({ linkId, inicial, onClose, onSalvo, showToast }) {
 }
 
 function CoachAvaliacaoAba({ aluno, det, showToast }) {
-  const primeiro = String(aluno.nome || "").trim().split(" ")[0] || "O aluno";
-  const [anam, setAnam] = useState(undefined);
-  const [avals, setAvals] = useState(undefined);
+  const primeiro = String(aluno.nome || "").trim().split(" ")[0] || "Quem treina com você";
+  const [anam, setAnam] = useState(undefined); // undefined carregando | null nunca pediu | "erro"
+  const [avals, setAvals] = useState(undefined); // undefined carregando | "erro"
   const [meds, setMeds] = useState(null);
   const [urls, setUrls] = useState({});
   const [form, setForm] = useState(null);
-  const [verAnam, setVerAnam] = useState(false);
+  const [verAnam, setVerAnam] = useState(null);
   const [busy, setBusy] = useState(false);
   const verMedidas = !!(det && det.permissions && det.permissions.ver_medidas);
+  const log = (n, p) => logEventFor(aluno.coach_uid, n, p);
   async function carregar() {
     const [a, v] = await Promise.all([
       coachCall("coach_anamnese", { p_link: aluno.link_id }),
       supabaseClient.from("coach_avaliacoes").select("*").eq("link_id", aluno.link_id).order("data", { ascending: false }).limit(60),
     ]);
-    setAnam(a.ok ? a.data || null : null);
-    setAvals(v.error ? [] : v.data || []);
+    setAnam(a.ok ? a.data || null : "erro");
+    setAvals(v.error ? "erro" : v.data || []);
+    if (a.ok && a.data && a.data.respondida_em) coachAnamVista(aluno.link_id, a.data.respondida_em);
     if (verMedidas) {
       const m = await coachCall("coach_aluno_medidas", { p_link: aluno.link_id });
       const lista = m.ok && Array.isArray(m.data) ? m.data : [];
@@ -13238,40 +13419,46 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
     } else setMeds(null);
   }
   useEffect(() => { carregar(); }, [aluno.link_id, verMedidas]);
-  async function pedir() {
+  async function pedir(lembrar) {
     setBusy(true);
     const r = await coachCall("coach_anamnese_pedir", { p_link: aluno.link_id });
     setBusy(false);
     if (!r.ok) { showToast(r.erro); return; }
+    avisarPorPush("anamnese", { link_id: aluno.link_id, evento: "pedido" });
+    log("coach_anamnese_pedida", { lembrete: !!lembrar });
     showToast(`Pedido enviado. ${primeiro} vê na tela Hoje.`);
     carregar();
   }
-  const resp = anam && anam.respostas;
-  const nSim = anamneseParqSim(resp);
+  const resp = anam && anam !== "erro" ? anam.respostas : null;
+  const simIdx = anamneseSimIdx(resp);
+  const abertas = verAnam == null ? simIdx.length > 0 : verAnam;
+  const resumo = useMemo(() => medResumo(medLinha(meds || [], Array.isArray(avals) ? avals : [])), [meds, avals]);
   return (
     <>
       <div className="gt-co-sec">ANAMNESE</div>
       {anam === undefined && <div className="gt-empty">Carregando…</div>}
+      {anam === "erro" && <div className="gt-co-erro" role="alert">Não consegui abrir a anamnese agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
       {anam === null && (
         <div className="gt-co-plano-aluno">
           <div className="d">Saúde, lesões, remédios e rotina de {primeiro}, com as 7 perguntas do PAR-Q.</div>
-          <button type="button" className="gt-btn small" disabled={busy} onClick={pedir}>Pedir anamnese</button>
+          <button type="button" className="gt-btn small" disabled={busy} onClick={() => pedir(false)}>Pedir anamnese</button>
         </div>
       )}
-      {anam && !resp && (
+      {anam && anam !== "erro" && !resp && (
         <div className="gt-co-plano-aluno">
           <div className="d">Pedida em {coachDataCurta(anam.pedida_em)}. Esperando {primeiro} responder.</div>
-          <button type="button" className="gt-co-link" disabled={busy} onClick={pedir}>Lembrar de novo</button>
+          <button type="button" className="gt-co-link" disabled={busy} onClick={() => pedir(true)}>Lembrar de novo</button>
         </div>
       )}
       {resp && (
         <div className="gt-co-plano-aluno">
-          <div className="d">Respondida em {coachDataCurta(anam.respondida_em)}{resp.objetivo ? ` · objetivo: ${resp.objetivo}` : ""}</div>
-          {nSim > 0
-            ? <div className="gt-plano-aviso aviso">{nSim === 1 ? "1 resposta \"sim\"" : `${nSim} respostas "sim"`} no PAR-Q. Peça liberação médica antes de treinos intensos.</div>
-            : <div className="d">PAR-Q sem nenhum "sim".</div>}
-          <button type="button" className="gt-co-link" onClick={() => setVerAnam(!verAnam)}>{verAnam ? "Esconder respostas" : "Ver respostas"}</button>
-          {verAnam && (
+          {resp.objetivo && <div className="t">Objetivo: {resp.objetivo}</div>}
+          <div className="d">Respondida em {coachDataCurta(anam.respondida_em)}</div>
+          {simIdx.length > 0
+            ? <div className="gt-plano-aviso aviso">{primeiro} respondeu "sim" em: {anamneseSimTexto(simIdx)}. Peça liberação médica antes de treinos intensos.</div>
+            : <div className="d">Nenhum "sim" nas perguntas de saúde (PAR-Q).</div>}
+          <button type="button" className="gt-co-link" onClick={() => setVerAnam(!abertas)}>{abertas ? "Esconder respostas" : "Ver respostas"}</button>
+          {abertas && (
             <dl className="gt-anam-resp">
               {[["experiencia", "Treina há"], ["dias", "Dias por semana"], ["sono", "Sono"], ["trabalho", "No trabalho"]].map(([k, t]) => resp[k] ? <div key={k}><dt>{t}</dt><dd>{resp[k]}</dd></div> : null)}
               {ANAMNESE_PARQ.map((q, i) => <div key={"p" + i} className={resp.parq && resp.parq[i] ? "sim" : ""}><dt>{q}</dt><dd>{resp.parq && resp.parq[i] ? "Sim" : "Não"}</dd></div>)}
@@ -13280,30 +13467,35 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
           )}
         </div>
       )}
-      <div className="gt-co-sec">AVALIAÇÕES</div>
-      <button type="button" className="gt-btn secondary small" onClick={() => setForm({})}>Nova avaliação</button>
-      {avals && avals.length === 0 && <div className="gt-plano-dica">Registre peso, medidas e testes. {primeiro} vê em Minhas medidas.</div>}
-      {(avals || []).map((a) => (
-        <div key={a.id} className="gt-med-item toca" role="button" tabIndex={0} onClick={() => setForm(a)}>
-          <div className="gt-med-item-top"><b>{coachDataCurta(a.data)}</b></div>
+      <div className="gt-co-semana-head"><div className="gt-co-sec">AVALIAÇÕES</div><button type="button" className="gt-co-link" style={{ paddingRight: 0 }} onClick={() => setForm({})}>+ Nova avaliação</button></div>
+      {resumo.length > 0 && (
+        <div className="gt-med-resumo-linhas">
+          {resumo.map(([t, un, r]) => <div key={t}><b>{t} {medFmt(r.v, un)}</b>{r.desde ? ` · ${medDelta(r.v, r.antes, un)} desde ${coachDataCurta(r.desde)}` : ""}</div>)}
+        </div>
+      )}
+      {avals === "erro" && <div className="gt-co-erro" role="alert">Não consegui abrir as avaliações agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+      {Array.isArray(avals) && avals.length === 0 && <div className="gt-plano-dica">Registre peso, medidas e testes. {primeiro} vê em Minhas medidas.</div>}
+      {Array.isArray(avals) && avals.map((a) => (
+        <div key={a.id} className="gt-med-item toca" role="button" tabIndex={0} aria-label={`Avaliação de ${coachDataCurta(a.data)}, editar`} onClick={() => setForm(a)} onKeyDown={medTeclaAbre(() => setForm(a))}>
+          <div className="gt-med-item-top"><b>{coachDataCurta(a.data)}</b><span className="gt-med-editar" aria-hidden="true">Editar</span></div>
           <MedValores m={a} />
           {a.testes && <div className="gt-med-nota">Testes: {a.testes}</div>}
           {a.nota && <div className="gt-med-nota">{a.nota}</div>}
         </div>
       ))}
       <div className="gt-co-sec">MEDIDAS DE {primeiro.toUpperCase()}</div>
-      {!verMedidas && <div className="gt-plano-dica">{primeiro} não compartilha as medidas e fotos com você. Só {primeiro} pode ligar isso, em Minhas medidas.</div>}
+      {!verMedidas && <div className="gt-plano-dica">{primeiro} não compartilha as medidas e fotos com você. Dá para ligar no fim da anamnese ou em Minhas medidas, no app de {primeiro}.</div>}
       {verMedidas && meds && meds.length === 0 && <div className="gt-plano-dica">{primeiro} ainda não registrou medidas.</div>}
       {verMedidas && (meds || []).map((m) => (
         <div key={m.id} className="gt-med-item">
           <div className="gt-med-item-top"><b>{coachDataCurta(m.data)}</b></div>
           <MedValores m={m} />
-          {(m.fotos || []).length > 0 && <div className="gt-med-thumbs">{m.fotos.map((f) => urls[f] ? <img key={f} src={urls[f]} alt="" /> : <span key={f} className="gt-med-foto-vazia" />)}</div>}
+          <MedThumbs fotos={m.fotos} urls={urls} />
           {m.nota && <div className="gt-med-nota">{m.nota}</div>}
         </div>
       ))}
-      {form && <CoachAvaliacaoForm linkId={aluno.link_id} inicial={form} showToast={showToast} onClose={() => setForm(null)}
-        onSalvo={(t) => { setForm(null); carregar(); showToast(t === "apagada" ? "Avaliação apagada" : "Avaliação salva"); }} />}
+      {form && <CoachAvaliacaoForm linkId={aluno.link_id} inicial={form} primeiro={primeiro} onClose={() => setForm(null)}
+        onSalvo={(t) => { setForm(null); carregar(); if (t !== "apagada") log("coach_avaliacao_salva", { nova: t === "nova" }); showToast(t === "apagada" ? "Avaliação apagada" : "Avaliação salva"); }} />}
     </>
   );
 }
@@ -13370,7 +13562,16 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
   const [filtro, setFiltro] = useState("todos");
   const hojeISO = todayISO();
   const [feitosHoje, setFeitosHoje] = useState(() => coachParaHojeFeitosLer(hojeISO));
-  const paraHoje = useMemo(() => coachParaHoje(lista, hojeISO), [lista, hojeISO]);
+  const [anams, setAnams] = useState([]);
+  useEffect(() => {
+    if (!lista.some((a) => a.status === "ativo")) return;
+    coachCall("coach_anamneses_resumo").then((r) => {
+      if (!r.ok || !Array.isArray(r.data)) return;
+      const vistas = coachAnamVistasLer();
+      setAnams(r.data.filter((x) => vistas[x.link_id] !== x.respondida_em));
+    });
+  }, [lista]);
+  const paraHoje = useMemo(() => coachParaHoje(lista, hojeISO, anams), [lista, hojeISO, anams]);
   const filaHoje = paraHoje.filter((it) => feitosHoje.indexOf(it.chave) < 0);
   const [oculto, setOculto] = useState(null); // último item ocultado (para desfazer)
   const [filaTodos, setFilaTodos] = useState(false);
@@ -13385,7 +13586,7 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
   }
   function agirHoje(it) {
     if (it.acao === "montar" && onMontar) onMontar(it.a);
-    else onAbrir(it.a, it.acao === "responder" ? "notas" : undefined);
+    else onAbrir(it.a, it.acao === "responder" ? "notas" : it.acao === "avaliacao" ? "avaliacao" : undefined);
   }
   const info = useMemo(() => lista.map((a) => ({ a, c: coachClassificar(a, hojeISO) })), [lista]);
   const cont = {
@@ -13839,6 +14040,13 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     coachCall("coach_link_aceite_auto", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok) setAlunoAuto(r.data === true); });
     return () => { vivo = false; };
   }, [aluno.link_id]);
+  const [anamSim, setAnamSim] = useState([]);
+  useEffect(() => {
+    if (ehModelo || aluno.status !== "ativo") return;
+    let vivo = true;
+    coachCall("coach_anamnese", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok && r.data) setAnamSim(anamneseSimIdx(r.data.respostas)); });
+    return () => { vivo = false; };
+  }, [aluno.link_id]);
   const chaveRasc = `treino-app:coachRascunho:${aluno.link_id}`;
   const [sem, setSem] = useState(coachSemanaVazia);
   const [msg, setMsg] = useState("");
@@ -14026,7 +14234,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   return (
     <div className="gt-focus gt-co-composer" style={{ zIndex: 55 }} role="dialog" aria-modal="true" aria-label={ehModelo ? `Modelo ${modelo.nome}` : `Montar semana de ${aluno.nome}`}>
       <div className="gt-co-banner" role="status">{ehModelo ? <>Editando o modelo: <b>{modelo.nome}</b></> : <>Editando para: <b>{aluno.nome}</b>{aluno.status === "pendente" ? " (convite pendente)" : ""}</>}</div>
-      {!ehModelo && aluno.status === "pendente" && <div className="gt-co-aviso" role="status">{primeiroNome} ainda não aceitou o convite. A semana fica guardada e chega pra ele assim que ele entrar.</div>}
+      {!ehModelo && aluno.status === "pendente" && <div className="gt-co-aviso" role="status">{primeiroNome} ainda não aceitou o convite. A semana fica guardada e chega assim que {primeiroNome} entrar.</div>}
+      {anamSim.length > 0 && <div className="gt-co-aviso aviso" role="note">{primeiroNome} respondeu "sim" na anamnese em: {anamneseSimTexto(anamSim)}. Peça liberação médica antes de treinos intensos.</div>}
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={tentarSair}><IconVoltar /></button>
         <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
@@ -14100,7 +14309,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       <div className="gt-focus-footer gt-co-footer">
         <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
         {!ehModelo && <textarea className="gt-input" aria-label={`Mensagem para ${primeiroNome} (opcional)`} placeholder={`Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
-        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana dele` : ""}. Ele pode desfazer.</div>}
+        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana` : ""}. Dá para desfazer pelo app.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
         <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
       </div>
@@ -19451,6 +19660,7 @@ function App() {
                     <div className="tt">Seu Movo ainda está vazio</div>
                     <div className="sb">Responda 3 perguntas rápidas e eu monto sua semana.</div>
                     <button type="button" className="gt-btn" onClick={() => { logEvent("estado_vazio_cta_hoje_montar"); openOnboardingRedo(true); }}>Montar minha semana</button>
+                    <button type="button" className="gt-co-link gt-hoje-importar" onClick={() => { logEvent("estado_vazio_cta_hoje_importar"); setHistOpen(true); }}>Vem do Hevy, Strong ou MFIT? Trazer meu histórico</button>
                   </>
                 ) : (
                   <>
@@ -20241,12 +20451,19 @@ function App() {
           }} />
       )}
       {anamAberta && (
-        <AnamneseForm pedido={anamAberta} showToast={showToast} onClose={() => setAnamAberta(null)}
+        <AnamneseForm pedido={anamAberta} onClose={() => setAnamAberta(null)}
           anterior={(anamneses.find((x) => x.respostas && x.link_id !== anamAberta.link_id) || {}).respostas || null}
-          onSalvo={(resp) => {
+          compartilhaMedidas={!!(coachLinks.find((l) => l.link_id === anamAberta.link_id) || { permissions: {} }).permissions?.ver_medidas}
+          onCompartilharMedidas={coachLinks.some((l) => l.link_id === anamAberta.link_id && l.status === "ativo") ? async () => {
+            const l = coachLinks.find((x) => x.link_id === anamAberta.link_id);
+            const r = await coachCall("coach_update_permissions", { p_link: l.link_id, p_perms: { ...COACH_PERMS_PADRAO, ...(l.permissions || {}), ver_medidas: true } });
+            if (r.ok) { setCoachLinks((ls) => ls.map((x) => (x.link_id === l.link_id ? { ...x, permissions: { ...(x.permissions || {}), ver_medidas: true } } : x))); logEvent("medidas_compartilhar", { on: true, origem: "anamnese" }); }
+          } : null}
+          onSalvo={(resp, info) => {
             setAnamneses((ls) => ls.map((x) => (x.link_id === anamAberta.link_id ? { ...x, respostas: resp, respondida_em: resp ? new Date().toISOString() : null } : x)));
-            logEvent(resp ? "anamnese_respondida" : "anamnese_apagada", resp ? { parq_sim: anamneseParqSim(resp) } : {});
-            showToast(resp ? `Enviado para ${String(anamAberta.coach_nome || "seu treinador").split(" ")[0]}` : "Respostas apagadas");
+            const horas = anamAberta.pedida_em ? Math.round((Date.now() - new Date(anamAberta.pedida_em).getTime()) / 3600000) : null;
+            logEvent(resp ? "anamnese_respondida" : "anamnese_apagada", resp ? { parq_sim: anamneseParqSim(resp), editando: !!info.editando, horas_desde_pedido: horas } : {});
+            showToast(!resp ? "Respostas apagadas" : info.editando ? "Respostas atualizadas" : `Enviado para ${String(anamAberta.coach_nome || "seu treinador").split(" ")[0]}`);
             setAnamAberta(null);
           }} />
       )}
@@ -20513,7 +20730,8 @@ function App() {
           getToken={() => (sessionRef.current ? sessionRef.current.access_token : "")}
           onAplicar={(plano, impId) => {
             const r = histAplicar(plano, { treinos, atividades, sessions, schedule }, impId);
-            updateTreinos(r.treinos); updateAtividades(r.atividades); updateSessions(r.sessions);
+            // Sem os toasts "Ficha salva"/"Salvo": a própria tela mostra "Importado ✓".
+            setTreinos(r.treinos); persist("treinos", r.treinos); setAtividades(r.atividades); persist("atividades", r.atividades); updateSessions(r.sessions);
             return r.resumo;
           }}
           onDesfazer={(impId) => {
@@ -20521,7 +20739,7 @@ function App() {
             updateTreinos(r.treinos); updateAtividades(r.atividades); updateSessions(r.sessions);
             showToast("Importação desfeita");
           }}
-          onEvent={(n) => logEvent(n)}
+          onEvent={(n, p) => logEvent(n, p)}
           onErro={(c, m) => logClientError(c, m)}
           onClose={() => setHistOpen(false)}
         />
