@@ -3975,6 +3975,51 @@ const APP_CSS = `
   .gt-co-perms.gt-push-tipos { margin:4px 0 8px; padding:0; background:none; }
   .gt-push-links { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--text-muted); }
   .gt-push-links .gt-co-link { padding-left:0; padding-right:0; }
+  .gt-med-body, .gt-anam-body { display:flex; flex-direction:column; gap:6px; padding:4px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
+  .gt-med-cmp .gt-focus-body { padding:4px 16px 24px; }
+  .gt-med-resumo { display:grid; grid-template-columns:repeat(auto-fit, minmax(96px, 1fr)); gap:8px; margin-bottom:10px; }
+  .gt-med-stat { background:var(--surface); border-radius:14px; padding:12px; }
+  .gt-med-stat .t { font-size:12px; color:var(--text-muted); }
+  .gt-med-stat .v { font-family:'Oswald',sans-serif; font-size:24px; line-height:1.2; font-variant-numeric:tabular-nums; }
+  .gt-med-stat .d { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-med-vazio { background:var(--surface); border-radius:14px; padding:16px; margin-bottom:10px; }
+  .gt-med-vazio .t { font-weight:700; font-size:16px; margin-bottom:4px; }
+  .gt-med-vazio .d { font-size:14px; color:var(--text-muted); }
+  .gt-med-share { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 10px; font-size:13px; color:var(--text-muted); margin:10px 0 2px; }
+  .gt-med-share .gt-co-link { padding-left:0; padding-right:0; }
+  .gt-med-item { background:var(--surface); border-radius:14px; padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px; }
+  .gt-med-item.toca { cursor:pointer; }
+  .gt-med-item.toca:active { background:var(--surface-2); }
+  .gt-med-item-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .gt-med-tag { font-size:11px; color:var(--info); background:rgba(90,176,255,.12); border-radius:999px; padding:2px 8px; }
+  .gt-med-vals { font-size:14px; }
+  .gt-med-nota { font-size:13px; color:var(--text-muted); }
+  .gt-med-thumbs { display:flex; gap:6px; margin-top:4px; }
+  .gt-med-thumbs img, .gt-med-thumbs .gt-med-foto-vazia { width:64px; height:84px; object-fit:cover; border-radius:8px; background:var(--surface-2); display:block; }
+  .gt-med-form { max-height:90vh; overflow-y:auto; }
+  .gt-med-form textarea.gt-med-ta { height:auto; min-height:64px; resize:vertical; }
+  .gt-med-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+  .gt-med-grid2 label { display:flex; flex-direction:column; min-width:0; }
+  .gt-med-lbl { font-size:12px; color:var(--text-muted); margin-bottom:4px; }
+  .gt-med-mais { align-self:flex-start; margin:8px 0 0; padding-left:0; }
+  .gt-med-fotos { display:flex; gap:8px; flex-wrap:wrap; }
+  .gt-med-foto { position:relative; width:84px; height:112px; border-radius:10px; overflow:hidden; background:var(--surface-2); display:flex; align-items:center; justify-content:center; }
+  .gt-med-foto img { width:100%; height:100%; object-fit:cover; }
+  .gt-med-foto button { position:absolute; top:4px; right:4px; width:28px; height:28px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; cursor:pointer; }
+  .gt-med-foto-add { border:1px dashed var(--border); cursor:pointer; color:var(--text-muted); font-size:13px; }
+  .gt-med-foto-vazia { display:block; width:100%; height:100%; background:var(--surface-2); }
+  .gt-med-apagar { color:var(--warn); margin-top:8px; align-self:center; }
+  .gt-med-cmp-par { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .gt-med-cmp-lado { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .gt-med-cmp-lado img, .gt-med-cmp-lado .gt-med-foto-vazia { width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:10px; }
+  .gt-anam-parq { background:var(--surface); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .gt-anam-parq .q { font-size:14px; }
+  .gt-anam-card .gt-btn { align-self:flex-start; margin-top:8px; }
+  .gt-anam-resp { margin:6px 0 0; display:flex; flex-direction:column; gap:8px; }
+  .gt-anam-resp div { font-size:13px; }
+  .gt-anam-resp dt { color:var(--text-muted); }
+  .gt-anam-resp dd { margin:2px 0 0; }
+  .gt-anam-resp .sim dd { color:var(--amber); font-weight:600; }
   .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
   .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
   .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
@@ -11080,13 +11125,14 @@ const COACH_FLAGS_PADRAO = { esforcoDor: true, lote: false };
 function coachFlags() {
   try { return { ...COACH_FLAGS_PADRAO, ...JSON.parse(localStorage.getItem("treino-app:coachFlags") || "{}") }; } catch (e) { return { ...COACH_FLAGS_PADRAO }; }
 }
-const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_dor: false, ver_corrida: true, ver_contato: true, ajustar_semana: false };
+const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_dor: false, ver_corrida: true, ver_contato: true, ajustar_semana: false, ver_medidas: false };
 const COACH_PERM_ITENS = [
   { k: "ver_treinos", t: "Meus treinos e agenda", d: "Fichas, dias e histórico de sessões" },
   { k: "ver_cargas", t: "Cargas e repetições", d: "O que você levantou em cada exercício" },
   { k: "ver_esforco_dor", t: "Esforço e dor", d: "Dado de saúde: só liga se você quiser. O treinador usa pra ajustar a carga.", sensivel: true },
   { k: "ver_corrida", t: "Corridas", d: "Distância, ritmo e tempo" },
   { k: "ver_contato", t: "Meu telefone", d: "Só se você tiver preenchido. O treinador pode te chamar no WhatsApp." },
+  { k: "ver_medidas", t: "Medidas e fotos", d: "Dado de saúde: peso, medidas e fotos de Minhas medidas. Só liga se você quiser." },
 ];
 const COACH_DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const COACH_DIAS_CURTO = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
@@ -12167,7 +12213,7 @@ function CoachConviteModal({ code, onClose, onDone, showToast, flags }) {
 }
 
 // ---------- Aluno: Meu treinador ----------
-function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConvite, dados, flags }) {
+function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConvite, dados, flags, anamnese, onAbrirAnamnese }) {
   const [codigo, setCodigo] = useState("");
   const [confirmar, setConfirmar] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -12239,6 +12285,13 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
             </div><div className="gt-co-perm">
               <div className="tx"><div className="t">Aplicar direto o que {link.coach_nome} mandar</div><div className="d">Semanas e planos de {link.coach_nome} entram direto. Você vê um aviso no Hoje e pode desfazer por lá.</div></div>
               <CoachSwitch checked={autoLigado} onChange={mudarAuto} label="Aceite automático" semTexto />
+            </div></div>
+            </>)}
+            {anamnese && (<>
+            <div className="gt-co-sec">ANAMNESE</div>
+            <div className="gt-co-perms"><div className="gt-co-perm">
+              <div className="tx"><div className="t">{anamnese.respostas ? `Respondida em ${coachDataCurta(anamnese.respondida_em)}` : "Esperando sua resposta"}</div><div className="d">Só {link.coach_nome} vê. Você pode mudar ou apagar.</div></div>
+              <button type="button" className="gt-btn small secondary" onClick={() => onAbrirAnamnese(anamnese)}>{anamnese.respostas ? "Ver" : "Responder"}</button>
             </div></div>
             </>)}
             <div className="gt-modal-actions gt-modal-actions-col" style={{ marginTop: 12 }}>
@@ -12687,6 +12740,574 @@ function CoachNotaHoje({ notas, linkId, nomeCoach, onEnviar }) {
   );
 }
 
+// ---------- Fase 4: Minhas medidas, avaliação do treinador e anamnese ----------
+// Medidas e fotos são do aluno (tabela user_medidas, bucket privado "medidas"). O treinador só vê com a
+// permissão "ver_medidas". Avaliações são do treinador (coach_avaliacoes) e aparecem para o aluno junto.
+const MEDIDAS_CAMPOS = [["cintura", "Cintura"], ["abdomen", "Abdômen"], ["quadril", "Quadril"], ["peito", "Peito"], ["braco", "Braço"], ["coxa", "Coxa"], ["panturrilha", "Panturrilha"]];
+const MEDIDAS_MAX_FOTOS = 3;
+function medNum(v, min, max) {
+  if (v == null || String(v).trim() === "") return null;
+  const n = Number(String(v).replace(",", "."));
+  return isFinite(n) && n >= min && n <= max ? Math.round(n * 10) / 10 : null;
+}
+function medFmt(n, un) { return n == null ? "–" : `${String(Number(n)).replace(".", ",")}${un ? " " + un : ""}`; }
+function medDelta(atual, antes, un) {
+  if (atual == null || antes == null) return "";
+  const d = Math.round((Number(atual) - Number(antes)) * 10) / 10;
+  if (!d) return "sem mudança";
+  return `${d > 0 ? "+" : "−"}${String(Math.abs(d)).replace(".", ",")} ${un}`;
+}
+// URLs assinadas (1 h) para as fotos privadas. Devolve { caminho: url }.
+async function medFotoUrls(caminhos) {
+  const lista = [...new Set((caminhos || []).filter(Boolean))];
+  if (!lista.length) return {};
+  try {
+    const { data } = await supabaseClient.storage.from("medidas").createSignedUrls(lista, 3600);
+    const out = {};
+    (data || []).forEach((x) => { if (x && x.signedUrl && x.path) out[x.path] = x.signedUrl; });
+    return out;
+  } catch (e) { return {}; }
+}
+// Linha do tempo: registros do aluno e avaliações do treinador, mais recentes primeiro.
+function medLinha(meus, avals) {
+  return [...(meus || []).map((m) => ({ ...m, tipo: "meu" })), ...(avals || []).map((a) => ({ ...a, tipo: "aval" }))]
+    .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : a.tipo === "aval" ? -1 : 1));
+}
+// Resumo: valor mais recente de cada medida e a diferença para o primeiro registro dela.
+function medResumo(linha) {
+  const pega = (fn) => {
+    const com = linha.filter((x) => fn(x) != null);
+    if (!com.length) return null;
+    const atual = com[0], primeiro = com[com.length - 1];
+    return { v: fn(atual), desde: com.length > 1 ? primeiro.data : null, antes: com.length > 1 ? fn(primeiro) : null };
+  };
+  return [
+    ["Peso", "kg", pega((x) => (x.peso != null ? Number(x.peso) : null))],
+    ["Gordura", "%", pega((x) => (x.gordura != null ? Number(x.gordura) : null))],
+    ["Cintura", "cm", pega((x) => (x.medidas && x.medidas.cintura != null ? Number(x.medidas.cintura) : null))],
+  ].filter((r) => r[2]);
+}
+function MedValores({ m }) {
+  const partes = [];
+  if (m.peso != null) partes.push(`${medFmt(m.peso, "kg")}`);
+  if (m.gordura != null) partes.push(`${medFmt(m.gordura, "%")} de gordura`);
+  MEDIDAS_CAMPOS.forEach(([k, t]) => { if (m.medidas && m.medidas[k] != null) partes.push(`${t.toLowerCase()} ${medFmt(m.medidas[k], "cm")}`); });
+  return partes.length ? <div className="gt-med-vals">{partes.join(" · ")}</div> : null;
+}
+
+function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
+  const [data, setData] = useState(inicial.data || todayISO());
+  const [peso, setPeso] = useState(inicial.peso != null ? String(inicial.peso).replace(".", ",") : "");
+  const [gordura, setGordura] = useState(inicial.gordura != null ? String(inicial.gordura).replace(".", ",") : "");
+  const [med, setMed] = useState(() => { const o = {}; MEDIDAS_CAMPOS.forEach(([k]) => { const v = inicial.medidas && inicial.medidas[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
+  const [maisMedidas, setMaisMedidas] = useState(MEDIDAS_CAMPOS.some(([k]) => inicial.medidas && inicial.medidas[k] != null));
+  const [nota, setNota] = useState(inicial.nota || "");
+  const [fotos, setFotos] = useState(inicial.fotos || []); // caminhos já salvos
+  const [novas, setNovas] = useState([]); // { blob, url }
+  const [urls, setUrls] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  useEffect(() => { medFotoUrls(inicial.fotos || []).then(setUrls); }, []);
+  useEffect(() => () => novas.forEach((n) => URL.revokeObjectURL(n.url)), []);
+  const total = fotos.length + novas.length;
+  async function addFotos(ev) {
+    const arqs = Array.from(ev.target.files || []).slice(0, MEDIDAS_MAX_FOTOS - total);
+    ev.target.value = "";
+    const out = [];
+    for (const f of arqs) { try { const b = await feedbackPrintReduzir(f); out.push({ blob: b, url: URL.createObjectURL(b) }); } catch (e) { setErro("Não consegui abrir essa foto."); } }
+    setNovas((p) => [...p, ...out]);
+  }
+  async function salvar() {
+    setErro("");
+    const pesoN = medNum(peso, 20, 400), gordN = medNum(gordura, 2, 70);
+    if (peso.trim() && pesoN == null) { setErro("Peso entre 20 e 400 kg."); return; }
+    if (gordura.trim() && gordN == null) { setErro("Gordura entre 2% e 70%."); return; }
+    const medidas = {};
+    for (const [k, t] of MEDIDAS_CAMPOS) {
+      if (!med[k].trim()) continue;
+      const n = medNum(med[k], 10, 300);
+      if (n == null) { setErro(`${t}: use centímetros, entre 10 e 300.`); return; }
+      medidas[k] = n;
+    }
+    if (pesoN == null && gordN == null && !Object.keys(medidas).length && !total) { setErro("Preencha pelo menos o peso, uma medida ou uma foto."); return; }
+    if (!data || data > todayISO()) { setErro("Escolha uma data até hoje."); return; }
+    setBusy(true);
+    const subidas = [];
+    for (const n of novas) {
+      const nome = `${uid}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error } = await supabaseClient.storage.from("medidas").upload(nome, n.blob, { contentType: "image/jpeg" });
+      if (error) { logErroModulo("medidas_foto", error.message); setBusy(false); setErro("Não consegui enviar a foto. Tente de novo."); return; }
+      subidas.push(nome);
+    }
+    const row = { data, peso: pesoN, gordura: gordN, medidas, nota: nota.trim() || null, fotos: [...fotos, ...subidas], updated_at: new Date().toISOString() };
+    const q = inicial.id ? supabaseClient.from("user_medidas").update(row).eq("id", inicial.id) : supabaseClient.from("user_medidas").insert(row);
+    const { error } = await q;
+    if (error) {
+      setBusy(false); logErroModulo("medidas_salvar", error.message); setErro("Não consegui salvar agora. Tente de novo.");
+      if (subidas.length) supabaseClient.storage.from("medidas").remove(subidas).catch(() => {});
+      return;
+    }
+    const saiu = (inicial.fotos || []).filter((f) => !fotos.includes(f));
+    if (saiu.length) supabaseClient.storage.from("medidas").remove(saiu).catch(() => {});
+    setBusy(false);
+    onSalvo(inicial.id ? "editado" : "novo", { fotos: row.fotos.length });
+  }
+  async function apagar() {
+    if (!window.confirm("Apagar este registro e as fotos dele?")) return;
+    setBusy(true);
+    const { error } = await supabaseClient.from("user_medidas").delete().eq("id", inicial.id);
+    setBusy(false);
+    if (error) { setErro("Não consegui apagar agora."); return; }
+    if ((inicial.fotos || []).length) supabaseClient.storage.from("medidas").remove(inicial.fotos).catch(() => {});
+    onSalvo("apagado");
+  }
+  return (
+    <div className="gt-modal-backdrop" onClick={() => !busy && onClose()}>
+      <div className="gt-modal gt-med-form" role="dialog" aria-modal="true" aria-label={inicial.id ? "Editar medidas" : "Registrar medidas"} onClick={(e) => e.stopPropagation()}>
+        <div className="gt-sheet-head"><h3>{inicial.id ? "Editar registro" : "Registrar medidas"}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={onClose}>✕</button></div>
+        <div className="gt-med-grid2">
+          <label><span className="gt-field-label">Data</span><input className="gt-input" type="date" value={data} max={todayISO()} onChange={(e) => setData(e.target.value)} /></label>
+          <label><span className="gt-field-label">Peso (kg)</span><input className="gt-input" inputMode="decimal" placeholder="Ex.: 72,5" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
+        </div>
+        {!maisMedidas && <button type="button" className="gt-co-link gt-med-mais" onClick={() => setMaisMedidas(true)}>+ Gordura e medidas do corpo</button>}
+        {maisMedidas && (
+          <>
+            <label><span className="gt-field-label">Gordura (%)</span><input className="gt-input" inputMode="decimal" placeholder="Se você souber" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
+            <div className="gt-field-label" style={{ marginTop: 10 }}>Medidas (cm)</div>
+            <div className="gt-med-grid2">
+              {MEDIDAS_CAMPOS.map(([k, t]) => (
+                <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="gt-field-label" style={{ marginTop: 12 }}>Fotos</div>
+        <div className="gt-med-fotos">
+          {fotos.map((f) => (
+            <div className="gt-med-foto" key={f}>{urls[f] ? <img src={urls[f]} alt="Foto do registro" /> : <span className="gt-med-foto-vazia" />}
+              <button type="button" aria-label="Tirar foto" onClick={() => setFotos(fotos.filter((x) => x !== f))}>✕</button></div>
+          ))}
+          {novas.map((n, i) => (
+            <div className="gt-med-foto" key={n.url}><img src={n.url} alt="Foto nova" />
+              <button type="button" aria-label="Tirar foto" onClick={() => { URL.revokeObjectURL(n.url); setNovas(novas.filter((_, j) => j !== i)); }}>✕</button></div>
+          ))}
+          {total < MEDIDAS_MAX_FOTOS && (
+            <label className="gt-med-foto gt-med-foto-add"><span>+ Foto</span>
+              <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={addFotos} /></label>
+          )}
+        </div>
+        <div className="gt-plano-dica">{quemVe}</div>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Anotação</span>
+          <input className="gt-input" maxLength={300} placeholder="Opcional" value={nota} onChange={(e) => setNota(e.target.value)} /></label>
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
+          <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
+        </div>
+        {inicial.id && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar registro</button>}
+      </div>
+    </div>
+  );
+}
+
+function MedComparar({ linha, urls, onClose }) {
+  const comFoto = linha.filter((x) => x.tipo === "meu" && (x.fotos || []).length);
+  const [a, setA] = useState(comFoto.length ? comFoto[comFoto.length - 1].id : null);
+  const [b, setB] = useState(comFoto.length ? comFoto[0].id : null);
+  const A = comFoto.find((x) => x.id === a), B = comFoto.find((x) => x.id === b);
+  const [pose, setPose] = useState(0);
+  const lado = (x, set, val) => (
+    <div className="gt-med-cmp-lado">
+      <select className="gt-input" aria-label="Data" value={val || ""} onChange={(e) => set(e.target.value)}>
+        {comFoto.map((x) => <option key={x.id} value={x.id}>{coachDataCurta(x.data)}{x.peso != null ? ` · ${medFmt(x.peso, "kg")}` : ""}</option>)}
+      </select>
+      {x && (x.fotos[Math.min(pose, x.fotos.length - 1)] && urls[x.fotos[Math.min(pose, x.fotos.length - 1)]]
+        ? <img src={urls[x.fotos[Math.min(pose, x.fotos.length - 1)]]} alt={`Foto de ${coachDataCurta(x.data)}`} />
+        : <span className="gt-med-foto-vazia" />)}
+    </div>
+  );
+  const maxPoses = Math.max(A ? A.fotos.length : 0, B ? B.fotos.length : 0);
+  return (
+    <div className="gt-focus gt-med-cmp" role="dialog" aria-modal="true" aria-label="Comparar fotos">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Comparar fotos</div></div>
+      </div>
+      <div className="gt-focus-body">
+        <div className="gt-med-cmp-par">{lado(A, setA, a)}{lado(B, setB, b)}</div>
+        {maxPoses > 1 && (
+          <div className="gt-provas-filters" style={{ justifyContent: "center", marginTop: 10 }}>
+            {Array.from({ length: maxPoses }).map((_, i) => <button key={i} type="button" className={`gt-provas-pill ${pose === i ? "on" : ""}`} onClick={() => setPose(i)}>Foto {i + 1}</button>)}
+          </div>
+        )}
+        {A && B && A.peso != null && B.peso != null && <div className="gt-plano-dica" style={{ textAlign: "center" }}>Peso: {medDelta(B.peso, A.peso, "kg")}</div>}
+      </div>
+    </div>
+  );
+}
+
+function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCompartilhar }) {
+  const [meus, setMeus] = useState(undefined); // undefined carregando, null indisponível
+  const [avals, setAvals] = useState([]);
+  const [urls, setUrls] = useState({});
+  const [form, setForm] = useState(null);
+  const [cmp, setCmp] = useState(false);
+  const [aberto, setAberto] = useState(null);
+  async function carregar() {
+    const [m, a] = await Promise.all([
+      supabaseClient.from("user_medidas").select("*").order("data", { ascending: false }).limit(200),
+      coachCall("minhas_avaliacoes"),
+    ]);
+    if (m.error) { setMeus(null); logErroModulo("medidas_ler", m.error.message); return; }
+    setMeus(m.data || []);
+    setAvals(a.ok ? a.data || [] : []);
+    medFotoUrls((m.data || []).flatMap((x) => x.fotos || [])).then(setUrls);
+  }
+  useEffect(() => { carregar(); logEvent("medidas_aberto"); }, []);
+  const linha = useMemo(() => medLinha(meus || [], avals), [meus, avals]);
+  const resumo = useMemo(() => medResumo(linha), [linha]);
+  const nComFoto = (meus || []).filter((x) => (x.fotos || []).length).length;
+  const coachNome = coachLink ? coachLink.coach_nome : "";
+  const coachPrimeiro = coachNome ? String(coachNome).trim().split(" ")[0] : "";
+  const compartilha = !!(coachLink && (coachLink.permissions || {}).ver_medidas);
+  const quemVe = compartilha ? `Só você e ${coachPrimeiro} veem.` : "Só você vê.";
+  async function mudarCompartilhar(on) {
+    if (on && !window.confirm(`${coachPrimeiro} vai ver seu peso, medidas e fotos. Você pode parar quando quiser.`)) return;
+    const ok = await onCompartilhar(on);
+    if (ok) { showToast(on ? `${coachPrimeiro} agora vê suas medidas` : `${coachPrimeiro} não vê mais suas medidas`); logEvent("medidas_compartilhar", { on }); }
+  }
+  return (
+    <div className="gt-focus gt-med" role="dialog" aria-modal="true" aria-label="Minhas medidas">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Minhas medidas</div></div>
+      </div>
+      <div className="gt-focus-body gt-med-body">
+        {meus === undefined && <div className="gt-empty">Carregando…</div>}
+        {meus === null && <div className="gt-co-erro" role="alert">Não consegui abrir suas medidas agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+        {meus && (
+          <>
+            {resumo.length > 0 ? (
+              <div className="gt-med-resumo">
+                {resumo.map(([t, un, r]) => (
+                  <div className="gt-med-stat" key={t}>
+                    <div className="t">{t}</div>
+                    <div className="v">{medFmt(r.v, un)}</div>
+                    {r.desde && <div className="d">{medDelta(r.v, r.antes, un)} desde {coachDataCurta(r.desde)}</div>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="gt-med-vazio">
+                <div className="t">Acompanhe seu corpo, não só a carga</div>
+                <div className="d">Registre peso, medidas e fotos de vez em quando. O Movo mostra o que mudou.</div>
+              </div>
+            )}
+            <button type="button" className="gt-btn" onClick={() => setForm({})}>Registrar medidas</button>
+            {nComFoto >= 2 && <button type="button" className="gt-btn secondary" style={{ marginTop: 8 }} onClick={() => { setCmp(true); logEvent("medidas_comparar"); }}>Comparar fotos</button>}
+            {coachLink && (
+              <div className="gt-med-share">
+                <span>{compartilha ? `${coachPrimeiro} vê suas medidas e fotos.` : `${coachPrimeiro} não vê suas medidas.`}</span>
+                <button type="button" className="gt-co-link" onClick={() => mudarCompartilhar(!compartilha)}>{compartilha ? "Parar de compartilhar" : `Compartilhar com ${coachPrimeiro}`}</button>
+              </div>
+            )}
+            {linha.length > 0 && <div className="gt-co-sec">HISTÓRICO</div>}
+            {linha.map((x) => (
+              <div key={`${x.tipo}-${x.id}`} className={`gt-med-item ${x.tipo === "meu" ? "toca" : ""}`} role={x.tipo === "meu" ? "button" : undefined} tabIndex={x.tipo === "meu" ? 0 : undefined}
+                onClick={() => x.tipo === "meu" ? setForm(x) : setAberto(aberto === x.id ? null : x.id)}>
+                <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b>{x.tipo === "aval" && <span className="gt-med-tag">Avaliação · {x.coach_nome}</span>}</div>
+                <MedValores m={x} />
+                {x.tipo === "meu" && (x.fotos || []).length > 0 && (
+                  <div className="gt-med-thumbs">{x.fotos.map((f) => urls[f] ? <img key={f} src={urls[f]} alt="" /> : <span key={f} className="gt-med-foto-vazia" />)}</div>
+                )}
+                {x.nota && <div className="gt-med-nota">{x.nota}</div>}
+                {x.tipo === "aval" && x.testes && <div className="gt-med-nota">Testes: {x.testes}</div>}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+      {form && (
+        <MedidaForm inicial={form} uid={uid} showToast={showToast} quemVe={quemVe} onClose={() => setForm(null)}
+          onSalvo={(tipo, extra) => { setForm(null); carregar(); logEvent("medidas_" + tipo, extra || {}); showToast(tipo === "apagado" ? "Registro apagado" : "Medidas salvas"); }} />
+      )}
+      {cmp && <MedComparar linha={linha} urls={urls} onClose={() => setCmp(false)} />}
+    </div>
+  );
+}
+
+// ---------- Anamnese ----------
+const ANAMNESE_PARQ = [
+  "Algum médico já disse que você tem problema no coração e que só deve fazer exercício com orientação?",
+  "Você sente dor no peito quando faz atividade física?",
+  "No último mês, você sentiu dor no peito sem estar fazendo atividade física?",
+  "Você perde o equilíbrio por tontura ou já desmaiou?",
+  "Tem algum problema nos ossos ou articulações que pode piorar com exercício?",
+  "Toma algum remédio para pressão ou para o coração?",
+  "Existe algum outro motivo para você não fazer atividade física?",
+];
+const ANAMNESE_ESCOLHAS = {
+  experiencia: ["Nunca treinei", "Menos de 1 ano", "1 a 3 anos", "Mais de 3 anos"],
+  dias: ["1", "2", "3", "4", "5", "6", "7"],
+  sono: ["Menos de 6 h", "6 a 7 h", "7 a 8 h", "Mais de 8 h"],
+  trabalho: ["Sentado", "Em pé", "Fisicamente ativo"],
+};
+const ANAMNESE_TEXTOS = [
+  ["lesoes", "Lesões que você já teve", "Ex.: entorse no tornozelo em 2023"],
+  ["cirurgias", "Cirurgias", ""],
+  ["doencas", "Doenças ou condições", "Ex.: asma, diabetes, pressão alta"],
+  ["remedios", "Remédios de uso contínuo", ""],
+  ["dores", "Sente alguma dor hoje?", "Onde e quando"],
+  ["obs", "Algo mais que seu treinador deve saber?", ""],
+];
+function anamneseParqSim(r) { return r && Array.isArray(r.parq) ? r.parq.filter((x) => x === true).length : 0; }
+
+function AnamneseForm({ pedido, anterior, onClose, onSalvo, showToast }) {
+  const base = (pedido.respostas || anterior || {});
+  const [r, setR] = useState({ objetivo: "", experiencia: "", dias: "", sono: "", trabalho: "", lesoes: "", cirurgias: "", doencas: "", remedios: "", dores: "", obs: "", ...base, parq: Array.isArray(base.parq) ? base.parq.slice(0, 7) : [null, null, null, null, null, null, null] });
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const nome = String(pedido.coach_nome || "seu treinador").trim().split(" ")[0];
+  const set = (k, v) => setR((p) => ({ ...p, [k]: v }));
+  const escolha = (k, titulo) => (
+    <>
+      <div className="gt-field-label" style={{ marginTop: 12 }}>{titulo}</div>
+      <div className="gt-provas-filters" style={{ margin: 0 }}>
+        {ANAMNESE_ESCOLHAS[k].map((op) => <button key={op} type="button" aria-pressed={r[k] === op} className={`gt-provas-pill ${r[k] === op ? "on" : ""}`} onClick={() => set(k, r[k] === op ? "" : op)}>{op}</button>)}
+      </div>
+    </>
+  );
+  async function salvar() {
+    if (r.parq.some((x) => x !== true && x !== false)) { setErro("Responda as 7 perguntas de saúde."); return; }
+    setBusy(true); setErro("");
+    const limpo = {};
+    Object.entries(r).forEach(([k, v]) => { if (k === "parq") limpo.parq = v; else if (typeof v === "string" && v.trim()) limpo[k] = v.trim().slice(0, 500); });
+    const res = await coachCall("anamnese_responder", { p_link: pedido.link_id, p_respostas: limpo });
+    setBusy(false);
+    if (!res.ok || !res.data) { setErro(res.erro || "Não consegui enviar agora."); return; }
+    onSalvo(limpo);
+  }
+  async function apagar() {
+    if (!window.confirm(`Apagar suas respostas? ${nome} deixa de ver.`)) return;
+    setBusy(true);
+    const res = await coachCall("anamnese_responder", { p_link: pedido.link_id, p_respostas: null });
+    setBusy(false);
+    if (!res.ok) { setErro(res.erro); return; }
+    onSalvo(null);
+  }
+  return (
+    <div className="gt-focus gt-anam" role="dialog" aria-modal="true" aria-label="Anamnese">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Anamnese</div><div className="gt-focus-title-hint">Pedida por {pedido.coach_nome}</div></div>
+      </div>
+      <div className="gt-focus-body gt-anam-body">
+        <div className="gt-plano-dica">Ajuda {nome} a montar um treino seguro para você. Só {nome} vê, e você pode apagar quando quiser.</div>
+        <div className="gt-co-sec">OBJETIVO E ROTINA</div>
+        <label><span className="gt-field-label">Seu objetivo</span><input className="gt-input" maxLength={200} placeholder="Ex.: ganhar massa, correr 10 km, voltar a treinar" value={r.objetivo} onChange={(e) => set("objetivo", e.target.value)} /></label>
+        {escolha("experiencia", "Há quanto tempo treina")}
+        {escolha("dias", "Dias por semana para treinar")}
+        {escolha("sono", "Quanto você dorme")}
+        {escolha("trabalho", "No trabalho você fica")}
+        <div className="gt-co-sec">SAÚDE</div>
+        {ANAMNESE_PARQ.map((q, i) => (
+          <div className="gt-anam-parq" key={i}>
+            <div className="q">{q}</div>
+            <div className="gt-provas-filters" style={{ margin: 0 }}>
+              {[[true, "Sim"], [false, "Não"]].map(([v, t]) => <button key={t} type="button" aria-pressed={r.parq[i] === v} className={`gt-provas-pill ${r.parq[i] === v ? "on" : ""}`} onClick={() => set("parq", r.parq.map((x, j) => (j === i ? v : x)))}>{t}</button>)}
+            </div>
+          </div>
+        ))}
+        {anamneseParqSim(r) > 0 && <div className="gt-plano-aviso aviso">Com algum "sim", converse com um médico antes de treinar pesado. {nome} vai saber disso.</div>}
+        <div className="gt-co-sec">HISTÓRICO</div>
+        {ANAMNESE_TEXTOS.map(([k, t, ph]) => (
+          <label key={k}><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>{t}</span>
+            <input className="gt-input" maxLength={500} placeholder={ph || "Opcional"} value={r[k]} onChange={(e) => set(k, e.target.value)} /></label>
+        ))}
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        <div className="gt-modal-actions" style={{ marginTop: 14 }}>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Enviando…" : `Enviar para ${nome}`}</button>
+        </div>
+        {pedido.respostas && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar minhas respostas</button>}
+      </div>
+    </div>
+  );
+}
+
+function AnamnesePedidoCard({ pedido, onResponder }) {
+  const nome = String(pedido.coach_nome || "Seu treinador").trim().split(" ")[0];
+  return (
+    <div className="gt-co-nota gt-anam-card" role="region" aria-label="Anamnese pedida">
+      <div className="gt-co-sec">{nome.toUpperCase()} PEDIU SUA ANAMNESE</div>
+      <div className="gt-co-nota-txt">Perguntas rápidas sobre sua saúde e rotina, para o treino ser seguro.</div>
+      <button type="button" className="gt-btn small" onClick={onResponder}>Responder</button>
+    </div>
+  );
+}
+
+// ---------- Treinador: aba Avaliação do aluno ----------
+function CoachAvaliacaoForm({ linkId, inicial, onClose, onSalvo, showToast }) {
+  const [data, setData] = useState(inicial.data || todayISO());
+  const [peso, setPeso] = useState(inicial.peso != null ? String(inicial.peso).replace(".", ",") : "");
+  const [gordura, setGordura] = useState(inicial.gordura != null ? String(inicial.gordura).replace(".", ",") : "");
+  const [med, setMed] = useState(() => { const o = {}; MEDIDAS_CAMPOS.forEach(([k]) => { const v = inicial.medidas && inicial.medidas[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
+  const [testes, setTestes] = useState(inicial.testes || "");
+  const [nota, setNota] = useState(inicial.nota || "");
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  async function salvar() {
+    setErro("");
+    const pesoN = medNum(peso, 20, 400), gordN = medNum(gordura, 2, 70);
+    if (peso.trim() && pesoN == null) { setErro("Peso entre 20 e 400 kg."); return; }
+    if (gordura.trim() && gordN == null) { setErro("Gordura entre 2% e 70%."); return; }
+    const medidas = {};
+    for (const [k, t] of MEDIDAS_CAMPOS) {
+      if (!med[k].trim()) continue;
+      const n = medNum(med[k], 10, 300);
+      if (n == null) { setErro(`${t}: use centímetros, entre 10 e 300.`); return; }
+      medidas[k] = n;
+    }
+    if (pesoN == null && gordN == null && !Object.keys(medidas).length && !testes.trim() && !nota.trim()) { setErro("Preencha pelo menos um campo."); return; }
+    setBusy(true);
+    const r = await coachCall("coach_avaliacao_salvar", { p_link: linkId, p_id: inicial.id || null, p_data: data, p_peso: pesoN, p_gordura: gordN, p_medidas: medidas, p_testes: testes, p_nota: nota });
+    setBusy(false);
+    if (!r.ok) { setErro(r.erro); return; }
+    onSalvo(inicial.id ? "editada" : "nova");
+  }
+  async function apagar() {
+    if (!window.confirm("Apagar esta avaliação?")) return;
+    setBusy(true);
+    const r = await coachCall("coach_avaliacao_apagar", { p_id: inicial.id });
+    setBusy(false);
+    if (!r.ok) { setErro(r.erro); return; }
+    onSalvo("apagada");
+  }
+  return (
+    <div className="gt-modal-backdrop" onClick={() => !busy && onClose()}>
+      <div className="gt-modal gt-med-form" role="dialog" aria-modal="true" aria-label="Avaliação" onClick={(e) => e.stopPropagation()}>
+        <div className="gt-sheet-head"><h3>{inicial.id ? "Editar avaliação" : "Nova avaliação"}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={onClose}>✕</button></div>
+        <div className="gt-med-grid2">
+          <label><span className="gt-field-label">Data</span><input className="gt-input" type="date" value={data} max={todayISO()} onChange={(e) => setData(e.target.value)} /></label>
+          <label><span className="gt-field-label">Peso (kg)</span><input className="gt-input" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
+        </div>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span><input className="gt-input" inputMode="decimal" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
+        <div className="gt-field-label" style={{ marginTop: 10 }}>Medidas (cm)</div>
+        <div className="gt-med-grid2">
+          {MEDIDAS_CAMPOS.map(([k, t]) => (
+            <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
+          ))}
+        </div>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Testes</span>
+          <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} placeholder="Ex.: Cooper 2.400 m · flexões 25 · sentar e alcançar 28 cm" value={testes} onChange={(e) => setTestes(e.target.value)} /></label>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Observações</span>
+          <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} value={nota} onChange={(e) => setNota(e.target.value)} /></label>
+        <div className="gt-plano-dica">O aluno vê esta avaliação em Minhas medidas.</div>
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
+          <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
+        </div>
+        {inicial.id && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar avaliação</button>}
+      </div>
+    </div>
+  );
+}
+
+function CoachAvaliacaoAba({ aluno, det, showToast }) {
+  const primeiro = String(aluno.nome || "").trim().split(" ")[0] || "O aluno";
+  const [anam, setAnam] = useState(undefined);
+  const [avals, setAvals] = useState(undefined);
+  const [meds, setMeds] = useState(null);
+  const [urls, setUrls] = useState({});
+  const [form, setForm] = useState(null);
+  const [verAnam, setVerAnam] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const verMedidas = !!(det && det.permissions && det.permissions.ver_medidas);
+  async function carregar() {
+    const [a, v] = await Promise.all([
+      coachCall("coach_anamnese", { p_link: aluno.link_id }),
+      supabaseClient.from("coach_avaliacoes").select("*").eq("link_id", aluno.link_id).order("data", { ascending: false }).limit(60),
+    ]);
+    setAnam(a.ok ? a.data || null : null);
+    setAvals(v.error ? [] : v.data || []);
+    if (verMedidas) {
+      const m = await coachCall("coach_aluno_medidas", { p_link: aluno.link_id });
+      const lista = m.ok && Array.isArray(m.data) ? m.data : [];
+      setMeds(lista);
+      medFotoUrls(lista.flatMap((x) => x.fotos || []).slice(0, 30)).then(setUrls);
+    } else setMeds(null);
+  }
+  useEffect(() => { carregar(); }, [aluno.link_id, verMedidas]);
+  async function pedir() {
+    setBusy(true);
+    const r = await coachCall("coach_anamnese_pedir", { p_link: aluno.link_id });
+    setBusy(false);
+    if (!r.ok) { showToast(r.erro); return; }
+    showToast(`Pedido enviado. ${primeiro} vê na tela Hoje.`);
+    carregar();
+  }
+  const resp = anam && anam.respostas;
+  const nSim = anamneseParqSim(resp);
+  return (
+    <>
+      <div className="gt-co-sec">ANAMNESE</div>
+      {anam === undefined && <div className="gt-empty">Carregando…</div>}
+      {anam === null && (
+        <div className="gt-co-plano-aluno">
+          <div className="d">Saúde, lesões, remédios e rotina de {primeiro}, com as 7 perguntas do PAR-Q.</div>
+          <button type="button" className="gt-btn small" disabled={busy} onClick={pedir}>Pedir anamnese</button>
+        </div>
+      )}
+      {anam && !resp && (
+        <div className="gt-co-plano-aluno">
+          <div className="d">Pedida em {coachDataCurta(anam.pedida_em)}. Esperando {primeiro} responder.</div>
+          <button type="button" className="gt-co-link" disabled={busy} onClick={pedir}>Lembrar de novo</button>
+        </div>
+      )}
+      {resp && (
+        <div className="gt-co-plano-aluno">
+          <div className="d">Respondida em {coachDataCurta(anam.respondida_em)}{resp.objetivo ? ` · objetivo: ${resp.objetivo}` : ""}</div>
+          {nSim > 0
+            ? <div className="gt-plano-aviso aviso">{nSim === 1 ? "1 resposta \"sim\"" : `${nSim} respostas "sim"`} no PAR-Q. Peça liberação médica antes de treinos intensos.</div>
+            : <div className="d">PAR-Q sem nenhum "sim".</div>}
+          <button type="button" className="gt-co-link" onClick={() => setVerAnam(!verAnam)}>{verAnam ? "Esconder respostas" : "Ver respostas"}</button>
+          {verAnam && (
+            <dl className="gt-anam-resp">
+              {[["experiencia", "Treina há"], ["dias", "Dias por semana"], ["sono", "Sono"], ["trabalho", "No trabalho"]].map(([k, t]) => resp[k] ? <div key={k}><dt>{t}</dt><dd>{resp[k]}</dd></div> : null)}
+              {ANAMNESE_PARQ.map((q, i) => <div key={"p" + i} className={resp.parq && resp.parq[i] ? "sim" : ""}><dt>{q}</dt><dd>{resp.parq && resp.parq[i] ? "Sim" : "Não"}</dd></div>)}
+              {ANAMNESE_TEXTOS.map(([k, t]) => resp[k] ? <div key={k}><dt>{t}</dt><dd>{resp[k]}</dd></div> : null)}
+            </dl>
+          )}
+        </div>
+      )}
+      <div className="gt-co-sec">AVALIAÇÕES</div>
+      <button type="button" className="gt-btn secondary small" onClick={() => setForm({})}>Nova avaliação</button>
+      {avals && avals.length === 0 && <div className="gt-plano-dica">Registre peso, medidas e testes. {primeiro} vê em Minhas medidas.</div>}
+      {(avals || []).map((a) => (
+        <div key={a.id} className="gt-med-item toca" role="button" tabIndex={0} onClick={() => setForm(a)}>
+          <div className="gt-med-item-top"><b>{coachDataCurta(a.data)}</b></div>
+          <MedValores m={a} />
+          {a.testes && <div className="gt-med-nota">Testes: {a.testes}</div>}
+          {a.nota && <div className="gt-med-nota">{a.nota}</div>}
+        </div>
+      ))}
+      <div className="gt-co-sec">MEDIDAS DE {primeiro.toUpperCase()}</div>
+      {!verMedidas && <div className="gt-plano-dica">{primeiro} não compartilha as medidas e fotos com você. Só {primeiro} pode ligar isso, em Minhas medidas.</div>}
+      {verMedidas && meds && meds.length === 0 && <div className="gt-plano-dica">{primeiro} ainda não registrou medidas.</div>}
+      {verMedidas && (meds || []).map((m) => (
+        <div key={m.id} className="gt-med-item">
+          <div className="gt-med-item-top"><b>{coachDataCurta(m.data)}</b></div>
+          <MedValores m={m} />
+          {(m.fotos || []).length > 0 && <div className="gt-med-thumbs">{m.fotos.map((f) => urls[f] ? <img key={f} src={urls[f]} alt="" /> : <span key={f} className="gt-med-foto-vazia" />)}</div>}
+          {m.nota && <div className="gt-med-nota">{m.nota}</div>}
+        </div>
+      ))}
+      {form && <CoachAvaliacaoForm linkId={aluno.link_id} inicial={form} showToast={showToast} onClose={() => setForm(null)}
+        onSalvo={(t) => { setForm(null); carregar(); showToast(t === "apagada" ? "Avaliação apagada" : "Avaliação salva"); }} />}
+    </>
+  );
+}
+
 // ---------- Treinador: convidar ----------
 function CoachConvidarModal({ coachNome, onClose, onCriado, showToast, existente }) {
   const [label, setLabel] = useState("");
@@ -12902,7 +13523,7 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
   const nomesTreino = {};
   ((det && det.treinos) || []).forEach((t) => { nomesTreino[`treino:${t.id}`] = t.nome; });
   const temCorrida = det && det.sessoes && Object.values(det.sessoes).some((s) => Object.values(s.cargas || {}).some((c) => c && Number(c.distanciaKm) > 0));
-  const ABAS = [["semana", "Semana"], ["cargas", "Cargas"], ...(temCorrida ? [["corridas", "Corridas"]] : []), ["notas", "Notas"]];
+  const ABAS = [["semana", "Semana"], ["cargas", "Cargas"], ...(temCorrida ? [["corridas", "Corridas"]] : []), ["avaliacao", "Avaliação"], ["notas", "Notas"]];
   async function comentar(data, ref, texto) {
     const r = await coachCall("coach_add_note", { p_link: aluno.link_id, p_date: data, p_session_ref: ref, p_texto: texto });
     if (!r.ok) { showToast(r.erro); return false; }
@@ -12924,6 +13545,7 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
         {det && erro && <div className="gt-co-offline" role="status">{erro} Mostrando dados de {coachHaQuanto(carregadoEm)}.</div>}
         {contato && <button type="button" className="gt-btn secondary gt-co-wa" onClick={() => window.open(`https://wa.me/55${contato}`, "_blank")}>Chamar no WhatsApp · {telMostrar(contato)}</button>}
         {det && det.bloqueado && <div className="gt-co-bloq"><b>Bloqueado pelo aluno</b><div>{aluno.nome} desligou o compartilhamento de treinos. Você ainda pode enviar semanas e comentar.</div></div>}
+        {det && aba === "avaliacao" && <CoachAvaliacaoAba aluno={aluno} det={det} showToast={showToast} />}
         {det && !det.bloqueado && aba === "semana" && (
           <>
             {cl.atencao && (
@@ -16397,8 +17019,10 @@ function App() {
       try { if (session && session.user) await supabaseClient.storage.from("avatars").remove([`${session.user.id}/a.jpg`]); } catch (e) {} // foto de perfil sai do storage junto
       try { // prints enviados em feedbacks também
         const uidP = session && session.user && session.user.id;
-        const ls = uidP ? await supabaseClient.storage.from("relatos").list(uidP, { limit: 1000 }) : null;
-        if (ls && ls.data && ls.data.length) await supabaseClient.storage.from("relatos").remove(ls.data.map((o) => `${uidP}/${o.name}`));
+        for (const bk of ["relatos", "medidas"]) { // e as fotos de Minhas medidas
+          const ls = uidP ? await supabaseClient.storage.from(bk).list(uidP, { limit: 1000 }) : null;
+          if (ls && ls.data && ls.data.length) await supabaseClient.storage.from(bk).remove(ls.data.map((o) => `${uidP}/${o.name}`));
+        }
       } catch (e) {}
       const { error } = await supabaseClient.rpc("delete_my_account");
       if (error) { logClientError("delete_my_account", error.message); return { ok: false }; }
@@ -17320,6 +17944,9 @@ function App() {
   const [coachNotas, setCoachNotas] = useState([]);
   const [coachConvite, setCoachConvite] = useState(() => { try { return localStorage.getItem("treino-app:coachInvite") || null; } catch (e) { return null; } });
   const [meuTreinadorOpen, setMeuTreinadorOpen] = useState(false);
+  const [medidasOpen, setMedidasOpen] = useState(false);
+  const [anamneses, setAnamneses] = useState([]); // pedidos de anamnese dos meus treinadores
+  const [anamAberta, setAnamAberta] = useState(null);
   const [coachRevisao, setCoachRevisao] = useState(false);
   const [coachPlanoAberto, setCoachPlanoAberto] = useState(false);
   const [coachBusy, setCoachBusy] = useState(false);
@@ -17365,6 +17992,8 @@ function App() {
     const [l, a] = await Promise.all([coachCall("coach_my_coach"), coachCall("coach_my_assignments")]);
     if (l.ok) {
       setCoachLinks(l.data || []);
+      if ((l.data || []).length) coachCall("minhas_anamneses").then((r) => { if (r.ok) setAnamneses(r.data || []); });
+      else setAnamneses([]);
       const { next, virou } = planosSemVinculo(planosRef.current, l.data || []);
       if (virou.length) {
         savePlanos(next);
@@ -18585,6 +19214,7 @@ function App() {
             {coachPend[0] && coachPendDiff && (
               <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} removidos={coachRemocoes(coachPend[0].payload, schedule, nomeNaAgenda, coachPodeAjustar).nomes} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
+            {anamneses.filter((x) => !x.respostas).slice(0, 1).map((x) => <AnamnesePedidoCard key={x.link_id} pedido={x} onResponder={() => { setAnamAberta(x); logEvent("anamnese_aberta"); }} />)}
             {coachLinks[0] && <CoachNotaHoje notas={coachNotas} linkId={coachLinks[0].link_id} nomeCoach={coachLinks[0].coach_nome} onEnviar={coachResponder} />}
             {stravaConvite && stravaConnected === false && !templatesOpen && !treinoIAOpen && (
               <div className="gt-strava-convite" role="region" aria-label="Conectar o Strava">
@@ -19558,6 +20188,7 @@ function App() {
               {item("metas", "Metas de corrida", () => openProvas("metas"))}
               {item("raio", "Treinos de corrida", () => setTreinoCorrida({ data: todayISO() }))}
               <div className="gt-menu-sec">Dados</div>
+              {item("ruler", "Minhas medidas", () => setMedidasOpen(true))}
               {item("importar", "Importar histórico", () => setHistOpen(true))}
               {stravaConnected === false && <button type="button" className="gt-menu-item" onClick={ir(() => setSettingsOpen(true))}><span className="ic"><StravaIcon size={20} /></span><span className="tx">Conectar com o Strava</span></button>}
               <div className="gt-menu-sec">Social</div>
@@ -19595,7 +20226,29 @@ function App() {
         <MeuPlanoModal plano={plano} souTreinador={!!coachTem || !!(plano && plano.treinador && plano.treinador.plano !== "gratis")} onClose={() => setPlanoOpen(false)} onInteresse={planoInteresse} />
       )}
       {meuTreinadorOpen && (
-        <CoachMeuTreinadorModal links={coachLinks} flags={coachFlagsAtuais} dados={{ treinos, sessions }} reload={carregarCoachAluno} showToast={showToast} onClose={() => setMeuTreinadorOpen(false)} onAbrirConvite={(c) => { setMeuTreinadorOpen(false); setCoachConvite(c); }} />
+        <CoachMeuTreinadorModal anamnese={anamneses.find((x) => coachLinks[0] && x.link_id === coachLinks[0].link_id) || null} onAbrirAnamnese={(x) => { setMeuTreinadorOpen(false); setAnamAberta(x); }} links={coachLinks} flags={coachFlagsAtuais} dados={{ treinos, sessions }} reload={carregarCoachAluno} showToast={showToast} onClose={() => setMeuTreinadorOpen(false)} onAbrirConvite={(c) => { setMeuTreinadorOpen(false); setCoachConvite(c); }} />
+      )}
+      {medidasOpen && session && (
+        <MinhasMedidasTela uid={session.user.id} showToast={showToast} logEvent={logEvent} onClose={() => setMedidasOpen(false)}
+          coachLink={coachLinks.find((l) => l.status === "ativo") || null}
+          onCompartilhar={async (on) => {
+            const l = coachLinks.find((x) => x.status === "ativo");
+            if (!l) return false;
+            const r = await coachCall("coach_update_permissions", { p_link: l.link_id, p_perms: { ...COACH_PERMS_PADRAO, ...(l.permissions || {}), ver_medidas: on } });
+            if (!r.ok) { showToast(r.erro); return false; }
+            setCoachLinks((ls) => ls.map((x) => (x.link_id === l.link_id ? { ...x, permissions: { ...(x.permissions || {}), ver_medidas: on } } : x)));
+            return true;
+          }} />
+      )}
+      {anamAberta && (
+        <AnamneseForm pedido={anamAberta} showToast={showToast} onClose={() => setAnamAberta(null)}
+          anterior={(anamneses.find((x) => x.respostas && x.link_id !== anamAberta.link_id) || {}).respostas || null}
+          onSalvo={(resp) => {
+            setAnamneses((ls) => ls.map((x) => (x.link_id === anamAberta.link_id ? { ...x, respostas: resp, respondida_em: resp ? new Date().toISOString() : null } : x)));
+            logEvent(resp ? "anamnese_respondida" : "anamnese_apagada", resp ? { parq_sim: anamneseParqSim(resp) } : {});
+            showToast(resp ? `Enviado para ${String(anamAberta.coach_nome || "seu treinador").split(" ")[0]}` : "Respostas apagadas");
+            setAnamAberta(null);
+          }} />
       )}
       {coachRevisao && coachPend[0] && coachPendDiff && (
         <CoachRevisaoModal ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onClose={() => setCoachRevisao(false)} onConfirmar={(dows, motivo, nRec) => coachAplicar(coachPend[0], coachPendDiff, dows, motivo, nRec)} />
