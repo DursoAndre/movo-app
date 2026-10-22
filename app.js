@@ -4090,6 +4090,26 @@ const APP_CSS = `
   .gt-video-prog { position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:var(--surface-2); font-size:14px; overflow:hidden; }
   .gt-video-prog i { position:absolute; left:0; bottom:0; height:3px; background:var(--accent); }
   .gt-rpe-video { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+  /* Modo treinador no computador (fase 4): menu lateral, lista mais larga, telas do aluno e modais centralizados.
+     Só a partir de 960 px e só no modo treinador; o celular e o modo aluno não mudam. */
+  @media (min-width: 960px) {
+    .gt-root.gt-shell.gt-coach-mode { max-width:1240px; display:grid; grid-template-columns:220px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+    .gt-shell.gt-coach-mode > .gt-header { grid-column:2; grid-row:1; }
+    .gt-shell.gt-coach-mode > .gt-body { grid-column:2; grid-row:2; }
+    .gt-shell.gt-coach-mode > .gt-co-tabbar { grid-column:1; grid-row:1 / span 2; flex-direction:column; justify-content:flex-start; gap:4px; max-width:none; width:auto; height:100%; margin:0; padding:76px 12px 16px; border-top:none; border-right:1px solid var(--border); }
+    .gt-coach-mode .gt-co-tabbar .gt-tab { flex:0 0 auto; flex-direction:row; justify-content:flex-start; gap:12px; padding:10px 12px; font-size:15px; border-radius:10px; min-height:44px; }
+    .gt-coach-mode .gt-co-tabbar .gt-tab.active { background:var(--surface-2); }
+    .gt-coach-mode .gt-co-body { padding-left:32px; padding-right:32px; }
+    .gt-coach-mode .gt-co-body > * { max-width:980px; }
+    .gt-coach-mode .gt-co-lista { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
+    .gt-coach-mode .gt-co-hoje-item { max-width:none; }
+    .gt-coach-mode .gt-focus { left:calc(max(0px, (100vw - 1240px) / 2) + 220px); right:auto; width:calc(min(1240px, 100vw) - 220px); max-width:none; margin:0; border-left:1px solid var(--border); }
+    .gt-coach-mode .gt-focus .gt-focus-body > *, .gt-coach-mode .gt-focus .gt-focus-header { max-width:900px; }
+    .gt-coach-mode .gt-focus .gt-focus-body { padding-left:28px; padding-right:28px; }
+    .gt-coach-mode .gt-modal-backdrop { align-items:center; }
+    .gt-coach-mode .gt-modal { max-width:560px; border-radius:14px; border:1px solid var(--border); max-height:86vh; }
+    .gt-coach-mode .gt-toast { bottom:32px; }
+  }
   .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
   .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
   .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
