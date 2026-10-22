@@ -195,7 +195,7 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
-- **22/10/2026 (v219, Andre: "Rodei o sql, pode subir"):** fase 4 publicada (PR #25), depois das revisões de produto, UX e design. Cota da biblioteca do treinador: 20 vídeos (padrão do Claude). Em aberto com o Andre: o aluno não consegue apagar uma avaliação feita pelo treinador (padrão do Claude, perguntado em 22/10).
+- **22/10/2026 (v219, Andre: "Rodei o sql, pode subir"):** fase 4 publicada (PR #25), depois das revisões de produto, UX e design. Cota da biblioteca do treinador: 20 vídeos (padrão do Claude). **Decidido (Andre: "Pode"):** o aluno não apaga uma avaliação feita pelo treinador (é registro do treinador e continua visível ao aluno mesmo após o fim do vínculo; a anamnese, dado de saúde, é apagada ao fim do vínculo; exclusão da conta apaga tudo).
 
 - **22/10/2026 (Andre: "Pode fazer ambos, aceito suas sugestões. Passe pelas revisões de produto UX e design"):** fase 4 (paridade de força) aprovada inteira: importar do Hevy, Strong e MFIT, Minhas medidas e fotos, anamnese e avaliação do treinador, layout do treinador no computador e vídeo. Limites de vídeo aceitos: do aluno no comentário da sessão até 30 s, compactado no aparelho, apagado após 90 dias ou ao fim do vínculo; do treinador na biblioteca até 60 s, compactado, sem expirar. Cota do treinador ficou como padrão do Claude (ver a seção do vídeo quando publicada). Toda tela passa por revisão de produto, UX e design antes de chegar ao Andre.
 
