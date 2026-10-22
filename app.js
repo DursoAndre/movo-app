@@ -3868,6 +3868,16 @@ const APP_CSS = `
   .gt-co-avatar.big { width:72px; height:72px; font-size:26px; margin:0 auto 8px; }
   .gt-co-sec, .gt-agd-sec { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); letter-spacing:.05em; margin:12px 0 6px; }
   .gt-co-sec.warn { color:var(--amber); margin-top:0; }
+  .gt-co-turmas { margin:4px 0 10px; }
+  .gt-co-turmas-head { display:flex; align-items:center; justify-content:space-between; }
+  .gt-co-turmas-vazio { font-size:13px; color:var(--text-muted); margin:0 0 6px; }
+  .gt-co-turma { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:6px; }
+  .gt-co-turma .tx { flex:1; min-width:0; text-align:left; background:none; border:0; padding:0; color:inherit; font:inherit; cursor:pointer; }
+  .gt-co-turma .t { font-weight:600; }
+  .gt-co-turma .d { font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gt-co-turma-alunos { max-height:40vh; overflow:auto; display:flex; flex-direction:column; gap:2px; }
+  .gt-co-turma-apagar { font-size:13px; margin-top:8px; }
+  .gt-co-link.danger { color:var(--warn); }
   .gt-co-top, .gt-agd-top { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
   .gt-co-top .gt-co-sec, .gt-agd-top .gt-agd-sec { margin:0; }
   .gt-co-h1, .gt-agd-h1 { font-family:'Oswald',sans-serif; font-size:28px; font-weight:600; line-height:1.1; }
@@ -13977,7 +13987,91 @@ function CoachDiasPontos({ dias }) {
     </div>
   );
 }
-function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, onPendente, onConvidar, filaN, onMontar }) {
+// Turmas (fase 5): grupos de alunos para montar a mesma semana uma vez e enviar para todos.
+function coachTurmaMembros(turma, lista) {
+  const ids = new Set(turma.links || []);
+  return lista.filter((a) => ids.has(a.link_id) && (a.status === "ativo" || a.status === "pendente"));
+}
+function CoachTurmas({ lista, coachUid, onMontarTurma, showToast }) {
+  const [turmas, setTurmas] = useState(() => { try { return JSON.parse(localStorage.getItem("treino-app:coachTurmas") || "[]") || []; } catch (e) { return []; } });
+  const [edit, setEdit] = useState(null); // { id?, nome, links: [] }
+  const [apagarQ, setApagarQ] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const carregar = useCallback(async () => {
+    try {
+      const { data, error } = await supabaseClient.from("coach_turmas").select("id,nome,links").order("nome");
+      if (error) return;
+      setTurmas(data || []);
+      try { localStorage.setItem("treino-app:coachTurmas", JSON.stringify(data || [])); } catch (e) {}
+    } catch (e) {}
+  }, []);
+  useEffect(() => { carregar(); }, [carregar]);
+  const elegiveis = coachOrdenarAlunos(lista.filter((a) => a.status === "ativo" || a.status === "pendente"), todayISO());
+  if (elegiveis.length < 2 && turmas.length === 0) return null;
+  async function salvar() {
+    const nome = (edit.nome || "").trim();
+    if (!nome || !edit.links.length) return;
+    setSalvando(true);
+    try {
+      const q = edit.id
+        ? supabaseClient.from("coach_turmas").update({ nome, links: edit.links }).eq("id", edit.id)
+        : supabaseClient.from("coach_turmas").insert({ coach_id: coachUid, nome, links: edit.links });
+      const { error } = await q;
+      if (error) throw error;
+      showToast(edit.id ? "Turma salva" : `Turma ${nome} criada`); setEdit(null); carregar();
+    } catch (e) { showToast("Não consegui salvar a turma agora"); }
+    setSalvando(false);
+  }
+  async function apagar() {
+    setSalvando(true);
+    try {
+      const { error } = await supabaseClient.from("coach_turmas").delete().eq("id", edit.id);
+      if (error) throw error;
+      showToast("Turma apagada. Os alunos continuam com você"); setEdit(null); setApagarQ(false); carregar();
+    } catch (e) { showToast("Não consegui apagar a turma agora"); }
+    setSalvando(false);
+  }
+  function alternar(id) { setEdit((p) => ({ ...p, links: p.links.indexOf(id) >= 0 ? p.links.filter((x) => x !== id) : [...p.links, id] })); }
+  return (
+    <section className="gt-co-turmas" aria-label="Turmas">
+      <div className="gt-co-turmas-head"><span className="gt-co-sec">TURMAS</span><button type="button" className="gt-co-link" onClick={() => setEdit({ nome: "", links: [] })}>＋ Nova turma</button></div>
+      {turmas.length === 0 && <div className="gt-co-turmas-vazio">Agrupe alunos que treinam igual e monte a semana uma vez só para todos.</div>}
+      {turmas.map((t) => {
+        const membros = coachTurmaMembros(t, lista);
+        return (
+          <div key={t.id} className="gt-co-turma">
+            <button type="button" className="tx" onClick={() => setEdit({ id: t.id, nome: t.nome, links: (t.links || []).filter((id) => lista.some((a) => a.link_id === id)) })} aria-label={`Editar turma ${t.nome}`}>
+              <div className="t">{t.nome}</div>
+              <div className="d">{membros.length ? membros.map((a) => a.nome.split(" ")[0]).join(", ") : "Sem alunos ativos"}</div>
+            </button>
+            <button type="button" className="gt-btn small" disabled={!membros.length} onClick={() => onMontarTurma({ ...t, membros })}>Montar semana</button>
+          </div>
+        );
+      })}
+      {edit && (
+        <div className="gt-modal-backdrop" onClick={() => !salvando && setEdit(null)}>
+          <div className="gt-modal" role="dialog" aria-modal="true" aria-label={edit.id ? "Editar turma" : "Nova turma"} onClick={(e) => e.stopPropagation()}>
+            <h3>{edit.id ? "Editar turma" : "Nova turma"}</h3>
+            <input className="gt-input" aria-label="Nome da turma" placeholder="Ex.: Corrida de terça" maxLength={60} value={edit.nome} onChange={(e) => setEdit({ ...edit, nome: e.target.value })} autoFocus={!edit.id} />
+            <div className="gt-co-sec">ALUNOS ({edit.links.length})</div>
+            <div className="gt-co-turma-alunos">
+              {elegiveis.map((a) => (
+                <label key={a.link_id} className="gt-plano-chk"><input type="checkbox" checked={edit.links.indexOf(a.link_id) >= 0} onChange={() => alternar(a.link_id)} /> <span>{a.nome}{a.status === "pendente" ? <small> (convite pendente)</small> : null}</span></label>
+              ))}
+            </div>
+            <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+              <button type="button" className="gt-btn" disabled={salvando || !edit.nome.trim() || !edit.links.length} onClick={salvar}>{salvando ? "Salvando…" : "Salvar turma"}</button>
+              <button type="button" className="gt-btn secondary" disabled={salvando} onClick={() => setEdit(null)}>Cancelar</button>
+            </div>
+            {edit.id && !apagarQ && <button type="button" className="gt-co-link danger" style={{ marginTop: 8 }} onClick={() => setApagarQ(true)}>Apagar turma</button>}
+            {edit.id && apagarQ && <div className="gt-co-turma-apagar" role="alert">Apagar a turma {edit.nome}? Os alunos e os treinos já enviados não mudam. <button type="button" className="gt-co-link danger" disabled={salvando} onClick={apagar}>Apagar</button> <button type="button" className="gt-co-link" onClick={() => setApagarQ(false)}>Manter</button></div>}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, onPendente, onConvidar, filaN, onMontar, coachUid, onMontarTurma, showToast }) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const hojeISO = todayISO();
@@ -14068,6 +14162,7 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
           {!filaTodos && filaHoje.length > 5 && <button type="button" className="gt-co-link gt-co-hoje-mais" onClick={() => setFilaTodos(true)}>Ver mais ({filaHoje.length - 5})</button>}
         </section>
       )}
+      {onMontarTurma && <CoachTurmas lista={lista} coachUid={coachUid} onMontarTurma={onMontarTurma} showToast={showToast} />}
       <input className="gt-input gt-co-busca" type="search" aria-label="Buscar aluno" placeholder="Buscar aluno" value={busca} onChange={(e) => setBusca(e.target.value)} />
       <div className="gt-co-chipsrow" role="group" aria-label="Filtros">
         {CHIPS.map(([k, t]) => (cont[k] > 0 || k === "todos") && (
@@ -14442,8 +14537,11 @@ function CoachAjustarAluno({ aluno, remover, setRemover }) {
 }
 
 // ---------- Treinador: montar e enviar a semana ----------
-function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent, planoLiberado }) {
+function CoachComposer({ aluno: alunoProp, turma, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent, planoLiberado }) {
   const ehModelo = !!modelo;
+  // Turma (fase 5): a mesma semana para vários alunos; envia uma por aluno.
+  const ehTurma = !ehModelo && !!turma;
+  const aluno = ehTurma ? { link_id: `turma:${turma.id}`, nome: turma.nome, status: "turma", coach_uid: turma.coach_uid, coach_nome: turma.coach_nome } : alunoProp;
   // Enviar como plano: a semana repetida por N semanas, com fases (fase 2, flag "plano").
   const segundaEsta = planoSemanaChave(todayISO());
   const segundaQueVem = addDays(segundaEsta, 7);
@@ -14500,7 +14598,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     (async () => {
       const pays = [];
       try { const { data } = await supabaseClient.from("coach_templates").select("*").order("created_at", { ascending: false }); (data || []).forEach((m) => m.payload && pays.push(m.payload)); } catch (e) {}
-      if (!ehModelo) { const e = await coachCall("coach_list_assignments", { p_link: aluno.link_id }); if (e.ok) (e.data || []).forEach((x) => { if (x.tipo === "semana" && x.payload) pays.push(x.payload); else if (x.tipo === "plano" && x.payload && x.payload.semana) pays.push(x.payload.semana); }); }
+      if (!ehModelo && !ehTurma) { const e = await coachCall("coach_list_assignments", { p_link: aluno.link_id }); if (e.ok) (e.data || []).forEach((x) => { if (x.tipo === "semana" && x.payload) pays.push(x.payload); else if (x.tipo === "plano" && x.payload && x.payload.semana) pays.push(x.payload.semana); }); }
       const vistos = new Set(); const out = [];
       pays.forEach((pl) => Object.values(pl.fichas || {}).forEach((f) => { const k = normalizeSearch(f.nome || ""); if (f.nome && !vistos.has(k)) { vistos.add(k); out.push(f); } }));
       if (vivo) setSalvas(out);
@@ -14514,6 +14612,14 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       if (ehModelo) {
         const base = modelo.payload ? coachClonar(modelo.payload) : coachSemanaVazia();
         setSem(base); inicial.current = JSON.stringify({ sem: base, msg: "" }); setPronto(true);
+        return;
+      }
+      if (ehTurma) {
+        let rasc = null;
+        try { rasc = JSON.parse(localStorage.getItem(chaveRasc) || "null"); } catch (x) {}
+        setSem(rasc && rasc.sem ? rasc.sem : coachSemanaVazia()); setMsg(rasc && rasc.msg ? rasc.msg : "");
+        inicial.current = JSON.stringify({ sem: coachSemanaVazia(), msg: "" });
+        setPronto(true);
         return;
       }
       const [e, d] = await Promise.all([coachCall("coach_list_assignments", { p_link: aluno.link_id }), coachCall("coach_student_detail", { p_link: aluno.link_id, p_dias: 28 })]);
@@ -14603,8 +14709,31 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     } catch (e) { showToast("Não consegui salvar o modelo agora"); }
     setEnviando(false);
   }
+  async function enviarTurma() {
+    setEnviando(true);
+    const plano = comoPlano && planoLiberado;
+    const membros = turma.membros || [];
+    let ok = 0, fila = 0, falhou = 0;
+    for (const a of membros) {
+      const semV = coachAnexarVideos(sem, videosMapa, aluno.coach_nome);
+      const payload = plano ? { semana: semV, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao } : semV;
+      const item = { link_id: a.link_id, nome: a.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
+      const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
+      if (r.ok) { ok++; if (a.status === "ativo") avisarPorPush("treinador", { link_id: item.link_id }); }
+      else if (coachEhErroDeRede(r.raw) || (typeof navigator !== "undefined" && navigator.onLine === false)) { coachFilaSalvar([...coachFilaLer(), item]); fila++; }
+      else falhou++;
+    }
+    setEnviando(false);
+    if (ok + fila === 0) { showToast("Não consegui enviar agora. Tente de novo"); return; }
+    try { localStorage.removeItem(chaveRasc); } catch (e) {}
+    logEvent(plano ? "coach_plano_turma" : "coach_semana_turma");
+    const oque = plano ? "Plano enviado" : "Semana enviada";
+    showToast(fila ? `${oque} para ${ok} de ${membros.length}. ${fila} na fila: sai quando você reconectar` : falhou ? `${oque} para ${ok} de ${membros.length}. Abra quem faltou e envie de novo` : `${oque} para ${ok} ${ok > 1 ? "alunos" : "aluno"} de ${turma.nome}`);
+    onEnviado(); onClose();
+  }
   async function enviar() {
     if (ehModelo) return salvarComoModeloAtual();
+    if (ehTurma) return enviarTurma();
     setEnviando(true);
     const plano = comoPlano && planoLiberado;
     const rem = podeAjustar ? { ajuste: true, remover } : {};
@@ -14661,20 +14790,20 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     } catch (e) { showToast("Não consegui gerar o PDF"); }
   }
   const motivoDesab = ehModelo ? (!pronto ? "Carregando…" : resumo.dias === 0 ? "Adicione pelo menos um dia de treino pra salvar" : "")
-    : !pronto ? "Carregando…" : resumo.dias === 0 ? "Adicione pelo menos um dia de treino pra enviar" : igualUltimo ? "Igual à última semana enviada. Mude algo pra enviar de novo" : "";
+    : !pronto ? "Carregando…" : ehTurma && !(turma.membros || []).length ? "A turma está sem alunos" : resumo.dias === 0 ? "Adicione pelo menos um dia de treino pra enviar" : igualUltimo ? "Igual à última semana enviada. Mude algo pra enviar de novo" : "";
   return (
     <div className="gt-focus gt-co-composer" style={{ zIndex: 55 }} role="dialog" aria-modal="true" aria-label={ehModelo ? `Modelo ${modelo.nome}` : `Montar semana de ${aluno.nome}`}>
-      <div className="gt-co-banner" role="status">{ehModelo ? <>Editando o modelo: <b>{modelo.nome}</b></> : <>Editando para: <b>{aluno.nome}</b>{aluno.status === "pendente" ? " (convite pendente)" : ""}</>}</div>
+      <div className="gt-co-banner" role="status">{ehModelo ? <>Editando o modelo: <b>{modelo.nome}</b></> : <>Editando para: <b>{aluno.nome}</b>{ehTurma ? ` (turma, ${(turma.membros || []).length} ${(turma.membros || []).length === 1 ? "aluno" : "alunos"})` : aluno.status === "pendente" ? " (convite pendente)" : ""}</>}</div>
       {!ehModelo && aluno.status === "pendente" && <div className="gt-co-aviso" role="status">{primeiroNome} ainda não aceitou o convite. A semana fica guardada e chega assim que {primeiroNome} entrar.</div>}
       {anamSim.length > 0 && <div className="gt-co-aviso aviso" role="note">{primeiroNome} respondeu "sim" na anamnese em: {anamneseSimTexto(anamSim)}. Peça liberação médica antes de treinos intensos.</div>}
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={tentarSair}><IconVoltar /></button>
-        <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : ehTurma ? `TURMA ${aluno.nome.toUpperCase()}` : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
         <button type="button" className="gt-co-menu-btn labeled" aria-label="Mais opções" aria-expanded={menu} onClick={() => setMenu(!menu)}>Mais ⋯</button>
       </div>
       {menu && (
         <div className="gt-co-menu" role="menu">
-          {!ehModelo && <button type="button" role="menuitem" onClick={duplicar}>Duplicar semana passada</button>}
+          {!ehModelo && !ehTurma && <button type="button" role="menuitem" onClick={duplicar}>Duplicar semana passada</button>}
           <button type="button" role="menuitem" onClick={abrirModelos}>Usar modelo</button>
           {!ehModelo && <button type="button" role="menuitem" onClick={() => { setMenu(false); setModeloNome(""); }}>Salvar como modelo</button>}
           {!ehModelo && <button type="button" role="menuitem" disabled={resumo.dias === 0} onClick={gerarPdf}>Gerar PDF da semana</button>}
@@ -14739,10 +14868,10 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       </div>
       <div className="gt-focus-footer gt-co-footer">
         <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
-        {!ehModelo && <textarea className="gt-input" aria-label={`Mensagem para ${primeiroNome} (opcional)`} placeholder={`Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
+        {!ehModelo && <textarea className="gt-input" aria-label={ehTurma ? "Mensagem para a turma (opcional)" : `Mensagem para ${primeiroNome} (opcional)`} placeholder={ehTurma ? "Mensagem para a turma (opcional)" : `Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
         {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana` : ""}. Dá para desfazer pelo app.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
-        <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
+        <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : ehTurma ? `${comoPlano && planoLiberado ? "Enviar plano" : "Enviar"} para ${(turma.membros || []).length} ${(turma.membros || []).length === 1 ? "aluno" : "alunos"}` : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
       </div>
 
       {diaAberto != null && (
@@ -14827,7 +14956,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
         <div className="gt-modal-backdrop" onClick={() => setConfirmaSair(false)}>
           <div className="gt-modal" role="alertdialog" aria-modal="true" aria-label={ehModelo ? "Sair sem salvar" : "Sair sem enviar"} onClick={(e) => e.stopPropagation()}>
             <h3>{ehModelo ? "Sair sem salvar?" : "Sair sem enviar?"}</h3>
-            <p>{ehModelo ? "As mudanças neste modelo ainda não foram salvas." : `Suas mudanças em ${aluno.nome} ainda não foram enviadas. Guardo como rascunho pra você continuar depois.`}</p>
+            <p>{ehModelo ? "As mudanças neste modelo ainda não foram salvas." : `Suas mudanças ${ehTurma ? "na turma " : "em "}${aluno.nome} ainda não foram enviadas. Guardo como rascunho pra você continuar depois.`}</p>
             <div className="gt-modal-actions gt-modal-actions-col">
               {!ehModelo && <button type="button" className="gt-btn" onClick={onClose}>Guardar rascunho e sair</button>}
               <button type="button" className="gt-btn gt-btn-danger" onClick={() => { try { if (!ehModelo) localStorage.removeItem(chaveRasc); } catch (e) {} onClose(); }}>Descartar</button>
@@ -16423,6 +16552,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   const [offline, setOffline] = useState(false);
   const [aberto, setAberto] = useState(null); // aluno
   const [montando, setMontando] = useState(null);
+  const [montandoTurma, setMontandoTurma] = useState(null); // { id, nome, membros }
   const [modeloEd, setModeloEd] = useState(null); // { id?, nome, payload } (composer em modo modelo)
   const [novoModelo, setNovoModelo] = useState(null); // string: pedindo o nome
   const [modelosKey, setModelosKey] = useState(0);
@@ -16541,7 +16671,8 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
             )}
             {ativo && (
               <CoachAlunosLista lista={lista} carregando={carregando} offline={offline} atualizadoEm={atualizadoEm} filaN={filaN}
-                onAbrir={(a, abaInicial) => setAberto(abaInicial ? { ...a, abaInicial } : a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} onMontar={(a) => setMontando(a)} />
+                onAbrir={(a, abaInicial) => setAberto(abaInicial ? { ...a, abaInicial } : a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} onMontar={(a) => setMontando(a)}
+                coachUid={session.user.id} showToast={showToast} onMontarTurma={(t) => setMontandoTurma(t)} />
             )}
           </>
         )}
@@ -16571,6 +16702,10 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
       {montando && (
         <CoachComposer planoLiberado={planoLiberado} aluno={{ ...montando, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
           onClose={() => setMontando(null)} onEnviado={() => { setFilaN(coachFilaLer().length); setRefreshKey((k) => k + 1); carregar(); }} />
+      )}
+      {montandoTurma && (
+        <CoachComposer planoLiberado={planoLiberado} turma={{ ...montandoTurma, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
+          onClose={() => setMontandoTurma(null)} onEnviado={() => { setFilaN(coachFilaLer().length); setRefreshKey((k) => k + 1); carregar(); }} />
       )}
       {modeloEd && (
         <CoachComposer modelo={modeloEd} aluno={{ link_id: "modelo:" + (modeloEd.id || "novo"), nome: modeloEd.nome, coach_uid: session.user.id }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
