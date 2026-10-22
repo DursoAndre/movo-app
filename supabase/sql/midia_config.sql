@@ -64,7 +64,7 @@ begin
     'buckets', coalesce((select jsonb_agg(jsonb_build_object('bucket', bucket_id, 'pasta', pasta, 'arquivos', n, 'bytes', b, 'bytes_7d', b7) order by b desc)
       from (select bucket_id, pasta, count(*) n, sum(bytes) b, sum(bytes) filter (where created_at > now() - interval '7 days') b7 from o group by 1, 2) x), '[]'::jsonb),
     'total_bytes', (select coalesce(sum(bytes), 0) from o),
-    'top', coalesce((select jsonb_agg(jsonb_build_object('email', u.email, 'bytes', t.b, 'arquivos', t.n) order by t.b desc)
+    'top', coalesce((select jsonb_agg(jsonb_build_object('id', t.dono, 'email', u.email, 'bytes', t.b, 'arquivos', t.n) order by t.b desc)
       from (select dono, sum(bytes) b, count(*) n from o where bucket_id in ('medidas', 'videos') group by 1 order by 2 desc limit 5) t
       left join auth.users u on u.id::text = t.dono), '[]'::jsonb)
   ) into r;
