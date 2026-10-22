@@ -184,6 +184,8 @@ Marcos recentes:
 
 ## 8. Registro de decisões (mais recentes primeiro)
 
+- **22/10/2026 (Andre: "Pode fazer ambos, aceito suas sugestões. Passe pelas revisões de produto UX e design"):** fase 4 (paridade de força) aprovada inteira: importar do Hevy, Strong e MFIT, Minhas medidas e fotos, anamnese e avaliação do treinador, layout do treinador no computador e vídeo. Limites de vídeo aceitos: do aluno no comentário da sessão até 30 s, compactado no aparelho, apagado após 90 dias ou ao fim do vínculo; do treinador na biblioteca até 60 s, compactado, sem expirar. Cota do treinador ficou como padrão do Claude (ver a seção do vídeo quando publicada). Toda tela passa por revisão de produto, UX e design antes de chegar ao Andre.
+
 - **21/10/2026 (v218, Andre: "E deixa ligado por padrão tbm, se a pessoa quiser ela desliga" e "Pode publicar"):** notificações ligadas por padrão. Como o navegador exige o "Permitir" uma vez, quem já deu permissão é inscrito sozinho; quem não deu vê o convite no contexto; quem desligou em Configurações não é religado.
 
 - **21/10/2026 (v215, Andre: "pode publicar"):** o card "Sua semana mudou. Quer reorganizar?" aparecia ~1s e sumia porque `stravaConnected` começava `false` até a consulta voltar. Agora fica em cache no aparelho (`treino-app:stravaConnected`, `null` = ainda não sei, limpo no logout) e `ajusteLiberado` exige `cloudSynced` e Strava conhecido; convite do Strava e "Conectar com o Strava" do menu usam `=== false`. **Exceção decidida pelo Andre:** a conta dele (`ADMIN_EMAIL`) continua com o ajuste da semana mesmo com Strava (o `feature_allowed` já liberava admin; só o app escondia). Sem SQL novo (PR #21).
