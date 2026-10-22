@@ -4488,8 +4488,223 @@ function histImagemB64(file) {
     img.src = url;
   });
 }
-// Um arquivo vira uma lista de "fontes": { nome, tipo: texto|pdf|imagem, texto|b64, cabecalho? }.
-async function histLerArquivo(file) {
+// Hevy e Strong exportam CSV com o mesmo jeito de nomear ("Bench Press (Barbell)"). Lemos aqui mesmo,
+// sem IA: é instantâneo, não gasta cota e não tem limite de tamanho.
+const HIST_APP_NOMES = {
+  "bench press (barbell)": "Supino reto com barra", "bench press (dumbbell)": "Supino reto com halteres", "bench press (smith machine)": "Supino reto na Smith",
+  "bench press (machine)": "Supino reto na máquina", "chest press (machine)": "Supino reto na máquina", "incline bench press (barbell)": "Supino inclinado com barra",
+  "incline bench press (dumbbell)": "Supino inclinado com halteres", "incline bench press (smith machine)": "Supino inclinado na Smith", "incline chest press (machine)": "Supino inclinado na máquina",
+  "decline bench press (barbell)": "Supino declinado com barra", "decline bench press (dumbbell)": "Supino declinado com halteres", "close grip bench press": "Supino fechado (pegada fechada)",
+  "bench press - close grip (barbell)": "Supino fechado (pegada fechada)", "floor press (barbell)": "Supino no chão (floor press)", "chest fly (dumbbell)": "Crucifixo reto com halteres",
+  "incline chest fly (dumbbell)": "Crucifixo inclinado com halteres", "chest fly (machine)": "Peck deck (voador)", "butterfly (pec deck)": "Peck deck (voador)", "pec deck (machine)": "Peck deck (voador)",
+  "cable crossover": "Crucifixo no cross-over", "cable fly crossovers": "Crucifixo no cross-over", "low cable fly crossovers": "Crossover polia baixa", "push up": "Flexão de braço", "push-up": "Flexão de braço",
+  "chest dip": "Paralelas (dips)", "triceps dip": "Paralelas (dips)", "dip": "Paralelas (dips)", "bench dip": "Mergulho no banco (dips)", "pullover (dumbbell)": "Pullover com halter",
+  "squat (barbell)": "Agachamento livre ou na máquina", "full squat": "Agachamento livre ou na máquina", "squat (smith machine)": "Agachamento na Smith", "front squat (barbell)": "Agachamento frontal (front squat)",
+  "front squat": "Agachamento frontal (front squat)", "goblet squat": "Agachamento goblet", "goblet squat (kettlebell)": "Agachamento goblet", "goblet squat (dumbbell)": "Agachamento goblet", "hack squat": "Agachamento hack",
+  "hack squat (machine)": "Agachamento hack", "bulgarian split squat": "Agachamento búlgaro", "bulgarian split squat (dumbbell)": "Agachamento búlgaro", "box squat (barbell)": "Agachamento no caixote (box squat)",
+  "overhead squat (barbell)": "Agachamento overhead (overhead squat)", "pistol squat": "Agachamento pistol", "sumo squat": "Agachamento sumô", "air squat": "Agachamento com peso corporal (air squat)", "squat (bodyweight)": "Agachamento com peso corporal (air squat)",
+  "jump squat": "Agachamento com salto (jump squat)", "leg press": "Leg press 45°", "leg press (machine)": "Leg press 45°", "horizontal leg press": "Leg press horizontal", "single leg press": "Leg press unilateral",
+  "leg extension (machine)": "Cadeira extensora", "leg extension": "Cadeira extensora", "seated leg curl (machine)": "Cadeira flexora (flexora sentada)", "lying leg curl (machine)": "Mesa flexora",
+  "leg curl (machine)": "Mesa flexora", "standing leg curl": "Mesa flexora em pé", "hip abduction (machine)": "Cadeira abdutora", "hip adduction (machine)": "Cadeira adutora",
+  "lunge (dumbbell)": "Afundo (avanço) com halteres", "lunge (barbell)": "Afundo com barra", "lunge": "Afundo (avanço) com halteres", "walking lunge": "Afundo caminhando (passada)", "walking lunge (dumbbell)": "Afundo caminhando (passada)",
+  "reverse lunge": "Afundo reverso (avanço para trás)", "reverse lunge (dumbbell)": "Afundo reverso (avanço para trás)", "split squat (dumbbell)": "Afundo estático (split squat)", "lateral lunge": "Afundo lateral",
+  "step up": "Step up", "step up (dumbbell)": "Step up", "hip thrust (barbell)": "Elevação pélvica (hip thrust)", "hip thrust": "Elevação pélvica (hip thrust)", "hip thrust (machine)": "Hip thrust na máquina",
+  "hip thrust (smith machine)": "Hip thrust na Smith", "glute bridge": "Ponte de glúteo (glute bridge)", "single leg glute bridge": "Ponte de glúteo unilateral", "glute kickback (machine)": "Coice na máquina (glúteo)",
+  "cable kickback": "Glúteo na polia (coice)", "glute kickback (cable)": "Glúteo na polia (coice)", "standing calf raise": "Panturrilha em pé", "standing calf raise (machine)": "Panturrilha em pé",
+  "standing calf raise (smith machine)": "Panturrilha em pé", "seated calf raise": "Panturrilha sentado", "seated calf raise (machine)": "Panturrilha sentado", "calf press on leg press": "Panturrilha no leg press",
+  "calf press (machine)": "Panturrilha no leg press", "deadlift (barbell)": "Levantamento terra (deadlift)", "deadlift": "Levantamento terra (deadlift)", "sumo deadlift": "Levantamento terra sumô",
+  "sumo deadlift (barbell)": "Levantamento terra sumô", "trap bar deadlift": "Levantamento terra com barra hexagonal (trap bar)", "romanian deadlift (barbell)": "Stiff com halteres ou barra",
+  "romanian deadlift (dumbbell)": "Stiff com halteres ou barra", "romanian deadlift": "Stiff com halteres ou barra", "stiff leg deadlift": "Stiff com halteres ou barra", "straight leg deadlift": "Stiff com halteres ou barra",
+  "single leg romanian deadlift": "Stiff unilateral", "good morning (barbell)": "Good morning", "rack pull": "Rack pull", "back extension": "Hiperextensão lombar", "hyperextension": "Hiperextensão lombar",
+  "back extension (hyperextension)": "Hiperextensão lombar", "nordic hamstrings curls": "Curl nórdico (nordic curl)", "glute ham raise": "Glute-ham raise (GHD)",
+  "pull up": "Barra fixa (pull-up)", "pull-up": "Barra fixa (pull-up)", "pull up (assisted)": "Barra fixa assistida", "assisted pull up": "Barra fixa assistida", "chin up": "Barra fixa supinada (chin-up)",
+  "chin-up": "Barra fixa supinada (chin-up)", "neutral grip pull up": "Barra fixa pegada neutra", "lat pulldown (cable)": "Puxada frente na polia", "lat pulldown (machine)": "Puxada frente na polia",
+  "lat pulldown": "Puxada frente na polia", "lat pulldown - close grip (cable)": "Puxada com triângulo (pegada neutra)", "close grip lat pulldown": "Puxada com triângulo (pegada neutra)",
+  "reverse grip lat pulldown (cable)": "Puxada com pegada supinada", "single arm lat pulldown": "Puxada unilateral na polia", "straight arm lat pulldown (cable)": "Pulldown braço reto (pullover na polia)",
+  "straight arm pulldown": "Pulldown braço reto (pullover na polia)", "seated cable row - v grip (cable)": "Remada baixa na polia", "seated cable row": "Remada baixa na polia", "seated row (cable)": "Remada baixa na polia",
+  "seated row (machine)": "Remada na máquina sentada", "seated wide-grip row (cable)": "Remada aberta na polia", "bent over row (barbell)": "Remada curvada com barra ou halteres", "bent over row (dumbbell)": "Remada curvada com barra ou halteres",
+  "bent over row": "Remada curvada com barra ou halteres", "pendlay row (barbell)": "Remada Pendlay", "dumbbell row": "Remada unilateral com halteres", "single arm dumbbell row": "Remada unilateral com halteres",
+  "dumbbell row (single arm)": "Remada unilateral com halteres", "one arm dumbbell row": "Remada unilateral com halteres", "t bar row": "Remada cavalinho (T-bar)", "t-bar row": "Remada cavalinho (T-bar)",
+  "chest supported incline row (dumbbell)": "Remada com apoio no peito (chest supported)", "chest supported row": "Remada com apoio no peito (chest supported)", "inverted row": "Remada invertida (barra baixa)",
+  "meadows rows (barbell)": "Remada Meadows", "landmine row": "Remada landmine", "face pull (cable)": "Face pull na polia", "face pull": "Face pull na polia", "shrug (barbell)": "Encolhimento com barra",
+  "shrug (dumbbell)": "Encolhimento com halteres (trapézio)", "overhead press (barbell)": "Desenvolvimento militar com barra", "overhead press (dumbbell)": "Desenvolvimento com halteres",
+  "shoulder press (dumbbell)": "Desenvolvimento com halteres", "seated overhead press (dumbbell)": "Desenvolvimento com halteres", "shoulder press (machine)": "Desenvolvimento na máquina",
+  "seated shoulder press (machine)": "Desenvolvimento na máquina", "overhead press (smith machine)": "Desenvolvimento na Smith", "seated overhead press (barbell)": "Desenvolvimento sentado com barra",
+  "arnold press (dumbbell)": "Desenvolvimento Arnold", "arnold press": "Desenvolvimento Arnold", "push press": "Push press", "lateral raise (dumbbell)": "Elevação lateral com halteres", "lateral raise": "Elevação lateral com halteres",
+  "lateral raise (cable)": "Elevação lateral na polia", "single arm lateral raise (cable)": "Elevação lateral na polia", "lateral raise (machine)": "Elevação lateral na máquina", "front raise (dumbbell)": "Elevação frontal com halteres",
+  "front raise (barbell)": "Elevação frontal com barra", "front raise (cable)": "Elevação frontal na polia", "front raise (plate)": "Elevação frontal com anilha", "plate front raise": "Elevação frontal com anilha",
+  "rear delt reverse fly (dumbbell)": "Crucifixo inverso com halteres", "reverse fly (dumbbell)": "Crucifixo inverso com halteres", "rear delt reverse fly (machine)": "Crucifixo inverso na máquina",
+  "reverse fly (machine)": "Crucifixo inverso na máquina", "rear delt reverse fly (cable)": "Crucifixo inverso na polia", "upright row (barbell)": "Remada alta", "upright row": "Remada alta",
+  "bicep curl (barbell)": "Rosca direta com barra ou halteres", "bicep curl (dumbbell)": "Rosca alternada com halteres", "biceps curl (barbell)": "Rosca direta com barra ou halteres", "biceps curl (dumbbell)": "Rosca alternada com halteres",
+  "curl (barbell)": "Rosca direta com barra ou halteres", "bicep curl (cable)": "Rosca direta na polia baixa", "ez bar biceps curl": "Rosca com barra W", "bicep curl (ez bar)": "Rosca com barra W", "ez bar curl": "Rosca com barra W",
+  "hammer curl (dumbbell)": "Rosca martelo", "hammer curl": "Rosca martelo", "hammer curl (cable)": "Rosca martelo na corda (polia)", "rope cable curl": "Rosca martelo na corda (polia)", "preacher curl (barbell)": "Rosca Scott (concentrada)",
+  "preacher curl (dumbbell)": "Rosca Scott (concentrada)", "preacher curl (machine)": "Rosca Scott na máquina", "concentration curl": "Rosca Scott (concentrada)", "incline curl (dumbbell)": "Rosca inclinada com halteres",
+  "incline dumbbell curl": "Rosca inclinada com halteres", "spider curl (dumbbell)": "Rosca spider", "reverse curl (barbell)": "Rosca inversa", "reverse curl": "Rosca inversa", "zottman curl (dumbbell)": "Rosca Zottman",
+  "drag curl": "Rosca drag", "21s bicep curl": "Rosca 21", "bayesian curl": "Rosca Bayesian", "wrist curl (barbell)": "Rosca de punho (wrist curl)", "wrist curl (dumbbell)": "Rosca de punho (wrist curl)",
+  "triceps pushdown": "Tríceps na polia com barra reta", "triceps pushdown (cable - straight bar)": "Tríceps na polia com barra reta", "triceps rope pushdown": "Tríceps na polia (corda)", "triceps pushdown (rope)": "Tríceps na polia (corda)",
+  "triceps extension (cable)": "Tríceps na polia (corda)", "triceps pushdown (v bar)": "Tríceps na polia com barra V", "skullcrusher (barbell)": "Tríceps testa (com barra ou halteres)", "skullcrusher (dumbbell)": "Tríceps testa (com barra ou halteres)",
+  "skull crusher (barbell)": "Tríceps testa (com barra ou halteres)", "lying triceps extension (barbell)": "Tríceps testa (com barra ou halteres)", "overhead triceps extension (cable)": "Tríceps francês na polia",
+  "triceps extension (dumbbell)": "Tríceps francês", "overhead triceps extension (dumbbell)": "Tríceps francês", "triceps extension (barbell)": "Tríceps francês", "single arm triceps extension (dumbbell)": "Tríceps francês unilateral com halter",
+  "triceps kickback (dumbbell)": "Tríceps coice com halter", "triceps kickback (cable)": "Tríceps coice na polia", "triceps dip (machine)": "Mergulho na máquina", "seated dip machine": "Mergulho na máquina",
+  "triceps extension (machine)": "Tríceps na máquina", "diamond push up": "Flexão diamante", "jm press (barbell)": "JM press",
+  "crunch": "Abdominal supra (crunch)", "crunch (machine)": "Abdominal na polia ou máquina", "cable crunch": "Abdominal na polia ou máquina", "sit up": "Abdominal completo (sit-up)", "sit-up": "Abdominal completo (sit-up)",
+  "decline crunch": "Abdominal declinado", "bicycle crunch": "Abdominal bicicleta", "v up": "Abdominal canivete (V-up)", "ab wheel": "Abdominal com roda (ab wheel)", "ab wheel rollout": "Abdominal com roda (ab wheel)",
+  "plank": "Prancha", "side plank": "Prancha lateral", "hanging leg raise": "Elevação de pernas na barra fixa", "hanging knee raise": "Elevação de joelhos na barra fixa", "leg raise": "Elevação de pernas", "lying leg raise": "Elevação de pernas",
+  "knee raise parallel bars": "Elevação de joelhos na cadeira romana", "captains chair knee raise": "Elevação de joelhos na cadeira romana", "russian twist": "Rotação russa (russian twist)", "mountain climber": "Escalador (mountain climber)",
+  "dead bug": "Dead bug (inseto morto)", "hollow body hold": "Hollow hold (barquinha)", "toes to bar": "Toes to bar", "pallof press": "Pallof press", "cable woodchopper": "Lenhador na polia (wood chop)", "wood chop (cable)": "Lenhador na polia (wood chop)",
+  "kettlebell swing": "Kettlebell swing", "farmers walk": "Caminhada do fazendeiro (farmers carry)", "farmer's walk": "Caminhada do fazendeiro (farmers carry)", "thruster (barbell)": "Thruster com barra", "thruster (dumbbell)": "Thruster com halteres",
+  "power clean": "Power clean", "clean and jerk": "Clean and jerk (arremesso)", "snatch": "Squat snatch (arranco)", "hang clean": "Hang clean", "burpee": "Burpee", "box jump": "Salto na caixa (box jump)", "wall ball": "Wall ball (bola na parede)",
+  "battle ropes": "Corda naval (battle rope)", "jump rope": "Pular corda", "jumping jack": "Polichinelo (jumping jack)", "sled push": "Sled push (empurrar trenó)", "muscle up": "Muscle-up na barra", "rope climb": "Subida na corda (rope climb)",
+  "handstand push up": "Flexão em parada de mão (handstand push-up)", "rowing machine": "Remo ergômetro", "rowing (machine)": "Remo ergômetro", "row (machine)": "Remo ergômetro", "elliptical trainer": "Elíptico", "elliptical": "Elíptico",
+  "stair machine": "Escada (simulador de escada)", "stair climber": "Escada (simulador de escada)", "cycling (indoor)": "Bicicleta ergométrica", "stationary bike": "Bicicleta ergométrica", "spinning": "Spinning (bike indoor)",
+  "air bike": "Bike de ar (air bike)", "ski erg": "SkiErg", "skierg": "SkiErg", "treadmill": "Esteira (caminhada/corrida)", "walking": "Caminhada ao ar livre", "swimming": "Natação",
+};
+// Cardio sem carga: vira atividade (como corrida no app).
+const HIST_APP_ATIV = { running: "Corrida", "running (treadmill)": "Corrida na esteira", treadmill: "Esteira", walking: "Caminhada", cycling: "Bike", "cycling (indoor)": "Bike indoor", "stationary bike": "Bike indoor",
+  spinning: "Bike indoor", swimming: "Natação", "rowing machine": "Remo", "rowing (machine)": "Remo", "row (machine)": "Remo", elliptical: "Elíptico", "elliptical trainer": "Elíptico", hiking: "Trilha",
+  "stair machine": "Escada", "stair climber": "Escada", "ski erg": "SkiErg", skierg: "SkiErg", "air bike": "Air bike" };
+function histAppChave(s) { return String(s || "").toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ").trim(); }
+function histAppNomeEx(nome) {
+  const k = histAppChave(nome);
+  if (HIST_APP_NOMES[k]) return HIST_APP_NOMES[k];
+  const base = k.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return HIST_APP_NOMES[base] || String(nome || "").trim();
+}
+// Lê CSV com aspas ("a, b" e "" dentro). Separador: vírgula ou ponto e vírgula (o que aparecer mais no cabeçalho).
+function histCsvLinhas(texto) {
+  const t = String(texto || "").replace(/^﻿/, "");
+  const cab = t.split(/\r?\n/)[0] || "";
+  const sep = (cab.match(/;/g) || []).length > (cab.match(/,/g) || []).length ? ";" : ",";
+  const linhas = []; let campo = "", linha = [], aspas = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (aspas) {
+      if (c === '"') { if (t[i + 1] === '"') { campo += '"'; i++; } else aspas = false; }
+      else campo += c;
+    } else if (c === '"') aspas = true;
+    else if (c === sep) { linha.push(campo); campo = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && t[i + 1] === "\n") i++;
+      linha.push(campo); campo = "";
+      if (linha.some((x) => x !== "")) linhas.push(linha);
+      linha = [];
+    } else campo += c;
+  }
+  linha.push(campo);
+  if (linha.some((x) => x !== "")) linhas.push(linha);
+  return linhas;
+}
+// Qual app gerou o CSV, pelo cabeçalho. null = não é do Hevy nem do Strong.
+function histAppDetectar(texto) {
+  const cab = histAppChave(String(texto || "").replace(/^﻿/, "").split(/\r?\n/)[0]).replace(/"/g, "");
+  if (/exercise_title/.test(cab) && /start_time/.test(cab) && /set_index|reps/.test(cab)) return "Hevy";
+  if (/exercise name/.test(cab) && /workout name/.test(cab) && /set order/.test(cab)) return "Strong";
+  return null;
+}
+const HIST_MESES_EN = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+// "2024-10-21 18:30:00", "21 Oct 2024, 18:30", "Oct 21, 2024", "21/10/2024" -> "2024-10-21".
+function histAppData(s) {
+  const t = String(s || "").trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = t.match(/^(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?\s+(\d{4})/);
+  if (m && HIST_MESES_EN[m[2].toLowerCase()]) return `${m[3]}-${String(HIST_MESES_EN[m[2].toLowerCase()]).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = t.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  if (m && HIST_MESES_EN[m[1].toLowerCase()]) return `${m[3]}-${String(HIST_MESES_EN[m[1].toLowerCase()]).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return null;
+}
+function histAppMin(ini, fim, dur) {
+  const n = Number(dur);
+  if (isFinite(n) && n > 0) return n > 600 ? Math.round(n / 60) : Math.round(n); // Strong novo manda segundos
+  const h = String(dur || "").match(/(\d+)\s*h/), mi = String(dur || "").match(/(\d+)\s*m/);
+  if (h || mi) return (h ? Number(h[1]) * 60 : 0) + (mi ? Number(mi[1]) : 0) || null;
+  const a = Date.parse(String(ini || "").replace(",", "")), b = Date.parse(String(fim || "").replace(",", ""));
+  return isFinite(a) && isFinite(b) && b > a ? Math.round((b - a) / 60000) : null;
+}
+// CSV do Hevy ou do Strong -> { sessoes, ativ, avisos } no mesmo formato de histLimpar.
+// unidade: "kg" | "lb" | "auto" (só vale quando o arquivo não diz a unidade).
+function histAppLer(texto, app, unidade, hoje) {
+  const linhas = histCsvLinhas(texto);
+  const out = { sessoes: [], ativ: [], avisos: [] };
+  if (linhas.length < 2) return out;
+  const cab = linhas[0].map((c) => histAppChave(c));
+  const col = (...nomes) => { for (const n of nomes) { const i = cab.findIndex((c) => c === n || c.startsWith(n + " (") || c.startsWith(n + "_")); if (i >= 0) return i; } return -1; };
+  const iData = app === "Hevy" ? col("start_time") : col("date");
+  const iFim = col("end_time");
+  const iTreino = app === "Hevy" ? col("title") : col("workout name");
+  const iDur = col("duration", "duration (sec)");
+  const iEx = app === "Hevy" ? col("exercise_title") : col("exercise name");
+  const iTipo = col("set_type"), iOrdem = col("set order");
+  const iPeso = app === "Hevy" ? col("weight_kg", "weight_lbs") : col("weight");
+  const iReps = col("reps");
+  const iDist = app === "Hevy" ? col("distance_km", "distance_miles") : col("distance");
+  const iSeg = app === "Hevy" ? col("duration_seconds") : col("seconds");
+  const iNota = app === "Hevy" ? col("exercise_notes") : col("notes");
+  const iUnPeso = col("weight unit"), iUnDist = col("distance unit");
+  if (iData < 0 || iEx < 0) return out;
+  const cabPeso = iPeso >= 0 ? cab[iPeso] : "";
+  const pesoLb = /lbs|lb\)/.test(cabPeso) ? true : /kg/.test(cabPeso) ? false : null;
+  const cabDist = iDist >= 0 ? cab[iDist] : "";
+  const fatorDist = /miles/.test(cabDist) ? 1.609 : /meters|\(m\)/.test(cabDist) ? 0.001 : 1;
+  let assumiuKg = false, converteuLb = false;
+  const sess = new Map(), ativ = new Map();
+  const num = (v) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return v !== "" && isFinite(n) ? n : null; };
+  for (let r = 1; r < linhas.length; r++) {
+    const L = linhas[r];
+    const d = histAppData(L[iData]);
+    const exNome = (L[iEx] || "").trim();
+    if (!d || !exNome || !histDataValida(d, hoje)) continue;
+    const ordem = iOrdem >= 0 ? String(L[iOrdem] || "").trim() : "";
+    if (/^rest/i.test(ordem)) continue;
+    const tipo = iTipo >= 0 ? String(L[iTipo] || "").toLowerCase() : "";
+    if (tipo === "warmup" || /^w/i.test(ordem)) continue; // aquecimento não entra na carga
+    const nomeTreino = (iTreino >= 0 && (L[iTreino] || "").trim()) || "Treino";
+    const chave = `${d}|${nomeTreino}`;
+    let peso = iPeso >= 0 ? num(L[iPeso]) : null;
+    const lbLinha = iUnPeso >= 0 ? /lb/i.test(L[iUnPeso] || "") : null;
+    const ehLb = lbLinha != null ? lbLinha : pesoLb != null ? pesoLb : unidade === "lb";
+    if (peso != null && pesoLb == null && lbLinha == null && unidade !== "lb") assumiuKg = true;
+    if (peso != null && ehLb) { peso = Math.round((peso / 2.2046) * 10) / 10; converteuLb = true; }
+    if (peso === 0) peso = null;
+    const reps = iReps >= 0 ? num(L[iReps]) : null;
+    let km = iDist >= 0 ? num(L[iDist]) : null;
+    if (km != null) {
+      const fUn = iUnDist >= 0 ? (/mi/i.test(L[iUnDist] || "") ? 1.609 : /^m$|meters/i.test(L[iUnDist] || "") ? 0.001 : 1) : fatorDist;
+      km = Math.round(km * fUn * 100) / 100 || null;
+    }
+    const seg = iSeg >= 0 ? num(L[iSeg]) : null;
+    const k = histAppChave(exNome);
+    const kAtiv = HIST_APP_ATIV[k] || HIST_APP_ATIV[k.replace(/\s*\([^)]*\)\s*$/, "")];
+    if (!reps && (km || seg) && (kAtiv || (km && !peso))) {
+      const nAtiv = kAtiv || histTitulo(exNome);
+      const ka = `${d}|${histNorm(nAtiv)}`;
+      const a = ativ.get(ka) || { d, n: nAtiv, km: null, min: null };
+      if (km) a.km = Math.round(((a.km || 0) + km) * 100) / 100;
+      if (seg) a.min = Math.round((a.min || 0) + seg / 60) || null;
+      ativ.set(ka, a);
+      continue;
+    }
+    if (peso == null && reps == null) continue;
+    let s = sess.get(chave);
+    if (!s) { s = { d, n: nomeTreino.slice(0, 60), min: histAppMin(L[iData], iFim >= 0 ? L[iFim] : "", iDur >= 0 ? L[iDur] : ""), ex: [] }; sess.set(chave, s); }
+    const nomePt = histAppNomeEx(exNome).slice(0, 80);
+    let e = s.ex.find((x) => x.n === nomePt);
+    if (!e) { e = { n: nomePt, s: [], o: "" }; s.ex.push(e); }
+    e.s.push({ peso, reps: reps == null ? null : Math.round(reps) });
+    const nota = iNota >= 0 ? String(L[iNota] || "").trim() : "";
+    if (nota && !e.o) e.o = nota.slice(0, 200);
+  }
+  out.sessoes = [...sess.values()].map((s) => ({ ...s, min: s.min && s.min >= 1 && s.min <= 400 ? s.min : null }));
+  out.ativ = [...ativ.values()].map((a) => ({ ...a, min: a.min && a.min >= 1 ? a.min : null }));
+  if (converteuLb) out.avisos.push(`Cargas do ${app} convertidas de lb para kg.`);
+  else if (assumiuKg) out.avisos.push(`O arquivo do ${app} não diz a unidade; considerei kg. Se for lb, escolha "lb" e importe de novo.`);
+  return out;
+}
+// Um arquivo vira uma lista de "fontes": { nome, tipo: texto|pdf|imagem|app, texto|b64, cabecalho? }.
+// Com opts.apps, CSV do Hevy ou do Strong vira tipo "app" e é lido aqui mesmo, sem IA.
+async function histLerArquivo(file, opts) {
   const nome = file.name || "arquivo";
   const ext = (nome.split(".").pop() || "").toLowerCase();
   const tipo = file.type || "";
@@ -4517,6 +4732,8 @@ async function histLerArquivo(file) {
   }
   if (/^(txt|csv|tsv|md|json|log|text)$/.test(ext) || /^text\//.test(tipo) || !ext) {
     const texto = await file.text();
+    const app = opts && opts.apps ? histAppDetectar(texto) : null;
+    if (app) return [{ nome, tipo: "app", app, texto }];
     return [{ nome, tipo: "texto", texto, cabecalho: /^(csv|tsv)$/.test(ext) ? (texto.split("\n")[0] || "").trim() : "" }];
   }
   throw new Error(`${nome}: formato não suportado. Use texto, CSV, Excel, PDF, zip do WhatsApp ou foto.`);
@@ -4572,6 +4789,8 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
   const fmtD = (iso) => { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
   const semLimite = uso && uso.limite >= 1000;
   const podeUsar = uso && (semLimite || uso.usados < uso.limite);
+  // CSV do Hevy/Strong é lido no aparelho; a IA só entra se houver outro arquivo ou texto colado.
+  const precisaIA = !fontes.length || fontes.some((f) => f.tipo !== "app") || !!colado.trim();
 
   async function escolherArquivos(ev) {
     const lista = Array.from(ev.target.files || []);
@@ -4581,7 +4800,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     const novas = [];
     const erros = [];
     for (const f of lista) {
-      try { (await histLerArquivo(f)).forEach((x) => novas.push({ ...x, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` })); }
+      try { (await histLerArquivo(f, { apps: true })).forEach((x) => novas.push({ ...x, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` })); }
       catch (e) { erros.push(e && e.message ? e.message : `${f.name}: não consegui ler.`); }
     }
     if (!vivoRef.current) return;
@@ -4620,7 +4839,15 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
   async function analisar() {
     setErro("");
     const { partes, cortadas } = histMontarPartes(fontes, colado, lado);
-    if (!partes.length) { setErro("Escolha um arquivo ou cole o texto do seu histórico."); return; }
+    const locais = fontes.filter((f) => f.tipo === "app").map((f) => histAppLer(f.texto, f.app, unidade, hojeISO));
+    if (!partes.length && !locais.length) { setErro("Escolha um arquivo ou cole o texto do seu histórico."); return; }
+    if (!partes.length) {
+      const j = histJuntar(locais);
+      if (!j.sessoes.length && !j.ativ.length) { setErro("Não encontrei treinos nesse arquivo."); return; }
+      onEvent("hist_import_app", { apps: [...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))].join(",") });
+      setFalhas(0); setJuntado(j); setEtapa("revisao");
+      return;
+    }
     let r;
     try {
       const resp = await supabaseClient.rpc("reserve_ai_generation", { p_kind: "historico", p_label: "importar histórico", max_per_month: 3 });
@@ -4649,7 +4876,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     };
     await Promise.all([worker(), worker(), worker()]);
     if (cancelRef.current || !vivoRef.current) return;
-    const bons = resultados.filter(Boolean);
+    const bons = resultados.filter(Boolean).concat(locais);
     const devolver = async () => { try { await supabaseClient.rpc("refund_plan_generation", { p_id: reservaRef.current }); } catch (e) {} };
     if (!bons.length) {
       await devolver();
@@ -4701,10 +4928,11 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
               {lendoArq ? "Lendo arquivos…" : <><Ei e="📎" /> Escolher arquivos</>}
               <input type="file" multiple style={{ display: "none" }} accept=".txt,.csv,.tsv,.md,.json,.xlsx,.xlsm,.xls,.ods,.pdf,.zip,image/*" onChange={escolherArquivos} disabled={lendoArq} />
             </label>
-            <div className="gt-plano-dica">Aceita: texto/CSV, Excel, PDF, fotos e prints, e a conversa exportada do WhatsApp (.txt ou .zip).</div>
+            <div className="gt-plano-dica">Aceita: CSV do Hevy e do Strong, prints do MFIT e de outros apps, texto/CSV, Excel, PDF, fotos e a conversa exportada do WhatsApp (.txt ou .zip).</div>
+            {fontes.some((f) => f.tipo === "app") && !precisaIA && <div className="gt-plano-aviso info">Arquivo do {[...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))].join(" e ")} reconhecido. Leio aqui mesmo, sem IA e sem gastar importações do mês.</div>}
             {fontes.map((f) => (
               <div className="gt-chip" key={f.id} style={{ alignSelf: "flex-start" }}>
-                <span className="tag">{f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
+                <span className="tag">{f.tipo === "app" ? f.app.toUpperCase() : f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{f.nome}</span>
                 <button type="button" title="Remover" onClick={() => setFontes((p) => p.filter((x) => x.id !== f.id))}>✕</button>
               </div>
@@ -4730,12 +4958,12 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
               </>
             )}
             {erro && <div className="gt-plano-erro">{erro}</div>}
-            {uso === false && <div className="gt-plano-aviso aviso">A importação ainda não foi ativada neste app.</div>}
-            {uso && !semLimite && <div className="gt-plano-dica" style={{ textAlign: "center" }}>{podeUsar ? `Restam ${uso.limite - uso.usados} de ${uso.limite} importações neste mês.` : `Você já usou as ${uso.limite} importações deste mês.`}</div>}
-            {uso && !semLimite && !podeUsar && <LinkPlanos />}
-            <div className="gt-plano-foot">O arquivo é enviado para a IA só para ler seus treinos e não fica guardado.</div>
+            {precisaIA && uso === false && <div className="gt-plano-aviso aviso">A importação ainda não foi ativada neste app.</div>}
+            {precisaIA && uso && !semLimite && <div className="gt-plano-dica" style={{ textAlign: "center" }}>{podeUsar ? `Restam ${uso.limite - uso.usados} de ${uso.limite} importações neste mês.` : `Você já usou as ${uso.limite} importações deste mês.`}</div>}
+            {precisaIA && uso && !semLimite && !podeUsar && <LinkPlanos />}
+            {precisaIA && <div className="gt-plano-foot">O arquivo é enviado para a IA só para ler seus treinos e não fica guardado.</div>}
             <div className="gt-modal-actions" style={{ marginTop: 6 }}>
-              <button type="button" className="gt-btn" disabled={!podeUsar || lendoArq || (!fontes.length && !colado.trim())} onClick={analisar}>Analisar com IA</button>
+              <button type="button" className="gt-btn" disabled={(precisaIA && !podeUsar) || lendoArq || (!fontes.length && !colado.trim())} onClick={analisar}>{precisaIA ? "Analisar com IA" : "Ler arquivo"}</button>
               <button type="button" className="gt-btn secondary" onClick={onClose}>Fechar</button>
             </div>
             {importacoes.length > 0 && (
