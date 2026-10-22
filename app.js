@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v219";
+const APP_BUILD = "v220";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1578,6 +1578,13 @@ function featureLigada(nome) {
   try { const v = JSON.parse(localStorage.getItem("treino-app:features") || "null"); return Array.isArray(v) && v.includes(nome); } catch (e) { return false; }
 }
 
+// Fotos e vídeos ligados pelo painel (midia_flags; o App grava no aparelho). Sem resposta ainda: tudo ligado, menos a foto no check-in.
+const MIDIA_PADRAO = { fotos_medidas: true, video_aluno: true, video_treinador: true, foto_checkin: false };
+function midiaLigada(recurso) {
+  try { const v = JSON.parse(localStorage.getItem("treino-app:midia") || "null"); if (v && typeof v[recurso] === "boolean") return v[recurso]; } catch (e) {}
+  return !!MIDIA_PADRAO[recurso];
+}
+
 // --- Importar histórico de treinos (arquivo interpretado por IA) ---
 // A IA devolve JSON compacto por parte do arquivo; aqui validamos, juntamos, casamos os exercícios
 // com os que a pessoa já tem / o catálogo, planejamos o que será criado (para a tela de revisão),
@@ -2928,6 +2935,7 @@ const APP_CSS = `
   .gt-item-extra-x { background:none; border:none; color:var(--warn); font-size:16px; cursor:pointer; padding:0 2px; flex-shrink:0; }
   .gt-text-muted { color:var(--text-muted); }
   .gt-item-carga-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 14px 10px; border-top:1px solid var(--border); font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); }
+  .gt-item-carga-acoes { display:flex; gap:14px; }
   .gt-sessao-nota { flex-basis:100%; font-family:'Inter',system-ui,sans-serif; font-size:13px; line-height:1.4; color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; border-left:2px solid var(--border); padding-left:8px; }
   .gt-rpe-modal .gt-rpe-nota { min-height:88px; height:88px; font-family:'Inter',system-ui,sans-serif; font-size:16px; resize:none; }
   .gt-rpe-modal .gt-modal-actions { position:sticky; bottom:-18px; background:var(--surface); padding:12px 0 calc(12px + env(safe-area-inset-bottom)); margin-bottom:-18px; z-index:1; }
@@ -3244,6 +3252,7 @@ const APP_CSS = `
   .gt-descanso-badge { display:inline-block; margin-left:7px; padding:2px 7px; border-radius:14px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
   .gt-empty { text-align:center; color:var(--text-muted); font-size:14px; padding:30px 10px; }
   .gt-toast { position:fixed; bottom:calc(88px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:max-content; max-width:calc(100vw - 32px); box-sizing:border-box; text-align:center; background:var(--surface-2); border:1px solid var(--accent-dim); color:var(--accent); font-size:12px; line-height:1.4; padding:8px 14px; border-radius:20px; z-index:60; font-family:'Roboto Mono',monospace; pointer-events:none; box-shadow:0 4px 16px rgba(0,0,0,.25); }
+  body:has(.gt-focus-footer) .gt-toast { bottom:auto; top:calc(12px + env(safe-area-inset-top)); } /* telas cheias com rodapé: o aviso não cobre o campo de mensagem */
   .gt-chart-tooltip { background:var(--surface-2); border:1px solid var(--border); padding:8px 10px; border-radius:4px; font-size:12px; }
   .gt-hist-item { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:12px; }
   .gt-hist-item:last-child { border-bottom:none; }
@@ -3517,7 +3526,7 @@ const APP_CSS = `
   .gt-dsf-modelo span { font-size:12px; color:var(--text-muted); }
   .gt-dsf-modelo.on { border-color:var(--accent); background:var(--surface-2); }
   .gt-dsf-regra { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
-  .gt-dsf-dias { display: flex; gap: 6px; }
+  .gt-dsf-dias { display: flex; gap: 6px; align-self: stretch; }
 .gt-dsf-dia { flex: 1; min-width: 0; padding: 9px 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-size: 12px; text-transform: capitalize; cursor: pointer; }
 .gt-dsf-dia-txt { flex: 0 0 auto; padding: 8px 12px; }
 .gt-dsf-dia.on { background: var(--accent); color: #14161A; border-color: var(--accent); font-weight: 600; }
@@ -3861,6 +3870,16 @@ const APP_CSS = `
   .gt-co-avatar.big { width:72px; height:72px; font-size:26px; margin:0 auto 8px; }
   .gt-co-sec, .gt-agd-sec { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); letter-spacing:.05em; margin:12px 0 6px; }
   .gt-co-sec.warn { color:var(--amber); margin-top:0; }
+  .gt-co-turmas { margin:20px 0 10px; }
+  .gt-co-turmas-head { display:flex; align-items:center; justify-content:space-between; }
+  .gt-co-turmas-vazio { font-size:13px; color:var(--text-muted); margin:0 0 6px; }
+  .gt-co-turma { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:6px; }
+  .gt-co-turma .tx { flex:1; min-width:0; text-align:left; background:none; border:0; padding:0; color:inherit; font:inherit; cursor:pointer; }
+  .gt-co-turma .t { font-weight:600; }
+  .gt-co-turma .d { font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gt-co-turma-alunos { max-height:40vh; overflow:auto; display:flex; flex-direction:column; gap:2px; }
+  .gt-co-turma-apagar { font-size:14px; line-height:1.45; margin-top:12px; }
+  .gt-co-link.danger { color:var(--warn); }
   .gt-co-top, .gt-agd-top { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
   .gt-co-top .gt-co-sec, .gt-agd-top .gt-agd-sec { margin:0; }
   .gt-co-h1, .gt-agd-h1 { font-family:'Oswald',sans-serif; font-size:28px; font-weight:600; line-height:1.1; }
@@ -3994,6 +4013,13 @@ const APP_CSS = `
   .gt-push-links .gt-co-link { padding-left:0; padding-right:0; }
   .gt-med-body, .gt-anam-body { display:flex; flex-direction:column; gap:6px; padding:4px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
   .gt-med-cmp .gt-focus-body { padding:4px 16px 24px; }
+  .gt-rit-lista { display:flex; flex-direction:column; gap:8px; margin:10px 0; }
+  .gt-rit-zona { display:flex; align-items:center; gap:12px; background:var(--surface); border-radius:14px; padding:12px 14px; }
+  .gt-rit-zona .tx { flex:1; min-width:0; }
+  .gt-rit-zona .t { font-weight:600; font-size:15px; }
+  .gt-rit-zona .d { color:var(--text-muted); font-size:13px; margin-top:2px; }
+  .gt-rit-zona .v { font-family:'Roboto Mono',monospace; font-size:16px; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .gt-rit-zona .v small { font-size:12px; color:var(--text-muted); font-weight:400; margin-left:2px; }
   .gt-med-resumo { display:grid; grid-template-columns:repeat(auto-fit, minmax(96px, 1fr)); gap:8px; margin-bottom:10px; }
   .gt-med-stat { background:var(--surface); border-radius:14px; padding:12px; }
   .gt-med-stat .t { font-size:12px; color:var(--text-muted); }
@@ -4213,7 +4239,8 @@ const APP_CSS = `
   .gt-co-ex-campos .stepper input { width:100%; min-width:0; height:44px; background:var(--surface-2); border:1px solid var(--border); border-left:none; border-right:none; color:var(--text); text-align:center; font-family:'Roboto Mono',monospace; font-size:14px; box-sizing:border-box; }
   .gt-co-imp-ficha { border:1px solid var(--border); border-radius:12px; padding:10px; margin:8px 0; background:var(--surface); }
   .gt-co-imp-topo { display:flex; align-items:center; gap:8px; } .gt-co-imp-topo .gt-input { flex:1; min-width:0; }
-  .gt-co-imp-dia { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font-size:12px; color:var(--text-muted); } .gt-co-imp-dia .gt-input { width:auto; flex:1; } .gt-co-imp-dia .n { white-space:nowrap; }
+  .gt-co-imp-cor { font-weight:600; flex:1; min-width:0; }
+  .gt-co-imp-dia { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font-size:12px; color:var(--text-muted); } .gt-co-imp-dia .gt-input { width:150px; flex:0 0 150px; } .gt-co-imp-dia .n { white-space:nowrap; margin-left:auto; overflow:hidden; text-overflow:ellipsis; }
   .gt-co-imp-ex { display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-top:1px solid var(--border); } .gt-co-imp-ex .l { flex:1; min-width:0; }
   .gt-co-imp-ex .nm { font-size:14px; } .gt-co-imp-ex .dt { font-size:12px; color:var(--text-muted); } .gt-co-imp-ex .og { font-size:11px; color:var(--text-muted); font-style:italic; word-break:break-word; }
   .gt-co-imp-ex .tag { font:600 9px 'Roboto Mono',monospace; letter-spacing:.05em; padding:1px 5px; border-radius:6px; background:var(--surface-2); margin-left:4px; vertical-align:middle; text-transform:uppercase; } .gt-co-imp-ex .tag.ok { color:var(--success); } .gt-co-imp-ex .tag.novo { color:var(--amber); }
@@ -4475,6 +4502,8 @@ const APP_CSS = `
   .gt-guiado-desc-tempo { font-family:'Oswald',sans-serif; font-size:56px; line-height:1; font-variant-numeric:tabular-nums; }
   .gt-guiado-desc-prox { font-size:13px; color:var(--text-muted); }
   .gt-guiado-fim { align-items:stretch; text-align:center; }
+  .gt-bt-parciais li.cab { background:transparent; border:none; padding:0 12px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+  .gt-bt-parciais li.cab b { font-family:inherit; }
   .gt-bt-parciais li.rox { background:transparent; border-style:dashed; color:var(--text-muted); }
   .gt-bt-parciais li em { font-style:normal; margin-left:6px; }
   .gt-bt-parciais li em.melhor, .gt-bt-comp.melhor { color:var(--success); }
@@ -5205,7 +5234,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 // o que está pendente pra nuvem, com nova tentativa (ao reconectar, ao voltar pro app e a cada 30 s).
 // Só sai da fila quando a nuvem confirma. Ao puxar da nuvem, o que está pendente nunca é sobrescrito.
 // Sessões (treinos feitos) são mescladas dia a dia: cada dia alterado leva um carimbo `_t`.
-const SYNC_CHAVES = ["treinos", "atividades", "schedule", "sessions", "planos", "display_name"];
+const SYNC_CHAVES = ["treinos", "atividades", "schedule", "sessions", "planos", "display_name", "ritmos"];
 const SYNC_PENDENTE = "treino-app:syncPending";
 const SYNC_ACK = "treino-app:syncAck";
 const SYNC_BACKOFF = [4000, 15000, 60000, 300000];
@@ -6379,7 +6408,7 @@ function PlanoCorridaModal({ prova: provaProp, hojeISO, schedule, sessions, ativ
   const replanSemStrava = !!(sit && sitIA && (sit.feitasTotal !== sitIA.feitasTotal || sit.feitasRec !== sitIA.feitasRec));
   const [distKm, setDistKm] = useState(F.distKm != null ? F.distKm : prova.kmEscolhido > 0 ? String(prova.kmEscolhido).replace(".", ",") : distancias.length ? String(distancias[0]).replace(".", ",") : "");
   const [confortavel, setConfortavel] = useState(F.confortavel != null ? F.confortavel : hist ? String(hist.confortavelKm).replace(".", ",") : "");
-  const [paceTxt, setPaceTxt] = useState(F.paceTxt != null ? F.paceTxt : hist && hist.paceMin ? planoFmtPace(hist.paceMin) : "");
+  const [paceTxt, setPaceTxt] = useState(F.paceTxt != null ? F.paceTxt : ritmosPaceLeve(ritmosLer()) ? planoFmtPace(ritmosPaceLeve(ritmosLer())) : hist && hist.paceMin ? planoFmtPace(hist.paceMin) : "");
   const [objetivo, setObjetivo] = useState(F.objetivo || "completar");
   const [tempoAlvo, setTempoAlvo] = useState(F.tempoAlvo || "");
   const [lesoes, setLesoes] = useState(F.lesoes || "");
@@ -7486,6 +7515,11 @@ const DESAFIO_MODELOS = [
     id: "simples", nome: "Simples", desc: "1 ponto por treino, até 7 por semana.",
     rules: { meta: 7, pontos: [0, 1, 2, 3, 4, 5, 6, 7], bonusJuntos: 0, academia: { on: true, minMin: 0 }, atividades: { on: true, minMin: 0 } },
   },
+  {
+    // Fase 5: desafio de distância. Soma os km de corrida; quem correr mais na semana vence.
+    id: "km", nome: "Quem corre mais", desc: "Soma os km de corrida. Quem correr mais vence a semana.",
+    rules: { modo: "km", meta: 7, pontos: [0, 0, 0, 0, 0, 0, 0, 0], bonusJuntos: 0, academia: { on: false, minMin: 0 }, atividades: { on: true, minMin: 0, minKm: 0 } },
+  },
 ];
 
 function desafioClone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -7499,10 +7533,13 @@ function desafioNormalizeRules(raw) {
   let pontos = Array.isArray(r.pontos) ? r.pontos.map((n) => Math.round(Number(n)) || 0) : base.pontos.slice();
   while (pontos.length < meta + 1) pontos.push(pontos.length ? pontos[pontos.length - 1] : 0);
   pontos = pontos.slice(0, meta + 1);
+  const km = r.modo === "km";
   return {
+    // "treinos" (pontos por treinos na semana) ou "km" (soma da distância de corrida).
+    modo: km ? "km" : "treinos",
     meta,
     pontos,
-    bonusJuntos: Math.min(5, Math.max(0, Math.round(Number(r.bonusJuntos)) || 0)),
+    bonusJuntos: km ? 0 : Math.min(5, Math.max(0, Math.round(Number(r.bonusJuntos)) || 0)),
     academia: {
       on: !(r.academia && r.academia.on === false),
       minMin: Math.max(0, Math.round(Number(r.academia && r.academia.minMin)) || 0),
@@ -7548,6 +7585,7 @@ function desafioKmDe(carga, log) {
   });
   return Math.round(soma * 10) / 10;
 }
+function desafioDiasTxt(dias) { return planoListaE([1, 2, 3, 4, 5, 6, 0].filter((d) => (dias || []).indexOf(d) >= 0).map((d) => DESAFIO_SEMANA_NOMES[d])); }
 function desafioFmtKm(n) { return `${String(Math.round(n * 10) / 10).replace(".", ",")} km`; }
 
 function desafioNomeNorm(t) { return String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(); }
@@ -7811,7 +7849,7 @@ function planoMontarPrompt(p) {
     linhas.push('    { "data": "AAAA-MM-DD", "fase": "Construção", "modelo": "tiros400", "distanciaKm": 6, "duracaoMin": 42, "esforco": "tiros fortes, recuperação leve", "pace": null, "nota": "boa postura nos tiros" }');
     linhas.push("  ]");
     linhas.push("}");
-    linhas.push('"modelo" deve ser exatamente um destes (distância mínima em km): ' + Object.keys(TREINOS_CORRIDA).map((k) => `${k} (${TREINOS_CORRIDA[k].min})`).join(", ") + ". Significados: rodagem = corrida leve contínua; regenerativo = bem leve e curto; longao = mais longo da semana em ritmo constante; longao_prog = longão que termina mais forte; tempo = bloco contínuo em ritmo de limiar; progressivo = cada trecho mais rápido; fartlek = alterna forte e leve por tempo; tiros200/400/800/1000 = tiros (distância de cada tiro em metros) com pausa. \"nota\" tem no máximo 1 frase curta. \"data\" sempre no formato AAAA-MM-DD. Ordene as sessões por data. Responda só com o JSON, sem texto extra.");
+    linhas.push('"modelo" deve ser exatamente um destes (distância mínima em km): ' + Object.keys(TREINOS_CORRIDA).filter((k) => k.indexOf("teste") !== 0).map((k) => `${k} (${TREINOS_CORRIDA[k].min})`).join(", ") + ". Significados: rodagem = corrida leve contínua; regenerativo = bem leve e curto; longao = mais longo da semana em ritmo constante; longao_prog = longão que termina mais forte; tempo = bloco contínuo em ritmo de limiar; progressivo = cada trecho mais rápido; fartlek = alterna forte e leve por tempo; tiros200/400/800/1000 = tiros (distância de cada tiro em metros) com pausa. \"nota\" tem no máximo 1 frase curta. \"data\" sempre no formato AAAA-MM-DD. Ordene as sessões por data. Responda só com o JSON, sem texto extra.");
     return linhas.join("\n");
   }
   linhas.push("{");
@@ -8525,7 +8563,77 @@ const TREINOS_CORRIDA = {
   tiros400: { nome: "Tiros de 400 m", emoji: "⚡", desc: "Clássico para velocidade: 400 m forte, pausa em trote.", min: 5 },
   tiros800: { nome: "Yasso 800", emoji: "⚡", desc: "800 m fortes com pausa de trote, para ritmo de prova.", min: 6 },
   tiros1000: { nome: "Tiros de 1000 m", emoji: "⚡", desc: "Tiros longos, ótimos para ritmo de 5 a 10 km.", min: 7 },
+  teste3: { nome: "Teste de 3 km", emoji: "⏱️", desc: "3 km no máximo sustentável. O tempo vai em Meus ritmos e ajusta os paces.", min: 5 },
+  teste5: { nome: "Teste de 5 km", emoji: "⏱️", desc: "5 km no máximo sustentável. O tempo vai em Meus ritmos e ajusta os paces.", min: 7 },
 };
+// --- Meus ritmos (fase 5): teste de 3 km, 5 km ou 12 min (Cooper) vira VDOT (fórmulas de Jack Daniels) e as zonas de pace.
+// O pace "leve" alimenta os treinos gerados (planoGerarTreinoCorrida) e reescala os treinos do treinador (corridaNoMeuRitmo).
+const RITMOS_TESTES = { t3: { nome: "3 km", m: 3000 }, t5: { nome: "5 km", m: 5000 }, cooper: { nome: "12 minutos", seg: 720 } };
+const RITMOS_ZONAS = [
+  ["leve", "Leve", "Rodagem, regenerativo, longão e aquecimento"],
+  ["maratona", "Maratona", "Ritmo de prova longa e fim de longão"],
+  ["limiar", "Limiar", "Treino de ritmo e blocos de 20 a 40 min"],
+  ["intervalado", "Intervalado", "Tiros de 800 m a 1 km"],
+  ["tiros", "Tiros curtos", "Tiros de 200 e 400 m"],
+];
+function ritmosVo2(v) { return -4.6 + 0.182258 * v + 0.000104 * v * v; } // v em m/min
+function ritmosVdot(distM, seg) {
+  const t = seg / 60; if (!(distM > 0) || !(t > 0)) return 0;
+  const pct = 0.8 + 0.1894393 * Math.exp(-0.012778 * t) + 0.2989558 * Math.exp(-0.1932605 * t);
+  return ritmosVo2(distM / t) / pct;
+}
+function ritmosPaceDe(vdot, frac) { // pace (min/km) em que o VO2 é frac × VDOT
+  const alvo = vdot * frac; const a = 0.000104, b = 0.182258, c = -4.6 - alvo;
+  const v = (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a);
+  return v > 0 ? 1000 / v : 0;
+}
+// teste: { tipo: "t3"|"t5"|"cooper", seg (t3/t5) ou m (cooper), data }. Devolve null se o resultado não faz sentido.
+function ritmosCalcular(teste) {
+  const cfg = teste && RITMOS_TESTES[teste.tipo]; if (!cfg) return null;
+  const distM = cfg.m || +teste.m || 0, seg = cfg.seg || +teste.seg || 0;
+  const vdot = ritmosVdot(distM, seg);
+  if (!(vdot >= 20 && vdot <= 85)) return null;
+  const r = (x) => Math.round(x * 100) / 100;
+  return {
+    teste: { tipo: teste.tipo, m: distM, seg, data: teste.data || "" }, vdot: Math.round(vdot * 10) / 10,
+    leve: [r(ritmosPaceDe(vdot, 0.74)), r(ritmosPaceDe(vdot, 0.62))], maratona: [r(ritmosPaceDe(vdot, 0.82)), r(ritmosPaceDe(vdot, 0.78))],
+    limiar: [r(ritmosPaceDe(vdot, 0.88)), r(ritmosPaceDe(vdot, 0.86))], intervalado: [r(ritmosPaceDe(vdot, 0.98)), r(ritmosPaceDe(vdot, 0.96))],
+    tiros: [r(ritmosPaceDe(vdot, 1.08)), r(ritmosPaceDe(vdot, 1.04))],
+  };
+}
+function ritmosNorm(r) {
+  if (!r || typeof r !== "object" || !r.teste) return null;
+  const n = ritmosCalcular(r.teste); return n;
+}
+function ritmosLer() { try { return ritmosNorm(JSON.parse(localStorage.getItem("treino-app:ritmos") || "null")); } catch (e) { return null; } }
+// Pace leve de referência (min/km) para os geradores: o meio da faixa leve.
+function ritmosPaceLeve(r) { return r && r.leve ? Math.round((r.leve[0] + r.leve[1]) / 2 * 100) / 100 : 0; }
+function ritmosFaixaTxt(f) { return f && f[0] > 0 ? `${planoFmtPace(f[0])}-${planoFmtPace(f[1])}` : ""; }
+function ritmosTesteTxt(t) {
+  if (!t) return "";
+  const cfg = RITMOS_TESTES[t.tipo] || {};
+  return t.tipo === "cooper" ? `${String(Math.round(t.m)).replace(/\B(?=(\d{3})+(?!\d))/g, ".")} m em 12 min` : `${cfg.nome} em ${segParaTempo(t.seg)}`;
+}
+function segParaTempo(seg) { seg = Math.round(seg || 0); const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60; return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`; }
+function tempoParaSeg(txt) {
+  const p = String(txt || "").trim().split(/[:'.h]/).filter((x) => x !== "").map((x) => parseInt(x, 10));
+  if (!p.length || p.some((x) => isNaN(x) || x < 0)) return 0;
+  if (p.length === 1) return p[0] * 60;
+  if (p.length === 2) return p[1] < 60 ? p[0] * 60 + p[1] : 0;
+  if (p.length === 3) return p[1] < 60 && p[2] < 60 ? p[0] * 3600 + p[1] * 60 + p[2] : 0;
+  return 0;
+}
+// Treino do treinador no ritmo do aluno: se o treino guarda o pace leve usado (refLeve) e o aluno tem ritmos,
+// reescala os paces das etapas pela razão entre os dois. Sem um dos dois, devolve igual.
+function corridaNoMeuRitmo(corrida, ritmos) {
+  const meu = ritmosPaceLeve(ritmos);
+  if (!corrida || !(corrida.refLeve > 0) || !(meu > 0) || Math.abs(meu - corrida.refLeve) < 0.05) return corrida;
+  const f = meu / corrida.refLeve;
+  const esc = (txt) => String(txt || "").replace(/(\d{1,2}):(\d{2})/g, (_, m, s2) => planoFmtPace((parseInt(m, 10) + parseInt(s2, 10) / 60) * f));
+  const passo = (p) => (p && p.pace ? { ...p, pace: esc(p.pace) } : p);
+  const etapas = (corrida.etapas || []).map((e) => (e && e.passos ? { ...e, passos: e.passos.map(passo) } : passo(e)));
+  return { ...corrida, pace: corrida.pace ? esc(corrida.pace) : corrida.pace, etapas, noMeuRitmo: true };
+}
 const TREINOS_CORRIDA_NIVEIS = { iniciante: "Iniciante", intermediario: "Intermediário", avancado: "Avançado" };
 function planoPaceStr(p, ate) { if (!(p > 0)) return ""; return ate > p ? `${planoFmtPace(p)}-${planoFmtPace(ate)}` : planoFmtPace(p); }
 // Gera as etapas de um treino de corrida. paceMin = pace leve de referência (min/km, 0 se não informado).
@@ -8589,6 +8697,14 @@ function planoGerarTreinoCorrida(tipo, km, nivel, paceMin) {
     etapas = [passo("aquecimento", aq, "trote leve", pc(1.1, 1.08), "aquecimento"), passo("moderado", principal, "forte e controlado (RPE 7)", pc(0.88), "em ritmo de limiar"), passo("desaquecimento", de, "trote bem leve", pc(1.12), "desaquecimento")];
     tp = "tempo"; esforco = "forte e controlado (RPE 7)"; paceTxt = pc(0.88);
     detalhes = "O bloco do meio é um ritmo que você sustenta, mas sem folga para conversar mais do que poucas palavras.";
+  } else if (tipo === "teste3" || tipo === "teste5") {
+    const t = tipo === "teste3" ? 3000 : 5000;
+    const aq0 = 1500, de0 = 1000;
+    if (total < t + aq0 + de0) return { ok: false, erro: `Para esse teste, use pelo menos ${String((t + aq0 + de0) / 1000).replace(".", ",")} km (aquecimento, teste e volta à calma).` };
+    const aq = aq0 + Math.round((total - t - aq0 - de0) * 0.6 / 100) * 100; const de = total - t - aq;
+    etapas = [passo("aquecimento", aq, "trote leve", pc(1.1, 1.08), "aquecimento"), passo("forte", t, "o mais forte que você sustenta até o fim", "", "teste: anote o tempo"), passo("desaquecimento", de, "trote bem leve", pc(1.12), "desaquecimento")];
+    tp = "intervalado"; esforco = "teste no máximo sustentável"; paceTxt = "";
+    detalhes = `Corra os ${t / 1000} km do meio no ritmo mais forte que você sustenta até o fim. Depois, salve o tempo em Menu › Meus ritmos de corrida.`;
   } else if (tipo === "fartlek") {
     const [fs, ls] = [[60, 120], [120, 120], [180, 120]][idx];
     const pf = P ? P * 0.84 : 5.5; const pl = P ? P * 1.05 : 6.9;
@@ -8697,8 +8813,23 @@ function desafioFmtPts(n) {
 }
 
 // Frase viva que resume a regra ("4 ou mais = +5 · 3 = +2 · ...").
+// Km de um check-in: a coluna km ou, se ela ainda não existe no banco, o " · 5,2 km" do rótulo.
+function desafioCheckinKm(c) {
+  const k = Number(c && c.km);
+  if (k > 0) return k;
+  const m = String((c && c.label) || "").match(/ · (\d+(?:,\d+)?) km$/);
+  return m ? parseFloat(m[1].replace(",", ".")) : 0;
+}
+// Placar com unidade: "+5 pts" nos desafios de treino, "23,4 km" nos de distância.
+function desafioFmtPlacar(v, rules) {
+  return rules && rules.modo === "km" ? desafioFmtKm(v || 0) : `${desafioFmtPts(v)} pts`;
+}
 function desafioRegrasResumo(rules) {
   const r = desafioNormalizeRules(rules);
+  if (r.modo === "km") {
+    const dias = (r.dias || []).length >= 7 ? "de segunda a domingo" : `só ${desafioDiasTxt(r.dias)}`;
+    return `Soma os km de corrida ${dias}, ${r.atividades.minKm > 0 ? `corridas de ${desafioFmtKm(r.atividades.minKm)} ou mais` : "qualquer distância"}. Quem correr mais vence a semana`;
+  }
   const partes = [];
   for (let n = r.meta; n >= 0; n--) {
     partes.push(`${n}${n === r.meta && r.meta > 0 ? "+" : ""} = ${desafioFmtPts(r.pontos[n])}`);
@@ -8794,10 +8925,11 @@ function desafioCheckinsFromSessions(sessions, atividadeById, rules, startIso, e
         const km = desafioKmDe(cargas[k], v);
         // Distância mínima só pra corrida; as outras atividades seguem só a regra de duração.
         if (r.atividades.minKm > 0 && desafioEhCorrida(a) && km < r.atividades.minKm && (km > 0 || r.exigirKm)) return;
-        out.push({ date, tipo: k, label: (a ? a.nome : "Atividade") + (km > 0 ? ` · ${desafioFmtKm(km)}` : ""), minutos: min || null });
+        if (r.modo === "km" && !(km > 0 && desafioEhCorrida(a))) return;
+        out.push({ date, tipo: k, label: (a ? a.nome : "Atividade") + (km > 0 ? ` · ${desafioFmtKm(km)}` : ""), minutos: min || null, km: km > 0 ? km : null });
       }
     });
-    if (academiaFeita && r.academia.on) {
+    if (academiaFeita && r.academia.on && r.modo !== "km") {
       const curto = r.academia.minMin > 0 && academiaMin < r.academia.minMin && (academiaMin > 0 || r.exigirDuracao);
       if (!curto && academiaExs >= r.academia.minExs) {
         out.push({ date, tipo: "academia", label: "Academia", minutos: academiaMin || null });
@@ -8834,6 +8966,12 @@ function desafioStandings(ch, members, checkins, together, today) {
     if (today < start) break;
     const fechada = today > end;
     const rows = (members || []).map((m) => {
+      if (rules.modo === "km") {
+        // Distância: pontos = km de corrida da semana (com 1 casa); count = corridas.
+        const minhas = (checkins || []).filter((c) => c.user_id === m.user_id && c.date >= start && c.date <= end && rules.dias.indexOf(weekdayOf(c.date)) >= 0 && desafioCheckinKm(c) > 0);
+        const km = Math.round(minhas.reduce((t, c) => t + desafioCheckinKm(c), 0) * 10) / 10;
+        return { user_id: m.user_id, nome: m.nome, count: minhas.length, bonus: 0, pts: km, base: km };
+      }
       const count = desafioContarCheckins(checkins, m.user_id, start, end, rules);
       const bonus = (together || []).filter((t) => (
         t.status === "confirmed" && t.date >= start && t.date <= end
@@ -8866,7 +9004,7 @@ function desafioStandings(ch, members, checkins, together, today) {
       if (!row) return;
       treinos += row.count;
       if (w.fechada) {
-        fechados += row.pts;
+        fechados = Math.round((fechados + row.pts) * 10) / 10;
         if (w.winners.indexOf(m.user_id) >= 0) vitorias++;
       } else {
         atualRow = row;
@@ -8875,7 +9013,7 @@ function desafioStandings(ch, members, checkins, together, today) {
     const aoVivo = atualRow ? Math.max(0, atualRow.pts) : 0;
     return {
       user_id: m.user_id, nome: m.nome, is_me: !!m.is_me,
-      fechados, aoVivo, total: fechados + aoVivo, treinos, vitorias,
+      fechados, aoVivo, total: Math.round((fechados + aoVivo) * 10) / 10, treinos, vitorias,
       semanaCount: atualRow ? atualRow.count : 0,
       semanaBonus: atualRow ? atualRow.bonus : 0,
     };
@@ -9079,11 +9217,13 @@ async function syncDesafioCheckins(ch, userId, sessions, atividadeById, today) {
   if (error) return { changed: false, added: [], error };
   const diff = desafioDiffCheckins(desired, data || []);
   const upserts = [...diff.adicionar, ...diff.atualizar].map((c) => ({
-    challenge_id: ch.id, user_id: userId, date: c.date, tipo: c.tipo, label: c.label || null, minutos: c.minutos || null, source: "app",
+    challenge_id: ch.id, user_id: userId, date: c.date, tipo: c.tipo, label: c.label || null, minutos: c.minutos || null, source: "app", km: c.km || null,
   }));
   let failed = null;
   if (upserts.length) {
-    const r = await supabaseClient.from("challenge_checkins").upsert(upserts, { onConflict: "challenge_id,user_id,date,tipo" });
+    let r = await supabaseClient.from("challenge_checkins").upsert(upserts, { onConflict: "challenge_id,user_id,date,tipo" });
+    // Banco sem a coluna km (fase5.sql não aplicado): manda sem ela.
+    if (r.error && /\bkm\b/.test(r.error.message || "")) r = await supabaseClient.from("challenge_checkins").upsert(upserts.map(({ km, ...x }) => x), { onConflict: "challenge_id,user_id,date,tipo" });
     if (r.error) failed = r.error;
   }
   for (const c of diff.remover) {
@@ -9105,8 +9245,8 @@ function desafioSerie(ch, st, members) {
   const series = (members || []).map((m) => {
     let acc = 0;
     const vals = [0];
-    fechadas.forEach((w) => { const r = w.rows.find((x) => x.user_id === m.user_id); acc += r ? r.pts : 0; vals.push(acc); });
-    if (atual) { const r = atual.rows.find((x) => x.user_id === m.user_id); vals.push(acc + Math.max(0, r ? r.pts : 0)); }
+    fechadas.forEach((w) => { const r = w.rows.find((x) => x.user_id === m.user_id); acc = Math.round((acc + (r ? r.pts : 0)) * 10) / 10; vals.push(acc); });
+    if (atual) { const r = atual.rows.find((x) => x.user_id === m.user_id); vals.push(Math.round((acc + Math.max(0, r ? r.pts : 0)) * 10) / 10); }
     return { user_id: m.user_id, nome: m.nome, is_me: !!m.is_me, cor: desafioCorDe(members, m.user_id), vals };
   });
   return { labels, series, temAoVivo: !!atual, liderId: st.totais[0] ? st.totais[0].user_id : null };
@@ -9120,9 +9260,10 @@ function desafioDadosCartaoGeral(ch, st, members) {
     titulo: ch.nome,
     subtitulo: fim ? "Resultado final" : `Placar geral · semana ${st.status.semanaNum || 0} de ${ch.weeks}`,
     ranking,
+    km: st.rules.modo === "km",
     perdedor: null,
     aposta: null,
-    rodape: fim && stakes.final ? `🏆 ${ranking[0] ? ranking[0].nome : ""} leva: ${stakes.final}` : "Parcial · negativos só valem no fim da semana",
+    rodape: fim && stakes.final ? `🏆 ${ranking[0] ? ranking[0].nome : ""} leva: ${stakes.final}` : st.rules.modo === "km" ? "Parcial · soma os km de corrida" : "Parcial · negativos só valem no fim da semana",
   };
 }
 function desafioDadosCartaoSemana(ch, st, members, w) {
@@ -9140,6 +9281,7 @@ function desafioDadosCartaoSemana(ch, st, members, w) {
       ? `Semana ${w.num} · 🏆 ${String(nomeDe(vencedor)).split(" ")[0]} venceu${serie > 1 ? ` · ${serie} semanas seguidas` : ""}`
       : `Semana ${w.num} · ${desafioDataCurta(w.start)} a ${desafioDataCurta(w.end)}`,
     ranking,
+    km: st.rules.modo === "km",
     perdedor: perd,
     aposta: perd ? (stakes.semana || null) : null,
     rodape: w.winners.length ? null : "Semana empatada — ninguém paga nada 😅",
@@ -9149,8 +9291,9 @@ function desafioDadosCartaoEvolucao(ch, st, members) {
   const serie = desafioSerie(ch, st, members);
   return {
     titulo: ch.nome,
-    subtitulo: `Corrida dos pontos · semana ${st.status.semanaNum || ch.weeks} de ${ch.weeks}`,
+    subtitulo: `${st.rules.modo === "km" ? "Km acumulados" : "Corrida dos pontos"} · semana ${st.status.semanaNum || ch.weeks} de ${ch.weeks}`,
     ranking: st.totais.map((t) => ({ uid: t.user_id, nome: t.nome, pts: t.total, cor: desafioCorDe(members, t.user_id) })),
+    km: st.rules.modo === "km",
     serie,
     perdedor: null,
     aposta: null,
@@ -9165,7 +9308,7 @@ function desafioSnapDe(st) {
   const atual = st.semanas.find((w) => !w.fechada);
   const bateu = {};
   const meta = st.rules.meta;
-  st.totais.forEach((t) => { if (atual && t.semanaCount >= meta) bateu[t.user_id] = true; });
+  st.totais.forEach((t) => { if (atual && st.rules.modo !== "km" && t.semanaCount >= meta) bateu[t.user_id] = true; });
   return { pos, fechadas: st.semanas.filter((w) => w.fechada).length, semanaIdx: atual ? atual.idx : -1, bateu, fim: st.status.fase === "fim" };
 }
 
@@ -9192,7 +9335,7 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
 
   if (st.status.fase === "fim" && (!prev || !prev.fim)) {
     const c = st.totais[0];
-    itens.push({ id: "fim", emoji: "🏆", texto: `Acabou! ${c.nome} é o campeão com ${desafioFmtPts(c.total)} pts${stakes.final ? ` e leva: ${stakes.final}` : ""}.`, acao: { tipo: "geral", rotulo: "Compartilhar resultado" } });
+    itens.push({ id: "fim", emoji: "🏆", texto: `Acabou! ${c.nome} é o campeão com ${desafioFmtPlacar(c.total, rules)}${stakes.final ? ` e leva: ${stakes.final}` : ""}.`, acao: { tipo: "geral", rotulo: "Compartilhar resultado" } });
   }
   if (ultima && ((prev && fechadas.length > prev.fechadas) || (!prev && ultima.end >= addDays(today, -6)))) {
     let texto;
@@ -9210,7 +9353,7 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
     }
     itens.push({ id: `semana-${ultima.num}`, emoji: venci ? "🏆" : "📅", texto, acao: { tipo: "semana", idx: ultima.idx, rotulo: venci ? "Compartilhar vitória" : "Compartilhar cartão" } });
   }
-  if (st.status.fase === "rolando" && me.semanaCount < rules.meta && st.status.diasRestantesSemana <= 2) {
+  if (rules.modo !== "km" && st.status.fase === "rolando" && me.semanaCount < rules.meta && st.status.diasRestantesSemana <= 2) {
     const dias = st.status.diasRestantesSemana;
     const falta = rules.meta - me.semanaCount;
     const alcanca = Math.min(rules.meta, me.semanaCount + dias + 1);
@@ -9230,7 +9373,7 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
       itens.push({ id: "caiu", emoji: "📉", texto: passou.length ? `${passou.map((t) => t.nome).join(" e ")} ${passou.length === 1 ? "te passou" : "passaram você"} — você está em ${me.pos}º.` : `Você caiu pro ${me.pos}º lugar.` });
     }
   }
-  if (prev && st.status.fase === "rolando" && me.semanaCount < rules.meta) {
+  if (rules.modo !== "km" && prev && st.status.fase === "rolando" && me.semanaCount < rules.meta) {
     const bateuAntes = prev.semanaIdx === (st.semanas.find((w) => !w.fechada) || {}).idx ? (prev.bateu || {}) : {};
     const novos = st.totais.filter((t) => t.user_id !== meId && t.semanaCount >= rules.meta && !bateuAntes[t.user_id]);
     if (novos.length) itens.push({ id: "bateu", emoji: "🔥", texto: `${novos.map((t) => t.nome).join(" e ")} já ${novos.length === 1 ? "bateu" : "bateram"} a meta da semana.` });
@@ -9295,7 +9438,7 @@ function desafioTimeline(ch, ov, st, meId, hoje) {
     const it = {
       id: `c|${c.user_id}|${c.date}|${c.tipo}`, kind: "checkin", date: c.date, user_id: c.user_id, tipo: c.tipo,
       label: c.label || (c.tipo === "academia" ? "Academia" : "Treino"),
-      pts: pts > 0 ? pts : 0, bateu: antes < rules.meta && depois >= rules.meta,
+      pts: pts > 0 ? pts : 0, bateu: rules.modo !== "km" && antes < rules.meta && depois >= rules.meta,
       hora: desafioHoraLocal(c.created_at, c.date), ts: tsDe(c.created_at, c.date),
       claps: reacoes.filter((r) => r.target_user === c.user_id && r.date === c.date && r.tipo === c.tipo).map((r) => r.user_id),
     };
@@ -9312,7 +9455,7 @@ function desafioTimeline(ch, ov, st, meId, hoje) {
     }
   });
   // "Faltam N pra bater a meta e passar fulano": só no treino mais recente de quem ainda não bateu a meta desta semana.
-  if (st.status.fase === "rolando") {
+  if (st.status.fase === "rolando" && rules.modo !== "km") {
     st.totais.forEach((t) => {
       const it = ultimoDe[t.user_id];
       if (!it || desafioSemanaIdxDe(ch, it.date) !== st.status.semanaIdx || t.semanaCount >= rules.meta) return;
@@ -9343,7 +9486,8 @@ function desafioTimeline(ch, ov, st, meId, hoje) {
 function desafioTimelineTexto(it, nomeDe, rules) {
   if (it.kind === "checkin") {
     const quem = nomeDe(it.user_id);
-    let t = `${quem} ${it.label === "Academia" ? "treinou na academia" : `registrou ${it.label}`}`;
+    const kmCk = rules && rules.modo === "km" ? desafioCheckinKm(it) : 0;
+    let t = kmCk > 0 ? `${quem} correu ${desafioFmtKm(kmCk)}` : `${quem} ${it.label === "Academia" ? "treinou na academia" : `registrou ${it.label}`}`;
     if (it.pts > 0) t += ` e ganhou ${desafioFmtPts(it.pts)} pt${it.pts === 1 ? "" : "s"}`;
     if (it.bateu) t += ". Bateu a meta da semana 🔥";
     else if (it.faltam) {
@@ -9359,7 +9503,7 @@ function desafioTimelineTexto(it, nomeDe, rules) {
     return `Semana ${it.num} fechou: 🏆 ${it.winners.map(nomeDe).join(" e ")}`;
   }
   if (it.kind === "inicio") return "O desafio começou";
-  if (it.kind === "fim") return `Desafio encerrado: ${nomeDe(it.user_id)} é o campeão com ${desafioFmtPts(it.total)} pts`;
+  if (it.kind === "fim") return `Desafio encerrado: ${nomeDe(it.user_id)} é o campeão com ${desafioFmtPlacar(it.total, rules)}`;
   return "";
 }
 function desafioTimelineDiaLabel(iso, hoje) {
@@ -9631,7 +9775,7 @@ function DesafioAnel({ count, meta }) {
 }
 
 // Pista de corrida: uma raia por pessoa, o avatar avança conforme os pontos.
-function DesafioPista({ totais, members, meta, fase }) {
+function DesafioPista({ totais, members, meta, fase, km }) {
   const W = 340;
   const laneH = 52;
   const [pronto, setPronto] = useState(false);
@@ -9672,7 +9816,7 @@ function DesafioPista({ totais, members, meta, fase }) {
   return (
     <>
     {passou && <div className="gt-pista-passou" role="status">{passou}</div>}
-    <svg className="gt-dsf-pista" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Pista de corrida do desafio. ${totais.map((t) => `${t.pos}º ${t.nome}${t.is_me ? " (você)" : ""}, ${desafioFmtPts(t.total)} pontos`).join("; ")}`}>
+    <svg className="gt-dsf-pista" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Pista de corrida do desafio. ${totais.map((t) => `${t.pos}º ${t.nome}${t.is_me ? " (você)" : ""}, ${km ? desafioFmtKm(t.total) : `${desafioFmtPts(t.total)} pontos`}`).join("; ")}`}>
       <defs>
         <pattern id="gt-dsf-xadrez" width="8" height="8" patternUnits="userSpaceOnUse">
           <rect width="4" height="4" fill="#F2F3F1" /><rect x="4" y="4" width="4" height="4" fill="#F2F3F1" />
@@ -9698,7 +9842,7 @@ function DesafioPista({ totais, members, meta, fase }) {
               {ehUltimo && <text x="23" y={y + 24} textAnchor="start" fontSize="13">☕</text>}
             </g>
             <text x="14" y={y + 10} fontFamily="Inter, sans-serif" fontSize="10.5" fill={t.is_me ? "var(--accent)" : "var(--text-muted)"}>{t.pos}º {t.nome.length > 18 ? t.nome.slice(0, 17) + "…" : t.nome}{t.is_me ? " (você)" : ""}{fase === "rolando" && meta ? <tspan fill="var(--text-muted)" fillOpacity="0.8"> · {t.semanaCount}/{meta} na semana</tspan> : null}{t.vitorias > 0 ? <tspan fill="var(--text-muted)" fillOpacity="0.8"> · 🏆 {t.vitorias}</tspan> : null}</text>
-            <text x={W - 34} y={y + 10} textAnchor="end" fontFamily="Oswald, sans-serif" fontSize="12" fill="var(--text)">{desafioFmtPts(t.total)} pts</text>
+            <text x={W - 34} y={y + 10} textAnchor="end" fontFamily="Oswald, sans-serif" fontSize="12" fill="var(--text)">{km ? desafioFmtKm(t.total) : `${desafioFmtPts(t.total)} pts`}</text>
           </g>
         );
       })}
@@ -9732,6 +9876,8 @@ function avatarCanvas(g, im, cx, cy, r) {
 }
 
 async function desafioRenderCartao(d) {
+  // Número do placar: pontos (+5) ou, no desafio de distância, km com 1 casa (23,4).
+  const num = (v) => (d.km ? String(Math.round((v || 0) * 10) / 10).replace(".", ",") : desafioFmtPts(v).replace("−", "-"));
   const W = 1080;
   const H = 1350;
   const cv = document.createElement("canvas");
@@ -9828,7 +9974,7 @@ async function desafioRenderCartao(d) {
       g.fillStyle = "#F2F3F1"; g.font = `500 32px ${INT}`;
       g.fillText(fit(x.nome, 300) + (x === lider ? " 👑" : ""), lxx + 40, lyy);
       g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`;
-      g.fillText(desafioFmtPts(x.vals[x.vals.length - 1]).replace("−", "-"), lxx + 440, lyy); g.textAlign = "left";
+      g.fillText(num(x.vals[x.vals.length - 1]), lxx + 440, lyy); g.textAlign = "left";
     });
   } else {
   // Pódio
@@ -9849,10 +9995,10 @@ async function desafioRenderCartao(d) {
     g.textAlign = "center";
     g.fillStyle = first ? "#14161A" : "#F2F3F1";
     g.font = `600 ${first ? 120 : 92}px ${OSW}`;
-    g.fillText(desafioFmtPts(p.pts).replace("−", "-"), cx, baseY - h + (first ? 150 : 124));
+    g.fillText(num(p.pts), cx, baseY - h + (first ? 150 : 124));
     g.font = `500 28px ${INT}`;
     g.fillStyle = first ? "rgba(20,22,26,0.7)" : "#9AA0A6";
-    g.fillText("pontos", cx, baseY - h + (first ? 196 : 164));
+    g.fillText(d.km ? "km" : "pontos", cx, baseY - h + (first ? 196 : 164));
     g.font = `600 52px ${OSW}`;
     g.fillStyle = first ? "#14161A" : "#C6F135";
     g.fillText(`${idx + 1}º`, cx, baseY - 36);
@@ -9878,7 +10024,7 @@ async function desafioRenderCartao(d) {
   d.ranking.slice(3, 6).forEach((p, i) => {
     g.fillStyle = "#9AA0A6"; g.font = `600 34px ${OSW}`; g.fillText(`${i + 4}º`, 120, y);
     g.fillStyle = "#F2F3F1"; g.font = `500 32px ${INT}`; g.fillText(fit(p.nome, 560), 190, y);
-    g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`; g.fillText(`${desafioFmtPts(p.pts).replace("−", "-")} pts`, W - 120, y); g.textAlign = "left";
+    g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`; g.fillText(`${num(p.pts)} ${d.km ? "km" : "pts"}`, W - 120, y); g.textAlign = "left";
     y += extras ? 46 : 52;
   });
   }
@@ -9902,14 +10048,14 @@ async function desafioRenderCartao(d) {
   return blob;
 }
 
-function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
+function DesafioCartaoModal({ dados, onClose, showToast, onShared, render, arquivo }) {
   const [url, setUrl] = useState(null);
   const [blob, setBlob] = useState(null);
   const [erro, setErro] = useState(false);
   useEffect(() => {
     let revoke = null;
     let vivo = true;
-    desafioRenderCartao(dados).then((b) => {
+    (render || desafioRenderCartao)(dados).then((b) => {
       if (!vivo) return;
       if (!b) { setErro(true); return; }
       setBlob(b);
@@ -9921,7 +10067,7 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
   }, []);
   async function compartilhar() {
     if (!blob) return;
-    const file = new File([blob], "movo-desafio.png", { type: "image/png" });
+    const file = new File([blob], arquivo || "movo-desafio.png", { type: "image/png" });
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], text: `${dados.titulo} · ${dados.subtitulo}` });
@@ -9937,7 +10083,7 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
     if (!url) return;
     const a = document.createElement("a");
     a.href = url;
-    a.download = "movo-desafio.png";
+    a.download = arquivo || "movo-desafio.png";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -9950,7 +10096,7 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
         <h3>Cartão pra compartilhar</h3>
         {erro && <p>Não consegui gerar a imagem agora. Tenta de novo em instantes.</p>}
         {!erro && !url && <p>Gerando…</p>}
-        {url && <img className="gt-dsf-cartao-img" src={url} alt="Cartão do desafio" />}
+        {url && <img className="gt-dsf-cartao-img" src={url} alt={render ? `Cartão: ${dados.titulo}` : "Cartão do desafio"} />}
         <div className="gt-modal-actions">
           <button className="gt-btn" onClick={compartilhar} disabled={!blob}>Compartilhar</button>
           <button className="gt-btn secondary" onClick={baixar} disabled={!blob}>Baixar</button>
@@ -9961,6 +10107,61 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
       </div>
     </div>
   );
+}
+
+// Cartão de resultado (fase 5): prova de corrida ou simulado de HYROX. Mesmo visual do cartão do desafio.
+// d = { titulo, subtitulo, tempo, tempoRotulo, extras: [{ label, valor, destaque }], comp, rodape }
+async function cartaoResultadoRender(d) {
+  const W = 1080, H = 1350;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  try { await Promise.all([document.fonts.load("600 64px Oswald"), document.fonts.load("500 30px Inter")]); } catch (e) {}
+  const OSW = "Oswald, 'Arial Narrow', sans-serif";
+  const INT = "Inter, Arial, sans-serif";
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1D2024"); bg.addColorStop(1, "#0D0F12");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(W * 0.5, H * 0.36, 10, W * 0.5, H * 0.36, 620);
+  glow.addColorStop(0, "rgba(198,241,53,0.26)"); glow.addColorStop(1, "rgba(198,241,53,0)");
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const fit = (txt, maxW) => { let t = String(txt); while (t.length > 1 && g.measureText(t).width > maxW) t = t.slice(0, -1); return t === String(txt) ? t : t.trimEnd() + "…"; };
+  g.fillStyle = "#C6F135";
+  [[36, 126, 74], [98, 86, 114], [160, 46, 154]].forEach(([bx, by, bh]) => { rr(70 + bx * 0.42, 56 + by * 0.42, 44 * 0.42, bh * 0.42, 14 * 0.42); g.fill(); });
+  g.beginPath(); g.arc(70 + 182 * 0.42, 56 + 25 * 0.42, 13 * 0.42, 0, Math.PI * 2); g.fill();
+  g.font = `600 40px ${OSW}`; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText("movo", 176, 124);
+  // Conteúdo curto (prova: 2 linhas) fica centralizado na altura livre, sem metade de baixo vazia.
+  const nEx = Math.min(10, (d.extras || []).length);
+  const altura = 690 + (d.comp ? 50 : 0) + (nEx ? nEx * (nEx > 6 ? 50 : 66) + 40 : 0) - 180;
+  const dy = Math.max(0, Math.round((H - 120 - 180 - altura) / 2) - 40);
+  g.save(); g.translate(0, dy);
+  g.fillStyle = "#F2F3F1";
+  let tam = 78; g.font = `600 ${tam}px ${OSW}`;
+  const titulo = String(d.titulo || "").toUpperCase();
+  while (tam > 50 && g.measureText(titulo).width > W - 140) { tam -= 2; g.font = `600 ${tam}px ${OSW}`; }
+  g.fillText(fit(titulo, W - 140), 70, 250);
+  g.fillStyle = "#9AA0A6"; g.font = `500 32px ${INT}`; g.fillText(fit(d.subtitulo || "", W - 140), 70, 304);
+  g.textAlign = "center";
+  g.fillStyle = "#C6F135"; g.font = `600 220px ${OSW}`; g.fillText(d.tempo || "", W / 2, 560);
+  g.fillStyle = "#9AA0A6"; g.font = `500 32px ${INT}`; g.fillText(d.tempoRotulo || "tempo total", W / 2, 614);
+  let y = 690;
+  if (d.comp) { g.fillStyle = "#F2F3F1"; g.font = `600 36px ${OSW}`; g.fillText(fit(d.comp, W - 160), W / 2, y); y += 50; }
+  const extras = (d.extras || []).slice(0, 10);
+  if (extras.length) {
+    const lh = extras.length > 6 ? 50 : 66;
+    rr(70, y, W - 140, extras.length * lh + 40, 28); g.fillStyle = "rgba(242,243,241,0.06)"; g.fill();
+    y += 20 + lh * 0.68;
+    extras.forEach((x) => {
+      g.textAlign = "left"; g.fillStyle = "#C9CDD2"; g.font = `500 ${lh > 60 ? 34 : 29}px ${INT}`; g.fillText(fit(x.label, W - 520), 110, y);
+      g.textAlign = "right"; g.fillStyle = x.destaque ? "#C6F135" : "#F2F3F1"; g.font = `600 ${lh > 60 ? 40 : 34}px ${OSW}`; g.fillText(x.valor, W - 110, y);
+      y += lh;
+    });
+  }
+  g.restore();
+  g.textAlign = "center"; g.fillStyle = "#6F757C"; g.font = `500 26px ${INT}`;
+  g.fillText(d.rodape || "movo · todos os seus treinos numa só evolução", W / 2, H - 56);
+  return await new Promise((res) => cv.toBlob((b) => res(b), "image/png"));
 }
 
 // Criar desafio: 3 passos (nome e datas, regras com modelos, aposta) + tela de convite.
@@ -10148,6 +10349,31 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             </div>
             {modeloId === "custom" && <div className="gt-dsf-hint" style={{ marginTop: 6 }}>Modelo personalizado — você mexeu nas regras.</div>}
 
+            {rules.modo === "km" && (
+              <>
+                <div className="gt-field-label" style={{ marginTop: 18 }}>O QUE CONTA</div>
+                <div className="gt-card gt-dsf-regra">
+                  <div className="gt-dsf-hint" style={{ marginTop: 0 }}>Toda corrida com distância registrada (Strava ou os km anotados no treino). Academia e outras atividades não entram.</div>
+                  <DesafioStepper value={rules.atividades.minKm} min={0} max={21} step={0.5} onChange={(v) => editarRegras({ ...rules, atividades: { ...rules.atividades, minKm: v } })} fmt={(v) => (v === 0 ? "qualquer distância" : `corridas de ${desafioFmtKm(v)} ou mais`)} />
+                  <div className="gt-dsf-hint" style={{ margin: "12px 0 6px" }}>Dias da semana que valem</div>
+                  <div className="gt-dsf-dias">
+                    {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                      const on = rules.dias.indexOf(d) >= 0;
+                      return (
+                        <button key={d} type="button" className={`gt-dsf-dia ${on ? "on" : ""}`} aria-pressed={on}
+                          onClick={() => {
+                            const next = on ? rules.dias.filter((x) => x !== d) : [...rules.dias, d];
+                            if (next.length === 0) return;
+                            editarRegras({ ...rules, dias: next.sort() });
+                          }}>{DESAFIO_SEMANA_NOMES[d].slice(0, 3)}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="gt-dsf-resumo"><b>Resumo:</b> {desafioRegrasResumo(rules)}.</div>
+              </>
+            )}
+            {rules.modo !== "km" && <>
             <div className="gt-field-label" style={{ marginTop: 18 }}>O QUE CONTA COMO TREINO</div>
             <div className="gt-card gt-dsf-regra">
               <label className="gt-dsf-check"><input type="checkbox" checked={rules.academia.on} onChange={(e) => editarRegras({ ...rules, academia: { ...rules.academia, on: e.target.checked } })} /> Treino de academia</label>
@@ -10217,13 +10443,14 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             <div className="gt-dsf-hint">Vale quando a outra pessoa confirma e as duas têm treino registrado no dia.</div>
 
             <div className="gt-dsf-resumo"><b>Resumo:</b> {desafioRegrasResumo(rules)}{rules.bonusJuntos > 0 ? ` · junto = ${desafioFmtPts(rules.bonusJuntos)}` : ""}</div>
+            </>}
           </div>
         )}
 
         {step === 3 && (
           <div>
-            <p className="gt-dsf-hint" style={{ marginTop: 0 }}>Opcional, mas é o que dá graça. Escreve o que está valendo.</p>
-            <div className="gt-field-label">QUEM PERDE A SEMANA…</div>
+            <p className="gt-dsf-hint" style={{ marginTop: 0, marginBottom: 16 }}>Opcional, mas é o que dá graça. Escreva o que está valendo.</p>
+            <div className="gt-field-label">{rules.modo === "km" ? "QUEM CORRER MENOS NA SEMANA…" : "QUEM PERDE A SEMANA…"}</div>
             <input className="gt-input" placeholder="Ex: paga um café pra quem ganhou" value={stakes.semana} maxLength={80} onChange={(e) => setStakes({ ...stakes, semana: e.target.value })} />
             <div className="gt-field-label" style={{ marginTop: 16 }}>PRÊMIO FINAL</div>
             <input className="gt-input" placeholder="Ex: vale-presente dos perdedores" value={stakes.final} maxLength={80} onChange={(e) => setStakes({ ...stakes, final: e.target.value })} />
@@ -10231,8 +10458,8 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             <div className="gt-card" style={{ marginTop: 18 }}>
               <div className="gt-field-label">RESUMO</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18 }}>{nome.trim()}</div>
-              <div className="gt-dsf-hint">{dd(inicio)} → {dd(fim)} · {semanas} semana{semanas === 1 ? "" : "s"} · meta {rules.meta}/semana</div>
-              <div className="gt-dsf-hint">{desafioRegrasResumo(rules)}</div>
+              <div className="gt-dsf-hint">{dd(inicio)} → {dd(fim)} · {semanas} semana{semanas === 1 ? "" : "s"} · {rules.modo === "km" ? "placar em km" : `meta ${rules.meta}/semana`}</div>
+              <div className="gt-dsf-hint">{desafioRegrasResumo(rules)}.</div>
               <div className="gt-dsf-hint">As regras ficam travadas quando o desafio começa. Nome e apostas dá pra editar depois.</div>
             </div>
           </div>
@@ -10696,7 +10923,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
     const wr = desafioWeekRange(ch, status.semanaIdx);
     return ov.checkins.filter((c) => c.user_id === meId && c.date >= wr.start && c.date <= wr.end).sort((a, b) => a.date.localeCompare(b.date));
   })();
-  const faixa = me && status.fase === "rolando" ? desafioProximaFaixa(rules, me.semanaCount) : null;
+  const faixa = me && status.fase === "rolando" && rules.modo !== "km" ? desafioProximaFaixa(rules, me.semanaCount) : null;
   const pendentes = ov.together.filter((t) => t.to_user === meId && t.status === "pending");
   const nomeDe = (uid) => { const m = ov.members.find((x) => x.user_id === uid); return m ? m.nome : "Alguém"; };
   const outros = ov.members.filter((m) => m.user_id !== meId);
@@ -10769,11 +10996,15 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
   }
   const regrasTxt = (
     <div className="gt-dsf-regras-txt">
+              {rules.modo === "km" && <div><b>Placar:</b> {desafioRegrasResumo(rules)} ({DESAFIO_SEMANA_NOMES[ch.week_start]} a {DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
+              {rules.modo === "km" && <div><b>Conta:</b> corrida com distância registrada (Strava ou o km anotado no treino){rules.dias.length < 7 ? `, só ${rules.dias.map((d) => DESAFIO_SEMANA_NOMES[d]).join(", ")}` : ""}.</div>}
+              {rules.modo !== "km" && <>
               <div><b>Conta:</b> {desafioContamTexto(rules)}.</div>
               <div><b>Limites:</b> {desafioLimitesTexto(rules)}.</div>
               <div><b>Meta:</b> {rules.meta} treino{rules.meta === 1 ? "" : "s"} por semana ({DESAFIO_SEMANA_NOMES[ch.week_start]} a {DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>
               <div><b>Pontos:</b> {desafioRegrasResumo(rules)}</div>
               <div><b>Treinar junto:</b> {rules.bonusJuntos > 0 ? `${desafioFmtPts(rules.bonusJuntos)} pt por vez, pra cada um, com confirmação` : "sem bônus"}</div>
+              </>}
               <div><b>Semana:</b> {stakes.semana ? `quem perde ${stakes.semana}` : "sem aposta definida"}</div>
               <div><b>Final:</b> {stakes.final || "sem prêmio definido"}</div>
               {(valoresRS.semana > 0 || valoresRS.final > 0) && (() => { const cb = desafioCombinadoLinhas(stakes, ov.members.length, ch.weeks); return <div><b>Combinado em R$:</b> {cb.linhas.join(" · ")}. Pior caso pra cada um: {desafioBRL(Math.round(cb.pior * 100))}. {DESAFIO_TERMO}</div>; })()}
@@ -10860,11 +11091,30 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
           <div className="gt-card gt-dsf-campeao">
             <div style={{ fontSize: 34 }}><Ei e="🏆" size={40} /></div>
             <div className="gt-dsf-campeao-nome">{campeao.nome}</div>
-            <div className="gt-dsf-hint">campeão com {desafioFmtPts(campeao.total)} pts{stakes.final ? ` · leva: ${stakes.final}` : ""}</div>
+            <div className="gt-dsf-hint">campeão com {desafioFmtPlacar(campeao.total, rules)}{stakes.final ? ` · leva: ${stakes.final}` : ""}</div>
           </div>
         )}
 
-        {status.fase === "rolando" && me && (
+        {status.fase === "rolando" && me && rules.modo === "km" && (() => {
+          const atualW = st.semanas.find((w) => !w.fechada);
+          const minha = atualW ? atualW.rows.find((r) => r.user_id === me.user_id) : null;
+          const frente = atualW ? atualW.rows.filter((r) => r.user_id !== me.user_id && r.pts > (minha ? minha.pts : 0)).sort((a, b) => a.pts - b.pts)[0] : null;
+          return (
+            <div className="gt-card gt-dsf-minha">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="gt-field-label" style={{ marginBottom: 2 }}>MINHA SEMANA</div>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17 }}>{desafioFmtKm(minha ? minha.pts : 0)} em {me.semanaCount} corrida{me.semanaCount === 1 ? "" : "s"}</div>
+                <div className="gt-dsf-hint" style={{ marginTop: 2 }}>{frente ? `${desafioFmtKm(Math.round((frente.pts - (minha ? minha.pts : 0)) * 10) / 10)} atrás de ${String(frente.nome).split(" ")[0]} nesta semana` : atualW && atualW.rows.length > 1 ? "Você lidera a semana" : "Cada km conta"}</div>
+                {meusCheckinsSemana.length > 0 && (
+                  <div className="gt-dsf-chips">
+                    {meusCheckinsSemana.map((c) => <span key={`${c.date}${c.tipo}`} className="gt-dsf-chip">{diaSemanaCurto(c.date)} · {c.label || "Corrida"}</span>)}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+        {status.fase === "rolando" && me && rules.modo !== "km" && (
           <div className="gt-card gt-dsf-minha">
             <DesafioAnel count={me.semanaCount} meta={rules.meta} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -10886,7 +11136,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
         )}
         {status.fase === "antes" && (() => {
           const dias = status.diasParaComecar;
-          const resumoRegras = `${rules.meta}x/sem${stakes.semana ? ` · ${stakes.semana}` : ""}`;
+          const resumoRegras = `${rules.modo === "km" ? "quem corre mais km" : `${rules.meta}x/sem`}${stakes.semana ? ` · ${stakes.semana}` : ""}`;
           const nPend = pendIds.length;
           const candidatos = (friends || []).filter((f) => ov.members.every((m) => m.user_id !== f.id)).length;
           const secao = (key, titulo, resumo, corpo) => (
@@ -10952,24 +11202,24 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
 
         {status.fase !== "antes" && (
           <div className="gt-card">
-            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>PISTA</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoGeral())}>Compartilhar ↗</button></div>
-            <DesafioPista totais={totaisVis} members={ov.members} meta={rules.meta} fase={status.fase} />
+            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>{rules.modo === "km" ? "TOTAL DO DESAFIO" : "PISTA"}</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoGeral())}>Compartilhar ↗</button></div>
+            <DesafioPista totais={totaisVis} members={ov.members} meta={rules.modo === "km" ? null : rules.meta} fase={status.fase} km={rules.modo === "km"} />
             {muitos && <button type="button" className="gt-dsf-link big" onClick={() => setVerTodos(!verTodos)}>{verTodos ? "Mostrar só o top 5 e você ▴" : `Ver todos os ${st.totais.length} ▾`}</button>}
-            {status.fase === "rolando" && <div className="gt-dsf-hint" style={{ marginTop: 8 }}>Pontos da semana em andamento aparecem só se forem positivos. Os negativos só valem quando a semana fecha ({DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
+            {status.fase === "rolando" && rules.modo !== "km" && <div className="gt-dsf-hint" style={{ marginTop: 8 }}>Pontos da semana em andamento aparecem só se forem positivos. Os negativos só valem quando a semana fecha ({DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
           </div>
         )}
 
         {status.fase !== "antes" && serie.labels.length >= 3 && (
           <div className="gt-card">
-            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>CORRIDA DOS PONTOS</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoEvolucao())}>Compartilhar ↗</button></div>
+            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>{rules.modo === "km" ? "KM ACUMULADOS" : "CORRIDA DOS PONTOS"}</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoEvolucao())}>Compartilhar ↗</button></div>
             <DesafioEvolucao serie={serieVis} />
-            {serie.temAoVivo && <div className="gt-dsf-hint" style={{ margin: "4px 0 0" }}>* semana em andamento (só pontos positivos)</div>}
+            {serie.temAoVivo && <div className="gt-dsf-hint" style={{ margin: "4px 0 0" }}>{rules.modo === "km" ? "* semana em andamento" : "* semana em andamento (só pontos positivos)"}</div>}
           </div>
         )}
 
         {status.fase !== "antes" && <DesafioLinhaDoTempo itens={timeline} meId={meId} members={ov.members} hoje={hoje} rules={rules} podeReagir={podeReagir} onReagir={reagir} />}
 
-        {status.fase !== "antes" && (
+        {status.fase !== "antes" && rules.modo !== "km" && (
           <div className="gt-card">
             <div className="gt-field-label">TREINEI COM ALGUÉM</div>
             <p className="gt-dsf-hint" style={{ marginTop: 0 }}>Treinou junto com alguém do desafio? Avisa — vale +{rules.bonusJuntos || 0} pt pra cada um quando a pessoa confirmar{rules.bonusJuntos === 0 ? " (este desafio não tem bônus)" : ""}.</p>
@@ -10988,8 +11238,8 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
                 </div>
                 {w.winners.length === 0 ? <div className="gt-dsf-hint" style={{ margin: 0 }}>Empate — ninguém ganha nem paga.</div> : (
                   <div className="gt-dsf-sem-lines">
-                    <div><Ei e="🏆" /> {w.winners.map(nomeDe).join(" e ")} <span className="gt-dsf-hint" style={{ margin: 0 }}>({desafioFmtPts(w.rows.find((r) => r.user_id === w.winners[0]).pts)})</span></div>
-                    <div><Ei e="☕" /> {w.losers.map(nomeDe).join(" e ")}{stakes.semana ? ` · ${stakes.semana}` : ""} <span className="gt-dsf-hint" style={{ margin: 0 }}>({desafioFmtPts(w.rows.find((r) => r.user_id === w.losers[0]).pts)})</span></div>
+                    <div><Ei e="🏆" /> {w.winners.map(nomeDe).join(" e ")} <span className="gt-dsf-hint" style={{ margin: 0 }}>({rules.modo === "km" ? desafioFmtKm(w.rows.find((r) => r.user_id === w.winners[0]).pts) : desafioFmtPts(w.rows.find((r) => r.user_id === w.winners[0]).pts)})</span></div>
+                    <div><Ei e="☕" /> {w.losers.map(nomeDe).join(" e ")}{stakes.semana ? ` · ${stakes.semana}` : ""} <span className="gt-dsf-hint" style={{ margin: 0 }}>({rules.modo === "km" ? desafioFmtKm(w.rows.find((r) => r.user_id === w.losers[0]).pts) : desafioFmtPts(w.rows.find((r) => r.user_id === w.losers[0]).pts)})</span></div>
                   </div>
                 )}
               </div>
@@ -11132,8 +11382,9 @@ function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, session
     if (status.fase === "rolando") {
       const wr = desafioWeekRange(ch, status.semanaIdx);
       const rules = desafioNormalizeRules(ch.rules);
-      const n = desafioContarLista(desafioCheckinsFromSessions(sessions, atividadeById, rules, wr.start, hoje), rules);
-      prog = `${n}/${rules.meta} esta semana`;
+      const cks = desafioCheckinsFromSessions(sessions, atividadeById, rules, wr.start, hoje);
+      if (rules.modo === "km") prog = `${desafioFmtKm(cks.reduce((t, c) => t + (c.km || 0), 0))} esta semana`;
+      else prog = `${desafioContarLista(cks, rules)}/${rules.meta} esta semana`;
     }
     return { linha, prog, fase: status.fase };
   }
@@ -11389,6 +11640,7 @@ function coachCorridaNorm(c) {
     esforco: String(c.esforco || "").trim().slice(0, 80),
     detalhes: String(c.detalhes || "").trim().slice(0, 300),
     etapas,
+    refLeve: +c.refLeve >= 3 && +c.refLeve <= 12 ? Math.round(+c.refLeve * 100) / 100 : 0,
   };
 }
 // Soma das distâncias das etapas (km); 0 se alguma etapa for por tempo.
@@ -11753,13 +12005,17 @@ function coachFichaConteudo(sem, aluno, coachNome, rodape) {
 // Modelos do treinador (coach_templates): semana = {dias,fichas}; treino de corrida = {tipo:"corrida",corrida}.
 function coachModeloCorrida(m) { return !!(m && m.payload && m.payload.tipo === "corrida" && m.payload.corrida); }
 function coachSemanaResumo(sem) {
-  let dias = 0, ex = 0;
+  let dias = 0, ex = 0, corridas = 0, outras = 0;
   COACH_ORDEM_DIAS.forEach((d) => {
     const itens = (sem.dias && sem.dias[d]) || [];
     if (itens.length) dias++;
-    itens.forEach((it) => { if (it.tipo === "treino" && sem.fichas[it.ref]) ex += coachContaExercicios(sem.fichas[it.ref]); });
+    itens.forEach((it) => {
+      if (it.tipo === "treino") { if (sem.fichas[it.ref]) ex += coachContaExercicios(sem.fichas[it.ref]); }
+      else if (it.id === "corrida") corridas++;
+      else outras++;
+    });
   });
-  return { dias, ex };
+  return { dias, ex, corridas, outras };
 }
 function coachSemanaIgual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
@@ -11878,6 +12134,28 @@ function coachFichasDaIA(obj) {
       blocos: [{ nome: "Exercícios", exercicios }],
       _dia: dia != null ? dia : null,
     });
+  });
+  out.corridas = coachCorridasDaIA(obj);
+  return out;
+}
+// Treinos de corrida lidos pela IA (fase 5): {n, dia, obs, et:[{t, m|km|min|seg, pace, d} | {rep, p:[...]}]}.
+function coachCorridasDaIA(obj) {
+  const passo = (x) => x && typeof x === "object" ? {
+    tipo: x.t, distanciaM: +x.m > 0 ? +x.m : +x.km > 0 ? +x.km * 1000 : 0,
+    duracaoSeg: +x.seg > 0 ? +x.seg : +x.min > 0 ? +x.min * 60 : 0,
+    pace: typeof x.pace === "string" ? x.pace.replace(/\s+/g, "").replace(/[–]/g, "-") : "", descricao: typeof x.d === "string" ? x.d : "",
+  } : null;
+  const out = [];
+  (Array.isArray(obj && obj.corridas) ? obj.corridas : []).slice(0, 14).forEach((c, i) => {
+    if (!c || !Array.isArray(c.et)) return;
+    const etapas = c.et.map((e) => (e && Array.isArray(e.p) ? { repeticoes: e.rep, passos: e.p.map(passo) } : passo(e))).filter(Boolean);
+    const norm = planoEtapasNorm(etapas);
+    if (!norm.length) return;
+    const dur = planoEtapasSegmentos(norm, 0).reduce((t, x) => t + x.min, 0);
+    const corrida = coachCorridaNorm({ titulo: typeof c.n === "string" && c.n.trim() ? c.n.trim() : `Corrida ${i + 1}`, distanciaKm: coachEtapasKm(norm), duracaoMin: Math.round(dur), detalhes: typeof c.obs === "string" ? c.obs : "", etapas: norm });
+    if (!corrida) return;
+    const dia = typeof c.dia === "string" ? COACH_DIA_ABREV[c.dia.trim().toLowerCase().slice(0, 3)] : undefined;
+    out.push({ id: "impc-" + coachNovoId(), corrida, _dia: dia != null ? dia : null });
   });
   return out;
 }
@@ -12864,6 +13142,68 @@ function CoachNotaHoje({ notas, linkId, nomeCoach, onEnviar }) {
   );
 }
 
+// ---------- Fase 5: Meus ritmos (teste de corrida → zonas de pace) ----------
+function RitmosTela({ ritmos, hojeISO, onSalvar, onClose, logEvent }) {
+  const [editando, setEditando] = useState(!ritmos);
+  const [tipo, setTipo] = useState(ritmos ? ritmos.teste.tipo : "t5");
+  const [valor, setValor] = useState("");
+  const [erro, setErro] = useState("");
+  const cooper = tipo === "cooper";
+  const lido = cooper ? { tipo, m: parseInt(String(valor).replace(/\D/g, ""), 10) || 0 } : { tipo, seg: tempoParaSeg(valor) };
+  const previa = valor.trim() ? ritmosCalcular({ ...lido, data: hojeISO }) : null;
+  function salvar() {
+    if (!previa) { setErro(cooper ? "Informe quantos metros você correu em 12 minutos, por exemplo 2400." : `Informe o tempo dos ${RITMOS_TESTES[tipo].nome} no formato 24:30.`); return; }
+    onSalvar(previa); logEvent && logEvent("ritmos_teste", { tipo, vdot: previa.vdot, primeiro: !ritmos });
+    setEditando(false); setValor(""); setErro("");
+  }
+  const zonas = (r) => (
+    <div className="gt-rit-lista">
+      {RITMOS_ZONAS.map(([k, t, uso]) => (
+        <div className="gt-rit-zona" key={k}>
+          <div className="tx"><div className="t">{t}</div><div className="d">{uso}</div></div>
+          <div className="v">{ritmosFaixaTxt(r[k])}<small>/km</small></div>
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div className="gt-focus gt-med" role="dialog" aria-modal="true" aria-label="Meus ritmos">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Meus ritmos</div></div>
+      </div>
+      <div className="gt-focus-body gt-med-body">
+        {!editando && ritmos && (
+          <>
+            <div className="gt-plano-dica" style={{ marginTop: 0 }}>Do teste de {ritmosTesteTxt(ritmos.teste)}{ritmos.teste.data ? `, em ${coachDataCurta(ritmos.teste.data)}` : ""}.</div>
+            {zonas(ritmos)}
+            <div className="gt-plano-dica">Os treinos de corrida que você monta e os que seu treinador manda passam a usar esses ritmos. Se quiser, refaça o teste em 6 a 8 semanas.</div>
+            <div className="gt-modal-actions"><button type="button" className="gt-btn secondary" onClick={() => setEditando(true)}>Fazer novo teste</button></div>
+          </>
+        )}
+        {editando && (
+          <>
+            {!ritmos && <div className="gt-med-vazio"><div className="t">Treine no seu ritmo, não no de outra pessoa</div><div className="d">Um teste curto define seus ritmos de rodagem, limiar e tiros. Os treinos de corrida do Movo se ajustam a eles.</div></div>}
+            <div className="gt-co-sec gt-med-sec">QUAL TESTE VOCÊ FEZ?</div>
+            <div className="gt-co-chipsrow" role="group" aria-label="Teste">
+              {Object.keys(RITMOS_TESTES).map((k) => <button key={k} type="button" aria-pressed={tipo === k} className={`gt-co-chip ${tipo === k ? "on" : ""}`} onClick={() => { setTipo(k); setValor(""); setErro(""); }}>{RITMOS_TESTES[k].nome}</button>)}
+            </div>
+            <label><span className="gt-field-label" style={{ display: "block" }}>{cooper ? "Quantos metros você correu" : "Seu tempo (min:seg)"}</span>
+              <input className="gt-input" inputMode={cooper ? "numeric" : "text"} placeholder={cooper ? "Ex.: 2400" : tipo === "t3" ? "Ex.: 14:20" : "Ex.: 24:30"} value={valor} onChange={(e) => { setValor(e.target.value); setErro(""); }} /></label>
+            <div className="gt-plano-dica">{cooper ? "Aqueça 10 minutos e corra 12 minutos o mais longe que conseguir, em pista ou percurso plano." : `Aqueça 10 minutos e corra os ${RITMOS_TESTES[tipo].nome} no ritmo mais forte que você sustenta até o fim. Um resultado de prova recente também vale.`}</div>
+            {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+            {previa && <><div className="gt-co-sec gt-med-sec">SEUS RITMOS</div>{zonas(previa)}</>}
+            <div className="gt-modal-actions">
+              <button type="button" className="gt-btn" onClick={salvar}>Salvar meus ritmos</button>
+              {ritmos && <button type="button" className="gt-btn secondary" onClick={() => { setEditando(false); setValor(""); setErro(""); }}>Cancelar</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Fase 4: Minhas medidas, avaliação do treinador e anamnese ----------
 // Medidas e fotos são do aluno (tabela user_medidas, bucket privado "medidas"). O treinador só vê com a
 // permissão "ver_medidas". Avaliações são do treinador (coach_avaliacoes) e aparecem para o aluno junto.
@@ -13040,7 +13380,7 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
             </div>
           </>
         )}
-        <div className="gt-co-sec gt-med-sec">FOTOS</div>
+        {(midiaLigada("fotos_medidas") || MED_POSES.some(([k]) => novas[k] || fotos[k])) && <div className="gt-co-sec gt-med-sec">FOTOS</div>}
         <div className="gt-med-fotos">
           {MED_POSES.map(([k, t]) => {
             const src = novas[k] ? novas[k].url : fotos[k] ? urls[fotos[k]] : null;
@@ -13051,6 +13391,7 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
                 <button type="button" aria-label={`Tirar foto de ${t.toLowerCase()}`} onClick={() => tirarFoto(k)}>✕</button>
               </div>
             );
+            if (!midiaLigada("fotos_medidas")) return null;
             return (
               <label className="gt-med-foto gt-med-foto-add" key={k}><span>+ {t}</span>
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => addFoto(k, e)} /></label>
@@ -13821,7 +14162,103 @@ function CoachDiasPontos({ dias }) {
     </div>
   );
 }
-function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, onPendente, onConvidar, filaN, onMontar }) {
+// Turmas (fase 5): grupos de alunos para montar a mesma semana uma vez e enviar para todos.
+function coachTurmaMembros(turma, lista) {
+  const ids = new Set(turma.links || []);
+  return lista.filter((a) => ids.has(a.link_id) && (a.status === "ativo" || a.status === "pendente"));
+}
+function coachTurmaEnviosLer() { try { return JSON.parse(localStorage.getItem("treino-app:coachTurmaEnvios") || "{}") || {}; } catch (e) { return {}; } }
+function coachTurmaEnvioMarcar(id) { try { localStorage.setItem("treino-app:coachTurmaEnvios", JSON.stringify({ ...coachTurmaEnviosLer(), [id]: todayISO() })); } catch (e) {} }
+function CoachTurmas({ lista, coachUid, onMontarTurma, showToast }) {
+  const [turmas, setTurmas] = useState(() => { try { return JSON.parse(localStorage.getItem("treino-app:coachTurmas") || "[]") || []; } catch (e) { return []; } });
+  const [edit, setEdit] = useState(null); // { id?, nome, links: [] }
+  const [apagarQ, setApagarQ] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const envios = coachTurmaEnviosLer(); // { turmaId: "AAAA-MM-DD" } do último envio feito neste aparelho
+  const carregar = useCallback(async () => {
+    try {
+      const { data, error } = await supabaseClient.from("coach_turmas").select("id,nome,links").order("nome");
+      if (error) return;
+      setTurmas(data || []);
+      try { localStorage.setItem("treino-app:coachTurmas", JSON.stringify(data || [])); } catch (e) {}
+    } catch (e) {}
+  }, []);
+  useEffect(() => { carregar(); }, [carregar]);
+  const elegiveis = lista.filter((a) => a.status === "ativo" || a.status === "pendente").slice().sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR"));
+  if (elegiveis.length < 2 && turmas.length === 0) return null;
+  async function salvar() {
+    const nome = (edit.nome || "").trim();
+    if (!nome || !edit.links.length) return;
+    setSalvando(true);
+    try {
+      const q = edit.id
+        ? supabaseClient.from("coach_turmas").update({ nome, links: edit.links }).eq("id", edit.id)
+        : supabaseClient.from("coach_turmas").insert({ coach_id: coachUid, nome, links: edit.links });
+      const { error } = await q;
+      if (error) throw error;
+      showToast(edit.id ? "Turma salva" : `Turma ${nome} criada`); setEdit(null); carregar();
+    } catch (e) { showToast("Não consegui salvar a turma agora"); }
+    setSalvando(false);
+  }
+  async function apagar() {
+    setSalvando(true);
+    try {
+      const { error } = await supabaseClient.from("coach_turmas").delete().eq("id", edit.id);
+      if (error) throw error;
+      showToast("Turma apagada. Os alunos continuam com você"); setEdit(null); setApagarQ(false); carregar();
+    } catch (e) { showToast("Não consegui apagar a turma agora"); }
+    setSalvando(false);
+  }
+  function alternar(id) { setEdit((p) => ({ ...p, links: p.links.indexOf(id) >= 0 ? p.links.filter((x) => x !== id) : [...p.links, id] })); }
+  return (
+    <section className="gt-co-turmas" aria-label="Turmas">
+      <div className="gt-co-turmas-head"><span className="gt-co-sec">TURMAS</span><button type="button" className="gt-co-link" onClick={() => setEdit({ nome: "", links: [] })}>＋ Nova turma</button></div>
+      {turmas.length === 0 && <div className="gt-co-turmas-vazio">Agrupe alunos que treinam igual e monte a semana uma vez só para todos.</div>}
+      {turmas.map((t) => {
+        const membros = coachTurmaMembros(t, lista);
+        return (
+          <div key={t.id} className="gt-co-turma">
+            <button type="button" className="tx" onClick={() => setEdit({ id: t.id, nome: t.nome, links: (t.links || []).filter((id) => lista.some((a) => a.link_id === id)) })} aria-label={`Editar turma ${t.nome}`}>
+              <div className="t">{t.nome}</div>
+              <div className="d">{membros.length ? (envios[t.id] ? `Enviada em ${coachDataCurta(envios[t.id])} · ` : "") + membros.map((a) => a.nome.split(" ")[0]).join(", ") : "Sem alunos ativos"}</div>
+            </button>
+            <button type="button" className="gt-btn small" disabled={!membros.length} onClick={() => onMontarTurma({ ...t, membros })}>Montar semana</button>
+          </div>
+        );
+      })}
+      {edit && (
+        <div className="gt-modal-backdrop" onClick={() => !salvando && setEdit(null)}>
+          <div className="gt-modal" role="dialog" aria-modal="true" aria-label={edit.id ? "Editar turma" : "Nova turma"} onClick={(e) => e.stopPropagation()}>
+            <h3>{edit.id ? "Editar turma" : "Nova turma"}</h3>
+            <label className="gt-field-label" htmlFor="gt-turma-nome" style={{ display: "block" }}>Nome da turma</label>
+            <input id="gt-turma-nome" className="gt-input" placeholder="Ex.: Corrida de terça" maxLength={60} value={edit.nome} onChange={(e) => setEdit({ ...edit, nome: e.target.value })} autoFocus={!edit.id} />
+            <div className="gt-co-sec">ALUNOS ({edit.links.length})</div>
+            <div className="gt-co-turma-alunos">
+              {elegiveis.map((a) => (
+                <label key={a.link_id} className="gt-plano-chk"><input type="checkbox" checked={edit.links.indexOf(a.link_id) >= 0} onChange={() => alternar(a.link_id)} /> <span>{a.nome}{a.status === "pendente" ? <small> (convite pendente)</small> : null}</span></label>
+              ))}
+            </div>
+            {!apagarQ && <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+              <button type="button" className="gt-btn" disabled={salvando || !edit.nome.trim() || !edit.links.length} onClick={salvar}>{salvando ? "Salvando…" : "Salvar turma"}</button>
+              <button type="button" className="gt-btn secondary" disabled={salvando} onClick={() => setEdit(null)}>Cancelar</button>
+            </div>}
+            {edit.id && !apagarQ && <button type="button" className="gt-co-link danger" style={{ marginTop: 8 }} onClick={() => setApagarQ(true)}>Apagar turma</button>}
+            {edit.id && apagarQ && (
+              <div className="gt-co-turma-apagar" role="alert">
+                <div>Apagar a turma {edit.nome}? Os alunos e os treinos já enviados não mudam.</div>
+                <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+                  <button type="button" className="gt-btn gt-btn-danger" disabled={salvando} onClick={apagar}>{salvando ? "Apagando…" : "Apagar turma"}</button>
+                  <button type="button" className="gt-btn secondary" disabled={salvando} onClick={() => setApagarQ(false)}>Manter</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, onPendente, onConvidar, filaN, onMontar, coachUid, onMontarTurma, showToast }) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const hojeISO = todayISO();
@@ -13944,6 +14381,7 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
           );
         })}
       </div>
+      {onMontarTurma && <CoachTurmas lista={lista} coachUid={coachUid} onMontarTurma={onMontarTurma} showToast={showToast} />}
     </>
   );
 }
@@ -14286,8 +14724,11 @@ function CoachAjustarAluno({ aluno, remover, setRemover }) {
 }
 
 // ---------- Treinador: montar e enviar a semana ----------
-function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent, planoLiberado }) {
+function CoachComposer({ aluno: alunoProp, turma, modelo, treinosProprios, atividadesProprias, onClose, onEnviado, showToast, logEvent, planoLiberado }) {
   const ehModelo = !!modelo;
+  // Turma (fase 5): a mesma semana para vários alunos; envia uma por aluno.
+  const ehTurma = !ehModelo && !!turma;
+  const aluno = ehTurma ? { link_id: `turma:${turma.id}`, nome: turma.nome, status: "turma", coach_uid: turma.coach_uid, coach_nome: turma.coach_nome } : alunoProp;
   // Enviar como plano: a semana repetida por N semanas, com fases (fase 2, flag "plano").
   const segundaEsta = planoSemanaChave(todayISO());
   const segundaQueVem = addDays(segundaEsta, 7);
@@ -14317,8 +14758,10 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     if (ehModelo || aluno.status !== "ativo") return;
     let vivo = true;
     coachCall("coach_anamnese", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok && r.data) setAnamSim(anamneseSimIdx(r.data.respostas)); });
+    coachCall("coach_aluno_ritmos", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok && r.data) setRitmosAluno(ritmosNorm(r.data)); });
     return () => { vivo = false; };
   }, [aluno.link_id]);
+  const [ritmosAluno, setRitmosAluno] = useState(null); // Meus ritmos do aluno (fase 5; só com ver_corrida)
   const chaveRasc = `treino-app:coachRascunho:${aluno.link_id}`;
   const [sem, setSem] = useState(coachSemanaVazia);
   const [msg, setMsg] = useState("");
@@ -14342,7 +14785,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     (async () => {
       const pays = [];
       try { const { data } = await supabaseClient.from("coach_templates").select("*").order("created_at", { ascending: false }); (data || []).forEach((m) => m.payload && pays.push(m.payload)); } catch (e) {}
-      if (!ehModelo) { const e = await coachCall("coach_list_assignments", { p_link: aluno.link_id }); if (e.ok) (e.data || []).forEach((x) => { if (x.tipo === "semana" && x.payload) pays.push(x.payload); else if (x.tipo === "plano" && x.payload && x.payload.semana) pays.push(x.payload.semana); }); }
+      if (!ehModelo && !ehTurma) { const e = await coachCall("coach_list_assignments", { p_link: aluno.link_id }); if (e.ok) (e.data || []).forEach((x) => { if (x.tipo === "semana" && x.payload) pays.push(x.payload); else if (x.tipo === "plano" && x.payload && x.payload.semana) pays.push(x.payload.semana); }); }
       const vistos = new Set(); const out = [];
       pays.forEach((pl) => Object.values(pl.fichas || {}).forEach((f) => { const k = normalizeSearch(f.nome || ""); if (f.nome && !vistos.has(k)) { vistos.add(k); out.push(f); } }));
       if (vivo) setSalvas(out);
@@ -14356,6 +14799,14 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       if (ehModelo) {
         const base = modelo.payload ? coachClonar(modelo.payload) : coachSemanaVazia();
         setSem(base); inicial.current = JSON.stringify({ sem: base, msg: "" }); setPronto(true);
+        return;
+      }
+      if (ehTurma) {
+        let rasc = null;
+        try { rasc = JSON.parse(localStorage.getItem(chaveRasc) || "null"); } catch (x) {}
+        setSem(rasc && rasc.sem ? rasc.sem : coachSemanaVazia()); setMsg(rasc && rasc.msg ? rasc.msg : "");
+        inicial.current = JSON.stringify({ sem: coachSemanaVazia(), msg: "" });
+        setPronto(true);
         return;
       }
       const [e, d] = await Promise.all([coachCall("coach_list_assignments", { p_link: aluno.link_id }), coachCall("coach_student_detail", { p_link: aluno.link_id, p_dias: 28 })]);
@@ -14445,8 +14896,32 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     } catch (e) { showToast("Não consegui salvar o modelo agora"); }
     setEnviando(false);
   }
+  async function enviarTurma() {
+    setEnviando(true);
+    const plano = comoPlano && planoLiberado;
+    const membros = turma.membros || [];
+    let ok = 0, fila = 0, falhou = 0;
+    for (const a of membros) {
+      const semV = coachAnexarVideos(sem, videosMapa, aluno.coach_nome);
+      const payload = plano ? { semana: semV, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao } : semV;
+      const item = { link_id: a.link_id, nome: a.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
+      const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
+      if (r.ok) { ok++; if (a.status === "ativo") avisarPorPush("treinador", { link_id: item.link_id }); }
+      else if (coachEhErroDeRede(r.raw) || (typeof navigator !== "undefined" && navigator.onLine === false)) { coachFilaSalvar([...coachFilaLer(), item]); fila++; }
+      else falhou++;
+    }
+    setEnviando(false);
+    if (ok + fila === 0) { showToast("Não consegui enviar agora. Tente de novo"); return; }
+    try { localStorage.removeItem(chaveRasc); } catch (e) {}
+    coachTurmaEnvioMarcar(turma.id);
+    logEvent(plano ? "coach_plano_turma" : "coach_semana_turma");
+    const oque = plano ? "Plano enviado" : "Semana enviada";
+    showToast(fila ? `${oque} para ${ok} de ${membros.length}. ${fila} na fila: sai quando você reconectar` : falhou ? `${oque} para ${ok} de ${membros.length}. Abra quem faltou e envie de novo` : `${oque} para ${ok} ${ok > 1 ? "alunos" : "aluno"} de ${turma.nome}`);
+    onEnviado(); onClose();
+  }
   async function enviar() {
     if (ehModelo) return salvarComoModeloAtual();
+    if (ehTurma) return enviarTurma();
     setEnviando(true);
     const plano = comoPlano && planoLiberado;
     const rem = podeAjustar ? { ajuste: true, remover } : {};
@@ -14503,20 +14978,20 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     } catch (e) { showToast("Não consegui gerar o PDF"); }
   }
   const motivoDesab = ehModelo ? (!pronto ? "Carregando…" : resumo.dias === 0 ? "Adicione pelo menos um dia de treino pra salvar" : "")
-    : !pronto ? "Carregando…" : resumo.dias === 0 ? "Adicione pelo menos um dia de treino pra enviar" : igualUltimo ? "Igual à última semana enviada. Mude algo pra enviar de novo" : "";
+    : !pronto ? "Carregando…" : ehTurma && !(turma.membros || []).length ? "A turma está sem alunos" : resumo.dias === 0 ? "Adicione pelo menos um dia de treino pra enviar" : igualUltimo ? "Igual à última semana enviada. Mude algo pra enviar de novo" : "";
   return (
     <div className="gt-focus gt-co-composer" style={{ zIndex: 55 }} role="dialog" aria-modal="true" aria-label={ehModelo ? `Modelo ${modelo.nome}` : `Montar semana de ${aluno.nome}`}>
-      <div className="gt-co-banner" role="status">{ehModelo ? <>Editando o modelo: <b>{modelo.nome}</b></> : <>Editando para: <b>{aluno.nome}</b>{aluno.status === "pendente" ? " (convite pendente)" : ""}</>}</div>
+      <div className="gt-co-banner" role="status">{ehModelo ? <>Editando o modelo: <b>{modelo.nome}</b></> : <>Editando para: <b>{aluno.nome}</b>{ehTurma ? ` (turma, ${(turma.membros || []).length} ${(turma.membros || []).length === 1 ? "aluno" : "alunos"})` : aluno.status === "pendente" ? " (convite pendente)" : ""}</>}</div>
       {!ehModelo && aluno.status === "pendente" && <div className="gt-co-aviso" role="status">{primeiroNome} ainda não aceitou o convite. A semana fica guardada e chega assim que {primeiroNome} entrar.</div>}
       {anamSim.length > 0 && <div className="gt-co-aviso aviso" role="note">{primeiroNome} respondeu "sim" na anamnese em: {anamneseSimTexto(anamSim)}. Peça liberação médica antes de treinos intensos.</div>}
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={tentarSair}><IconVoltar /></button>
-        <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : ehTurma ? `TURMA · ${(turma.membros || []).length} ${(turma.membros || []).length === 1 ? "ALUNO" : "ALUNOS"}` : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
         <button type="button" className="gt-co-menu-btn labeled" aria-label="Mais opções" aria-expanded={menu} onClick={() => setMenu(!menu)}>Mais ⋯</button>
       </div>
       {menu && (
         <div className="gt-co-menu" role="menu">
-          {!ehModelo && <button type="button" role="menuitem" onClick={duplicar}>Duplicar semana passada</button>}
+          {!ehModelo && !ehTurma && <button type="button" role="menuitem" onClick={duplicar}>Duplicar semana passada</button>}
           <button type="button" role="menuitem" onClick={abrirModelos}>Usar modelo</button>
           {!ehModelo && <button type="button" role="menuitem" onClick={() => { setMenu(false); setModeloNome(""); }}>Salvar como modelo</button>}
           {!ehModelo && <button type="button" role="menuitem" disabled={resumo.dias === 0} onClick={gerarPdf}>Gerar PDF da semana</button>}
@@ -14580,11 +15055,11 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       {podeAjustar && <CoachAjustarAluno aluno={aluno} remover={remover} setRemover={setRemover} />}
       </div>
       <div className="gt-focus-footer gt-co-footer">
-        <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
-        {!ehModelo && <textarea className="gt-input" aria-label={`Mensagem para ${primeiroNome} (opcional)`} placeholder={`Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
+        <div className="gt-co-resumo" aria-live="polite">{[`${resumo.dias} dia${resumo.dias === 1 ? "" : "s"}`, (resumo.ex || (!resumo.corridas && !resumo.outras)) && coachTxtEx(resumo.ex), resumo.corridas && `${resumo.corridas} corrida${resumo.corridas === 1 ? "" : "s"}`, resumo.outras && `${resumo.outras} atividade${resumo.outras === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
+        {!ehModelo && <textarea className="gt-input" aria-label={ehTurma ? "Mensagem para a turma (opcional)" : `Mensagem para ${primeiroNome} (opcional)`} placeholder={ehTurma ? "Mensagem para a turma (opcional)" : `Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
         {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana` : ""}. Dá para desfazer pelo app.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
-        <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
+        <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : ehTurma ? `${comoPlano && planoLiberado ? "Enviar plano" : "Enviar"} para ${(turma.membros || []).length} ${(turma.membros || []).length === 1 ? "aluno" : "alunos"}` : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
       </div>
 
       {diaAberto != null && (
@@ -14601,7 +15076,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       )}
       {corridaModal && (
         <CoachCorridaModal
-          coachUid={aluno.coach_uid} showToast={showToast}
+          coachUid={aluno.coach_uid} showToast={showToast} ritmosAluno={ritmosAluno} alunoNome={String(aluno.nome || "").trim().split(" ")[0]}
           inicial={corridaModal.idx != null ? coachCorridaNorm(((sem.dias[corridaModal.dow] || [])[corridaModal.idx] || {}).corrida) : null}
           onClose={() => setCorridaModal(null)}
           onSalvar={(c) => {
@@ -14653,7 +15128,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
         <CoachImportarFichaModal
           dowInicial={importar.dow} showToast={showToast} logEvent={logEvent}
           onClose={() => setImportar(null)}
-          onAdicionar={(lista) => { lista.forEach((x) => adicionarFicha(x.dow, x.ficha)); setImportar(null); showToast(lista.length > 1 ? `${lista.length} fichas importadas. Revise antes de enviar` : "Ficha importada. Revise antes de enviar"); }}
+          onAdicionar={(lista) => { lista.forEach((x) => (x.corrida ? addItem(x.dow, { tipo: "atividade", id: "corrida", nome: "Corrida", detalhe: coachCorridaDetalhe(x.corrida), corrida: x.corrida }) : adicionarFicha(x.dow, x.ficha))); setImportar(null); showToast(lista.length > 1 ? `${lista.length} treinos importados. Revise antes de enviar` : "Treino importado. Revise antes de enviar"); }}
         />
       )}
       {removerQ && (
@@ -14669,7 +15144,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
         <div className="gt-modal-backdrop" onClick={() => setConfirmaSair(false)}>
           <div className="gt-modal" role="alertdialog" aria-modal="true" aria-label={ehModelo ? "Sair sem salvar" : "Sair sem enviar"} onClick={(e) => e.stopPropagation()}>
             <h3>{ehModelo ? "Sair sem salvar?" : "Sair sem enviar?"}</h3>
-            <p>{ehModelo ? "As mudanças neste modelo ainda não foram salvas." : `Suas mudanças em ${aluno.nome} ainda não foram enviadas. Guardo como rascunho pra você continuar depois.`}</p>
+            <p>{ehModelo ? "As mudanças neste modelo ainda não foram salvas." : `Suas mudanças ${ehTurma ? "na turma " : "em "}${aluno.nome} ainda não foram enviadas. Guardo como rascunho pra você continuar depois.`}</p>
             <div className="gt-modal-actions gt-modal-actions-col">
               {!ehModelo && <button type="button" className="gt-btn" onClick={onClose}>Guardar rascunho e sair</button>}
               <button type="button" className="gt-btn gt-btn-danger" onClick={() => { try { if (!ehModelo) localStorage.removeItem(chaveRasc); } catch (e) {} onClose(); }}>Descartar</button>
@@ -14690,6 +15165,7 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
   const [erro, setErro] = useState("");
   const [lendoArq, setLendoArq] = useState(false);
   const [fichas, setFichas] = useState([]); // cada uma com: incluir, dow
+  const [corridas, setCorridas] = useState([]); // treinos de corrida lidos (fase 5): { id, corrida, incluir, dow }
   const [avisos, setAvisos] = useState([]);
   const [viaIA, setViaIA] = useState(true);
   const cancelRef = useRef(false);
@@ -14702,8 +15178,9 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     const ini = COACH_ORDEM_DIAS.indexOf(dowInicial);
     return COACH_ORDEM_DIAS[((ini < 0 ? 0 : ini) + i) % 7];
   };
-  function prepararRevisao(lista, avs, ia) {
+  function prepararRevisao(lista, avs, ia, cors) {
     setFichas(lista.map((f, i) => ({ ...f, incluir: true, dow: dowDeFicha(lista, i, f._dia) })));
+    setCorridas((cors || []).map((c, i) => ({ ...c, incluir: true, dow: dowDeFicha(cors, lista.length + i, c._dia) })));
     setAvisos(avs); setViaIA(ia); setEtapa("revisao");
   }
 
@@ -14784,8 +15261,8 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     if (cancelRef.current || !vivoRef.current) return;
     const devolver = async () => { try { await supabaseClient.rpc("refund_plan_generation", { p_id: reservaRef.current }); } catch (e) {} };
     if (!res) { await devolver(); setErro("Não consegui ler agora. Esta tentativa não conta no seu limite. Tente de novo em instantes."); setEtapa("entrada"); return; }
-    if (!res.fichas.length) { await devolver(); setErro(`Não encontrei uma ficha de treino aí.${res.avisos[0] ? " " + res.avisos[0] : ""} Esta tentativa não conta no seu limite.`); setEtapa("entrada"); return; }
-    prepararRevisao(res.fichas, res.avisos, true);
+    if (!res.fichas.length && !(res.corridas || []).length) { await devolver(); setErro(`Não encontrei uma ficha de treino aí.${res.avisos[0] ? " " + res.avisos[0] : ""} Esta tentativa não conta no seu limite.`); setEtapa("entrada"); return; }
+    prepararRevisao(res.fichas, res.avisos, true, res.corridas);
   }
 
   function atualizar(id, patch) { setFichas((l) => l.map((f) => (f.id === id ? { ...f, ...patch } : f))); }
@@ -14793,6 +15270,8 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     setFichas((l) => l.map((f) => (f.id !== id ? f : { ...f, blocos: f.blocos.map((b) => ({ ...b, exercicios: b.exercicios.filter((e) => e.id !== exId) })) })));
   }
   const escolhidas = fichas.filter((f) => f.incluir && coachContaExercicios(f) > 0);
+  const corridasEscolhidas = corridas.filter((c) => c.incluir);
+  const nEscolhidos = escolhidas.length + corridasEscolhidas.length;
   function confirmar() {
     const novos = new Set();
     const lista = escolhidas.map((f) => {
@@ -14805,7 +15284,8 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
     });
     if (viaIA) Array.from(novos).slice(0, 40).forEach((n) => logExercicioLivre(n, "import_ficha"));
     logEvent(viaIA ? "coach_ficha_import_ia" : "coach_ficha_import_texto");
-    onAdicionar(lista);
+    if (corridasEscolhidas.length) logEvent("coach_corrida_import_ia");
+    onAdicionar(lista.concat(corridasEscolhidas.map((c) => ({ dow: c.dow, corrida: c.corrida }))));
   }
   function fechar() {
     if (etapa === "lendo") {
@@ -14818,12 +15298,12 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
 
   return (
     <div className="gt-modal-backdrop" onClick={fechar}>
-      <div className="gt-modal gt-plano-modal" role="dialog" aria-modal="true" aria-label="Importar ficha" onClick={(e) => e.stopPropagation()}>
-        <div className="gt-sheet-head"><h3>Importar ficha</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={fechar}>✕</button></div>
+      <div className="gt-modal gt-plano-modal" role="dialog" aria-modal="true" aria-label="Importar ficha ou planilha" onClick={(e) => e.stopPropagation()}>
+        <div className="gt-sheet-head"><h3>Importar ficha ou planilha</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={fechar}>✕</button></div>
 
         {etapa === "entrada" && (
           <div className="gt-plano-form">
-            <div className="gt-plano-dica">Traga a ficha que o aluno já tinha: foto do papel, print, PDF, planilha ou texto do WhatsApp. A IA lê, você confere e escolhe o dia de cada treino antes de enviar.</div>
+            <div className="gt-plano-dica">Traga a ficha ou a planilha de corrida que o aluno já tinha: foto do papel, print, PDF, planilha ou texto do WhatsApp. A IA lê, você confere e escolhe o dia de cada treino antes de enviar.</div>
             <label className="gt-btn secondary" style={{ textAlign: "center", cursor: "pointer" }}>
               {lendoArq ? "Lendo arquivos…" : <><Ei e="📎" /> Escolher foto ou arquivo</>}
               <input type="file" multiple style={{ display: "none" }} accept=".txt,.csv,.tsv,.md,.xlsx,.xlsm,.xls,.ods,.pdf,.zip,image/*" onChange={escolherArquivos} disabled={lendoArq} />
@@ -14855,7 +15335,7 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
 
         {etapa === "revisao" && (
           <div className="gt-plano-form">
-            <div className="gt-plano-aviso info"><b>Confira antes de adicionar.</b> Nada foi enviado ao aluno. Você ainda pode editar cada exercício depois.</div>
+            <div className="gt-plano-aviso info"><b>Confira antes de adicionar.</b> Nada foi enviado ao aluno. Você ainda pode editar cada {corridas.length && !fichas.length ? "treino" : "exercício"} depois.</div>
             {avisos.map((a, i) => <div key={i} className="gt-plano-aviso aviso">{a}</div>)}
             {fichas.map((f) => (
               <div key={f.id} className="gt-co-imp-ficha">
@@ -14882,8 +15362,24 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
                 )))}
               </div>
             ))}
+            {corridas.map((c) => (
+              <div key={c.id} className="gt-co-imp-ficha">
+                <label className="gt-co-imp-topo">
+                  <input type="checkbox" checked={c.incluir} onChange={(e) => setCorridas((l) => l.map((x) => (x.id === c.id ? { ...x, incluir: e.target.checked } : x)))} aria-label={`Incluir ${c.corrida.titulo}`} />
+                  <span className="gt-co-imp-cor"><Ei e="🏃" /> {c.corrida.titulo}</span>
+                </label>
+                <div className="gt-co-imp-dia">
+                  <span>Dia</span>
+                  <select className="gt-input" aria-label={`Dia de ${c.corrida.titulo}`} value={c.dow} onChange={(e) => setCorridas((l) => l.map((x) => (x.id === c.id ? { ...x, dow: Number(e.target.value) } : x)))}>
+                    {COACH_ORDEM_DIAS.map((d) => <option key={d} value={d}>{COACH_DIAS[d]}</option>)}
+                  </select>
+                  <span className="n">{coachCorridaMeta(c.corrida)}</span>
+                </div>
+                {c.incluir && <div className="gt-co-imp-ex"><div className="l"><div className="dt">{planoEtapasResumo(c.corrida.etapas)}</div>{c.corrida.detalhes && <div className="og">{c.corrida.detalhes}</div>}</div></div>}
+              </div>
+            ))}
             <div className="gt-modal-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="gt-btn" disabled={!escolhidas.length} onClick={confirmar}>{escolhidas.length > 1 ? `Adicionar ${escolhidas.length} fichas à semana` : "Adicionar à semana"}</button>
+              <button type="button" className="gt-btn" disabled={!nEscolhidos} onClick={confirmar}>{nEscolhidos > 1 ? `Adicionar ${nEscolhidos} treinos à semana` : "Adicionar à semana"}</button>
               <button type="button" className="gt-btn secondary" onClick={() => setEtapa("entrada")}>Voltar</button>
             </div>
           </div>
@@ -14967,12 +15463,12 @@ function CoachEtapasEditor({ itens, onChange }) {
   );
 }
 // Modal do treinador: escolhe um modelo (ou parte de um treino existente) e ajusta etapa por etapa.
-function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) {
+function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose, ritmosAluno, alunoNome }) {
   const [fase, setFase] = useState(inicial ? "editar" : "montar");
   const [tipo, setTipo] = useState("tiros400");
   const [kmTxt, setKmTxt] = useState("");
   const [nivel, setNivel] = useState("intermediario");
-  const [paceTxt, setPaceTxt] = useState(inicial ? inicial.pace || "" : "");
+  const [paceTxt, setPaceTxt] = useState(inicial ? (inicial.refLeve > 0 ? planoFmtPace(inicial.refLeve) : inicial.pace || "") : ritmosPaceLeve(ritmosAluno) ? planoFmtPace(ritmosPaceLeve(ritmosAluno)) : "");
   const [erro, setErro] = useState("");
   const [titulo, setTitulo] = useState(inicial ? inicial.titulo : "");
   const [detalhes, setDetalhes] = useState(inicial ? inicial.detalhes : "");
@@ -15007,7 +15503,7 @@ function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) 
     if (!conv.ok) { setErro(conv.erro); return null; }
     const paceBase = planoParsePace(paceTxt);
     const total = planoEtapasSegmentos(conv.etapas, paceBase > 0 ? paceBase : 0).reduce((t, x) => t + x.min, 0);
-    const c = coachCorridaNorm({ modelo, titulo: titulo.trim() || (TREINOS_CORRIDA[modelo] || {}).nome || "Treino de corrida", distanciaKm: coachEtapasKm(conv.etapas), duracaoMin: Math.round(total), pace: "", esforco, detalhes, etapas: conv.etapas });
+    const c = coachCorridaNorm({ modelo, titulo: titulo.trim() || (TREINOS_CORRIDA[modelo] || {}).nome || "Treino de corrida", distanciaKm: coachEtapasKm(conv.etapas), duracaoMin: Math.round(total), pace: "", esforco, detalhes, etapas: conv.etapas, refLeve: paceBase });
     if (!c) { setErro("Confira as etapas."); return null; }
     return c;
   }
@@ -15063,6 +15559,7 @@ function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) 
             </div>
             <label className="gt-plano-lbl">Pace de um treino leve do aluno (opcional)</label>
             <input className="gt-input" placeholder="Ex.: 6:30. Com isso, cada etapa já sai com pace alvo." value={paceTxt} onChange={(e) => { setPaceTxt(e.target.value); setErro(""); }} />
+            <div className="gt-plano-dica">{ritmosAluno ? `Dos ritmos de ${alunoNome || "seu aluno"} (teste de ${ritmosTesteTxt(ritmosAluno.teste)}).` : "Quem tem Meus ritmos no app recebe os paces ajustados ao próprio ritmo."}</div>
             {erro && <div className="gt-plano-erro">{erro}</div>}
             <div className="gt-modal-actions" style={{ marginTop: 10 }}>
               <button type="button" className="gt-btn" onClick={montar}>Montar e editar</button>
@@ -15117,7 +15614,7 @@ function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha,
         <div className="gt-sheet-head"><h3>Adicionar em {COACH_DIAS[dow].toLowerCase()}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={onClose}>✕</button></div>
         {ativ ? (
           <>
-            <input className="gt-input" aria-label="Atividade" placeholder="Atividade (ex.: Corrida)" maxLength={40} value={ativ.nome} onChange={(e) => setAtiv({ ...ativ, nome: e.target.value })} />
+            <input className="gt-input" aria-label="Atividade" placeholder="Atividade (ex.: Bike)" maxLength={40} value={ativ.nome} onChange={(e) => setAtiv({ ...ativ, nome: e.target.value })} />
             <input className="gt-input" style={{ marginTop: 8 }} aria-label="Detalhe" placeholder="Detalhe (ex.: 6 km, ritmo confortável)" maxLength={80} value={ativ.detalhe} onChange={(e) => setAtiv({ ...ativ, detalhe: e.target.value })} />
             <div className="gt-modal-actions" style={{ marginTop: 12 }}>
               <button type="button" className="gt-btn" disabled={!ativ.nome.trim()} onClick={() => { const nome = ativ.nome.trim(); const ex = (atividadesProprias || []).find((a) => normalizeSearch(a.nome) === normalizeSearch(nome)); onAtividade({ tipo: "atividade", id: ex ? ex.id : (normalizeSearch(nome) === "corrida" ? "corrida" : coachSlug(nome)), nome, ...(ativ.detalhe.trim() ? { detalhe: ativ.detalhe.trim() } : {}) }); }}>Adicionar</button>
@@ -15127,9 +15624,9 @@ function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha,
         ) : (
           <>
             <button type="button" className="gt-sheet-item" onClick={onNova}><div className="tx"><div className="t">Criar ficha nova</div><div className="d">Monte exercício por exercício</div></div></button>
-            <button type="button" className="gt-sheet-item" onClick={onImportar}><div className="tx"><div className="t">Importar ficha</div><div className="d">Foto, PDF, planilha ou texto do WhatsApp</div></div></button>
+            <button type="button" className="gt-sheet-item" onClick={onImportar}><div className="tx"><div className="t">Importar ficha ou planilha</div><div className="d">Musculação ou corrida: foto, PDF, planilha ou texto</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={onCorrida}><div className="tx"><div className="t">Treino de corrida</div><div className="d">Tiros, ritmo, longão… com etapas e pace</div></div></button>
-            <button type="button" className="gt-sheet-item" onClick={() => setAtiv({ nome: "Corrida", detalhe: "" })}><div className="tx"><div className="t">Corrida ou outra atividade</div><div className="d">Com detalhe: distância, ritmo…</div></div></button>
+            <button type="button" className="gt-sheet-item" onClick={() => setAtiv({ nome: "", detalhe: "" })}><div className="tx"><div className="t">Outra atividade</div><div className="d">Bike, natação, caminhada, corrida livre…</div></div></button>
             {naSemana.length > 0 && <div className="gt-co-sec" style={{ marginTop: 10 }}>JÁ NESTA SEMANA</div>}
             {naSemana.map((ref) => <button key={ref} type="button" className="gt-sheet-item" onClick={() => onReusar(ref)}><div className="tx"><div className="t">{sem.fichas[ref].nome}</div><div className="d">{coachTxtEx(coachContaExercicios(sem.fichas[ref]))}</div></div></button>)}
             {(salvas || []).length > 0 && <div className="gt-co-sec" style={{ marginTop: 10 }}>SUAS FICHAS SALVAS</div>}
@@ -15262,10 +15759,12 @@ function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPen
         <div className="tx"><div className="t">{nomeVis}</div>{cref.trim() && <div className="d">CREF {cref.trim().replace(/^cref\s*/i, "")}</div>}{bio.trim() && <div className="b">{bio.trim()}</div>}</div>
       </div>
       <div className="gt-settings-hint">Só quem recebe ou aceita um convite seu vê esse perfil.</div>
+      {midiaLigada("video_treinador") && <>
       <div className="gt-co-lista-menu" style={{ marginTop: 16 }}>
         <button type="button" className="gt-co-linha" onClick={onVideos}><Icon name="video-camera" weight="duotone" size={22} /><span>Meus vídeos</span><i aria-hidden="true">›</i></button>
       </div>
       <div className="gt-settings-hint">Até {VIDEO_BIBLIOTECA_MAX} vídeos de até {VIDEO_MAX_SEG.biblioteca} s. Quem treina com você vê o seu vídeo no exercício.</div>
+      </>}
       <div className="gt-co-sec" style={{ marginTop: 16 }}>CONTA</div>
       <div className="gt-co-lista-menu">
         <button type="button" className="gt-co-linha" onClick={onTrocar}><Icon name="hoje" weight="duotone" size={22} /><span>Trocar para “Meu treino”</span><i aria-hidden="true">›</i></button>
@@ -16262,6 +16761,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   const [offline, setOffline] = useState(false);
   const [aberto, setAberto] = useState(null); // aluno
   const [montando, setMontando] = useState(null);
+  const [montandoTurma, setMontandoTurma] = useState(null); // { id, nome, membros }
   const [modeloEd, setModeloEd] = useState(null); // { id?, nome, payload } (composer em modo modelo)
   const [novoModelo, setNovoModelo] = useState(null); // string: pedindo o nome
   const [modelosKey, setModelosKey] = useState(0);
@@ -16380,7 +16880,8 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
             )}
             {ativo && (
               <CoachAlunosLista lista={lista} carregando={carregando} offline={offline} atualizadoEm={atualizadoEm} filaN={filaN}
-                onAbrir={(a, abaInicial) => setAberto(abaInicial ? { ...a, abaInicial } : a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} onMontar={(a) => setMontando(a)} />
+                onAbrir={(a, abaInicial) => setAberto(abaInicial ? { ...a, abaInicial } : a)} onPendente={(a) => setPendente(a)} onConvidar={abrirConvidar} onMontar={(a) => setMontando(a)}
+                coachUid={session.user.id} showToast={showToast} onMontarTurma={(t) => setMontandoTurma(t)} />
             )}
           </>
         )}
@@ -16410,6 +16911,10 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
       {montando && (
         <CoachComposer planoLiberado={planoLiberado} aluno={{ ...montando, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
           onClose={() => setMontando(null)} onEnviado={() => { setFilaN(coachFilaLer().length); setRefreshKey((k) => k + 1); carregar(); }} />
+      )}
+      {montandoTurma && (
+        <CoachComposer planoLiberado={planoLiberado} turma={{ ...montandoTurma, coach_uid: session.user.id, coach_nome: nome }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
+          onClose={() => setMontandoTurma(null)} onEnviado={() => { setFilaN(coachFilaLer().length); setRefreshKey((k) => k + 1); carregar(); }} />
       )}
       {modeloEd && (
         <CoachComposer modelo={modeloEd} aluno={{ link_id: "modelo:" + (modeloEd.id || "novo"), nome: modeloEd.nome, coach_uid: session.user.id }} treinosProprios={treinosProprios} atividadesProprias={atividadesProprias} showToast={showToast} logEvent={logEvent}
@@ -16522,6 +17027,15 @@ function App() {
   });
   const planosRef = useRef(planos);
   planosRef.current = planos;
+  const [ritmos, setRitmos] = useState(() => ritmosLer()); // Meus ritmos (fase 5)
+  const ritmosRef = useRef(ritmos);
+  ritmosRef.current = ritmos;
+  const [ritmosOpen, setRitmosOpen] = useState(false);
+  function salvarRitmos(r) {
+    ritmosRef.current = r; setRitmos(r);
+    try { localStorage.setItem("treino-app:ritmos", JSON.stringify(r)); } catch (e) {}
+    syncMarcarMudanca("ritmos");
+  }
   const [planoProva, setPlanoProva] = useState(null); // prova cujo plano de corrida está aberto
   const [planoRetomar, setPlanoRetomar] = useState(null); // { ctx, texto } ao abrir um plano que ficou pronto em segundo plano
   // Geração com IA em segundo plano: { id, kind, label, ctx, startedAt, status: rodando|pronto|erro, result }
@@ -16596,6 +17110,7 @@ function App() {
   const [novaAtividadeAberta, setNovaAtividadeAberta] = useState(false);
   const [extraId, setExtraId] = useState("");
   const [rpeModal, setRpeModal] = useState(null); // { item, date, label, duracaoMin, rpe }
+  const [cartaoProva, setCartaoProva] = useState(null); // cartão do resultado da prova (fase 5)
   const [freqPeriod, setFreqPeriod] = useState("30d"); // "7d" | "30d" | "12m" | "all"
   const [freqAvgUnit, setFreqAvgUnit] = useState("semana"); // "semana" | "mes"
   const [freqSelectedType, setFreqSelectedType] = useState("");
@@ -16838,7 +17353,7 @@ function App() {
       try { e = await syncEnviar(uid, k); } catch (x) { e = x; }
       if (e) {
         const msg = (e && e.message) || String(e);
-        if (k === "planos" && /planos|column|schema cache/i.test(msg)) { syncLimpar(uid, k, pend[k], localStorage); continue; } // coluna ainda não existe: só no aparelho
+        if ((k === "planos" || k === "ritmos") && /planos|ritmos|column|schema cache/i.test(msg)) { syncLimpar(uid, k, pend[k], localStorage); continue; } // coluna ainda não existe: só no aparelho
         erro = erro || e;
         continue;
       }
@@ -16900,8 +17415,9 @@ function App() {
       sessions: data.sessions || {},
       display_name: data.display_name || "",
       planos: Array.isArray(data.planos) ? data.planos : undefined,
+      ritmos: data.ritmos && typeof data.ritmos === "object" ? data.ritmos : undefined,
     };
-    const local = { treinos: cur.treinos, atividades: cur.atividades, schedule: cur.schedule, sessions: cur.sessions, planos: planosRef.current, display_name: displayNameRef.current };
+    const local = { treinos: cur.treinos, atividades: cur.atividades, schedule: cur.schedule, sessions: cur.sessions, planos: planosRef.current, display_name: displayNameRef.current, ritmos: ritmosRef.current };
     const efetivo = { ...local };
     SYNC_CHAVES.forEach((k) => {
       // mudança ainda no debounce (não gravada): é a versão mais nova, não toca
@@ -16916,6 +17432,7 @@ function App() {
       else if (k === "sessions") setSessions(dec.valor);
       else if (k === "planos") { planosRef.current = dec.valor; setPlanos(dec.valor); }
       else if (k === "display_name") setDisplayName(dec.valor);
+      else if (k === "ritmos") { ritmosRef.current = ritmosNorm(dec.valor); setRitmos(ritmosRef.current); }
       try { localStorage.setItem(STORAGE_PREFIX + k, JSON.stringify(dec.valor)); } catch (e) {}
     });
     return { ok: true, efetivo };
@@ -17092,6 +17609,21 @@ function App() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [session, cloudSynced, stravaConnected]);
+  // Fotos e vídeos: o painel liga e desliga cada recurso; re-renderiza quando muda.
+  const [, setMidiaVer] = useState(0);
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    supabaseClient.rpc("midia_flags").then(({ data, error }) => {
+      if (cancelled || error || !data || typeof data !== "object") return;
+      let antes = null; try { antes = localStorage.getItem("treino-app:midia"); } catch (e) {}
+      const novo = JSON.stringify(data);
+      if (antes === novo) return;
+      try { localStorage.setItem("treino-app:midia", novo); } catch (e) {}
+      setMidiaVer((n) => n + 1);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [session]);
   const ajusteLiberado = !!(features && features.includes("ajuste_semana")) && cloudSynced && (stravaConnected === false || !!(session && session.user.email === ADMIN_EMAIL)); // só depois de saber do Strava e sincronizar, senão o card pisca; o Andre usa mesmo com Strava (exceção, 21/10)
   const blocosLiberado = !!(features && features.includes("blocos")); // editor de sessão em blocos (fase 1)
   const planoLiberado = !!(features && features.includes("plano")); // plano de semanas (fase 2)
@@ -17493,7 +18025,7 @@ function App() {
       if (!error && data) pacote = data;
       else if (error) logClientError("export_my_data", error.message);
     } catch (e) {}
-    const local = { treinos: dataRef.current.treinos, atividades: dataRef.current.atividades, agenda: dataRef.current.schedule, sessoes: dataRef.current.sessions, planos_de_corrida: planosRef.current };
+    const local = { treinos: dataRef.current.treinos, atividades: dataRef.current.atividades, agenda: dataRef.current.schedule, sessoes: dataRef.current.sessions, planos_de_corrida: planosRef.current, ritmos_de_corrida: ritmosRef.current };
     if (!pacote) pacote = { aviso: "Cópia feita só com os dados deste aparelho (sem conexão com a nuvem).", exportado_em: new Date().toISOString(), conta: { email: session ? session.user.email : null } };
     pacote.neste_aparelho = local;
     baixarJson(pacote, `movo-meus-dados-${todayISO()}.json`);
@@ -17869,6 +18401,8 @@ function App() {
       duracaoMin: ex && ex.duracaoMin != null ? String(ex.duracaoMin) : sessao.duracaoMin ? String(sessao.duracaoMin) : "",
       km: ex && ex.distanciaKm ? String(ex.distanciaKm).replace(".", ",") : sessao.distanciaKm ? String(sessao.distanciaKm).replace(".", ",") : "",
       rpe: ex && ex.rpe != null ? String(ex.rpe) : "", dor: ex && ex.dor != null ? ex.dor : null, nota: ex && ex.nota ? ex.nota : "",
+      // Dia da prova: pede o tempo oficial e oferece o cartão para compartilhar (fase 5).
+      ...(sessao.tipo === "prova" ? { prova: { planoId: plano.id, idx }, tempoProva: ex && ex.tempoSeg ? segParaTempo(ex.tempoSeg) : "" } : {}),
     });
   }
   // Registrar uma corrida que já aconteceu, sem montar treino: tipo, distância, tempo, esforço.
@@ -18778,7 +19312,7 @@ function App() {
     return { log: {}, extras: [], removed: [], cargas: {}, ...s };
   }
 
-  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota, video) {
+  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota, video, extra) {
     const key = itemKey(item);
     const session = sessionShapeFor(dateIso);
     const entry = { duracaoMin: duracaoMin > 0 ? duracaoMin : null, rpe: rpe > 0 ? rpe : null, updatedAt: Date.now() };
@@ -18790,6 +19324,7 @@ function App() {
     const anterior = (session.cargas || {})[key];
     if (distanciaKm > 0) entry.distanciaKm = distanciaKm; // corrida digitada na hora (treino do plano / registro manual)
     else if (anterior && anterior.distanciaKm) entry.distanciaKm = anterior.distanciaKm; // vem do Strava; não perder ao editar duração/esforço
+    if (extra) Object.assign(entry, extra); // ex.: tempoSeg do dia da prova (fase 5)
     const nextCargas = { ...session.cargas, [key]: entry };
     updateSessions({ ...sessions, [dateIso]: { ...session, cargas: nextCargas } });
   }
@@ -19028,6 +19563,16 @@ function App() {
       logEvent("corrida_registrada_manual");
       logTreino("corrida", "manual");
       showToast("Corrida registrada");
+    } else if (rpeModal.prova && tempoParaSeg(rpeModal.tempoProva) > 0) {
+      const seg = tempoParaSeg(rpeModal.tempoProva);
+      saveCarga(rpeModal.date, rpeModal.item, Math.round(seg / 60), rpe, rpeModal.dor, km, rpeModal.nota, rpeModal.video, { tempoSeg: seg });
+      const pl = planos.find((p) => p.id === rpeModal.prova.planoId);
+      const ss = pl && pl.sessoes[rpeModal.prova.idx];
+      if (ss && ss.status !== "feito") { setSessaoPlanoStatus(pl.id, rpeModal.prova.idx, "feito"); logTreino("corrida", "plano"); } // só marca; nunca desmarca
+      logEvent("prova_resultado");
+      const extras = [km > 0 && { label: "Distância", valor: `${String(Math.round(km * 100) / 100).replace(".", ",")} km` }, km > 0 && { label: "Pace médio", valor: `${planoFmtPace(seg / 60 / km)} /km`, destaque: true }].filter(Boolean);
+      setCartaoProva({ titulo: rpeModal.label, subtitulo: formatDateLabel(rpeModal.date), tempo: segParaTempo(seg), tempoRotulo: "tempo da prova", extras });
+      showToast("Prova registrada");
     } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim() || rpeModal.video) {
       saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota, rpeModal.video);
       if (String(rpeModal.nota || "").trim()) logEvent("sessao_comentario");
@@ -19906,7 +20451,7 @@ function App() {
                 <div className="gt-plano-hoje" key={`${plano.id}-${idx}`}>
                   <div className="gt-plano-row" onClick={() => setExpandedItem(aberto ? null : chave)}>
                     <div className="gt-plano-main">
-                      <div className="hd"><Ei e="🏃" /> {plano.tipo === "avulso" ? "Treino de corrida" : planoEhSemanas(plano) ? `${plano.nome} · Semana ${planoSemanaNumero(plano, sessao.data)} de ${plano.semanas}` : `Plano · ${plano.provaNome}`}{sessao.fase && !planoEhSemanas(plano) ? ` · ${sessao.fase}` : ""}{sessao.ajuste ? " · ↻ ajustado" : ""}</div>
+                      <div className="hd"><Ei e="🏃" /> {plano.tipo === "avulso" ? "Treino de corrida" : planoEhSemanas(plano) ? `${plano.nome} · Semana ${planoSemanaNumero(plano, sessao.data)} de ${plano.semanas}` : sessao.tipo === "prova" ? "Dia da prova" : `Plano · ${plano.provaNome}`}{sessao.fase && !planoEhSemanas(plano) ? ` · ${sessao.fase}` : ""}{sessao.ajuste ? " · ↻ ajustado" : ""}</div>
                       <div className="ti"><Ei e={t.emoji} /> {sessao.titulo}</div>
                       {meta && <div className="mt">{meta}</div>}
                     </div>
@@ -19925,6 +20470,19 @@ function App() {
                         <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>{cg ? "editar ✎" : "registrar ✎"}</button>
                         {cg && cg.nota && <div className="gt-sessao-nota">{cg.nota}</div>}
                         {cg && cg.video && <VideoPrivado video={cg.video} rotulo="Ver seu vídeo" />}
+                      </div>
+                    );
+                  })()}
+                  {sessao.tipo === "prova" && sessao.data <= todayISO() && (() => {
+                    // Dia da prova (fase 5): registrar o tempo oficial e compartilhar o cartão.
+                    const cg = (sessions[sessao.data]?.cargas || {})[corridaChave(plano, sessao, idx)];
+                    const km = (cg && cg.distanciaKm) || sessao.distanciaKm || 0;
+                    if (!cg || !cg.tempoSeg) return <div className="ac"><button type="button" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>Registrar meu tempo</button></div>;
+                    return (
+                      <div className="gt-item-carga-row" style={{ marginTop: 8 }}>
+                        <span><b>{segParaTempo(cg.tempoSeg)}</b>{km ? ` · ${String(km).replace(".", ",")} km · pace ${planoFmtPace(cg.tempoSeg / 60 / km)}` : ""}</span>
+                        <span className="gt-item-carga-acoes"><button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>editar ✎</button>
+                        <button type="button" className="gt-item-carga-edit" onClick={() => setCartaoProva({ titulo: sessao.titulo, subtitulo: formatDateLabel(sessao.data), tempo: segParaTempo(cg.tempoSeg), tempoRotulo: "tempo da prova", extras: km ? [{ label: "Distância", valor: `${String(km).replace(".", ",")} km` }, { label: "Pace médio", valor: `${planoFmtPace(cg.tempoSeg / 60 / km)} /km`, destaque: true }] : [] })}>compartilhar ↗</button></span>
                       </div>
                     );
                   })()}
@@ -20041,7 +20599,10 @@ function App() {
                         {item.corrida && (
                           <div className="gt-cc-aluno">
                             {item.corrida.detalhes && <div className="gt-plano-dica">{item.corrida.detalhes}</div>}
-                            <PlanoEtapas etapas={item.corrida.etapas} paceBase={0} />
+                            {(() => { const cr = corridaNoMeuRitmo(item.corrida, ritmos); return (<>
+                              <PlanoEtapas etapas={cr.etapas} paceBase={0} />
+                              {cr.noMeuRitmo && <div className="gt-plano-dica">Paces ajustados aos seus ritmos.</div>}
+                            </>); })()}
                           </div>
                         )}
                         {!item.corrida && item.nota && <div className="gt-plano-dica">{item.nota}</div>}
@@ -20685,6 +21246,7 @@ function App() {
               {item("raio", "Treinos de corrida", () => setTreinoCorrida({ data: todayISO() }))}
               <div className="gt-menu-sec">Dados</div>
               {item("ruler", "Minhas medidas", () => setMedidasOpen(true))}
+              {item("timer", "Meus ritmos de corrida", () => setRitmosOpen(true))}
               {item("importar", "Importar histórico", () => setHistOpen(true))}
               {stravaConnected === false && <button type="button" className="gt-menu-item" onClick={ir(() => setSettingsOpen(true))}><span className="ic"><StravaIcon size={20} /></span><span className="tx">Conectar com o Strava</span></button>}
               <div className="gt-menu-sec">Social</div>
@@ -20723,6 +21285,10 @@ function App() {
       )}
       {meuTreinadorOpen && (
         <CoachMeuTreinadorModal anamnese={anamneses.find((x) => coachLinks[0] && x.link_id === coachLinks[0].link_id) || null} onAbrirAnamnese={(x) => { setMeuTreinadorOpen(false); setAnamAberta(x); }} links={coachLinks} flags={coachFlagsAtuais} dados={{ treinos, sessions }} reload={carregarCoachAluno} showToast={showToast} onClose={() => setMeuTreinadorOpen(false)} onAbrirConvite={(c) => { setMeuTreinadorOpen(false); setCoachConvite(c); }} />
+      )}
+      {ritmosOpen && (
+        <RitmosTela ritmos={ritmos} hojeISO={todayISO()} logEvent={logEvent} onClose={() => setRitmosOpen(false)}
+          onSalvar={(r) => { salvarRitmos(r); showToast("Ritmos salvos"); }} />
       )}
       {medidasOpen && session && (
         <MinhasMedidasTela uid={session.user.id} showToast={showToast} logEvent={logEvent} onClose={() => setMedidasOpen(false)}
@@ -20764,6 +21330,7 @@ function App() {
 
       {toast && <div className="gt-toast" role="status" aria-live="polite">{toast}</div>}
 
+      {cartaoProva && <DesafioCartaoModal dados={cartaoProva} render={cartaoResultadoRender} arquivo="movo-prova.png" showToast={showToast} onShared={() => logEvent("prova_cartao_compartilhado")} onClose={() => setCartaoProva(null)} />}
       {rpeModal && (
         <RpeModal
           rpeModal={rpeModal}
@@ -21049,7 +21616,7 @@ function App() {
         <TreinoCorridaModal
           biblioteca={(planoAvulso && planoAvulso.biblioteca) || []}
           dataInicial={treinoCorrida.data}
-          paceBase={(planoHistoricoCorrida(sessions, atividadeById, todayISO(), 8) || {}).paceMin || 0}
+          paceBase={ritmosPaceLeve(ritmos) || (planoHistoricoCorrida(sessions, atividadeById, todayISO(), 8) || {}).paceMin || 0}
           onSalvar={salvarTreinoCorrida}
           onAgendar={agendarTreinoCorrida}
           onExcluir={excluirTreinoCorrida}
@@ -22539,7 +23106,7 @@ function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, las
           {p.tipo === "corrida" && (
             <>
               <div className="gt-guiado-ex">{bloco.nome}</div>
-              <PlanoEtapas etapas={bloco.corrida.etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
+              <PlanoEtapas etapas={corridaNoMeuRitmo(bloco.corrida, ritmosLer()).etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
               <button type="button" className={`gt-btn gt-guiado-ok ${feito ? "secondary" : ""}`} onClick={() => { onBlocoResultado(bid, feito ? null : { formato: "corrida", concluido: true, em: Date.now() }, []); if (!feito) avancar(); }}>{feito ? "Desfazer" : "✓ Corrida feita"}</button>
             </>
           )}
@@ -22564,6 +23131,7 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
   const [agora, setAgora] = useState(Date.now());
   const [rodadas, setRodadas] = useState("");
   const [reps, setReps] = useState("");
+  const [cartao, setCartao] = useState(null); // cartão para compartilhar o resultado (fase 5)
   const audio = useRef(null);
   const ultFase = useRef(-1);
   const ultSeg = useRef(-1);
@@ -22656,16 +23224,35 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
     return a && a.label === e.label ? a.seg : null;
   };
   const roxTotal = rot.modo === "up" ? st.parciais.reduce((t, s, i) => t + (rot.estacoes[i] && rot.estacoes[i].roxzone ? trecho(i) : 0), 0) : 0;
+  const fmtT = (seg) => (seg >= 3600 ? segParaTempo(seg) : formatRestTime(seg)); // acima de 1 h vira h:mm:ss
   const listaParciais = () => (
     <ol className="gt-bt-parciais">
+      {antTrechos && <li className="cab" aria-hidden="true"><span>Trecho</span><b>tempo · vs. última</b></li>}
       {st.parciais.map((s, i) => {
         const a = antTrecho(i);
-        return <li key={i} className={rot.estacoes[i].roxzone ? "rox" : ""}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(trecho(i))}{a != null && <em className={trecho(i) <= a ? "melhor" : "pior"}> {blocoDelta(trecho(i) - a)}</em>}</b></li>;
+        return <li key={i} className={rot.estacoes[i].roxzone ? "rox" : ""}><span>{rot.estacoes[i].label}</span><b>{fmtT(trecho(i))}{a != null && <em className={trecho(i) <= a ? "melhor" : "pior"}> {blocoDelta(trecho(i) - a)}</em>}</b></li>;
       })}
     </ol>
   );
   const tempoFinal = Math.round(formato === "fortime" && st.parciais.length >= rot.estacoes.length ? st.parciais[st.parciais.length - 1] : decorrido);
   const antData = anterior ? formatDateLabel(anterior.data) : "";
+  const completo = formato === "fortime" && rot.modo === "up" && st.parciais.length >= rot.estacoes.length && rot.estacoes.length > 0;
+  function abrirCartao() {
+    // Corridas somadas numa linha; estações uma a uma; Roxzone no fim.
+    let corridas = 0, nCorr = 0;
+    const est = [];
+    st.parciais.forEach((_, i) => {
+      const e = rot.estacoes[i];
+      if (!e || e.roxzone) return;
+      if (/^corrida/i.test(e.label)) { corridas += trecho(i); nCorr++; } else est.push({ label: e.label, valor: fmtT(trecho(i)) });
+    });
+    const extras = [];
+    if (nCorr > 1) extras.push({ label: `Corridas (${nCorr})`, valor: fmtT(corridas) });
+    est.slice(0, nCorr > 1 ? 8 : 9).forEach((x) => extras.push(x));
+    if (st.roxzone && roxTotal > 0) extras.push({ label: "Roxzone", valor: fmtT(roxTotal) });
+    const comp = ant && ant.tempoSeg ? (tempoFinal < ant.tempoSeg ? `${fmtT(ant.tempoSeg - tempoFinal)} mais rápido que a última` : tempoFinal === ant.tempoSeg ? "Igual à última" : null) : null;
+    setCartao({ titulo: bloco.nome, subtitulo: formatDateLabel(todayISO()), tempo: fmtT(tempoFinal), tempoRotulo: "tempo total", extras, comp });
+  }
   const grande = rot.modo === "up" ? decorrido : resta;
   const estacao = rot.modo === "up" ? rot.estacoes[st.parciais.length] : null;
   const prox = rot.modo === "seq" && fase ? rot.fases[fase.i + 1] : rot.modo === "up" ? rot.estacoes[st.parciais.length + 1] : null;
@@ -22711,15 +23298,16 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
         )}
         {st.fim && (
           <div className="gt-bt-fim">
-            <div className="gt-bt-fase">Bloco concluído</div>
-            <div className="gt-bt-tempo">{formatRestTime(tempoFinal)}</div>
+            <div className="gt-bt-fase">Concluído</div>
+            <div className="gt-bt-tempo">{fmtT(tempoFinal)}</div>
             {formato === "fortime" && ant && st.parciais.length >= rot.estacoes.length && (
               <div className={`gt-bt-comp ${tempoFinal <= ant.tempoSeg ? "melhor" : "pior"}`}>
-                {tempoFinal === ant.tempoSeg ? "Igual à" : tempoFinal < ant.tempoSeg ? `${formatRestTime(ant.tempoSeg - tempoFinal)} mais rápido que a` : `${formatRestTime(tempoFinal - ant.tempoSeg)} mais lento que a`} última ({antData}: {formatRestTime(ant.tempoSeg)})
+                {tempoFinal === ant.tempoSeg ? "Igual à" : tempoFinal < ant.tempoSeg ? `${fmtT(ant.tempoSeg - tempoFinal)} mais rápido que a` : `${fmtT(tempoFinal - ant.tempoSeg)} mais lento que a`} última ({antData}: {fmtT(ant.tempoSeg)})
               </div>
             )}
             {formato === "amrap" && ant && <div className="gt-bt-sub">Sua última ({antData}): {blocoFmtResultado(ant)}</div>}
-            {st.roxzone && roxTotal > 0 && <div className="gt-bt-sub">Roxzone: {formatRestTime(roxTotal)}{ant && ant.roxzoneSeg ? ` (última: ${formatRestTime(ant.roxzoneSeg)})` : ""}</div>}
+            {st.roxzone && roxTotal > 0 && <div className="gt-bt-sub">Roxzone: {fmtT(roxTotal)}{ant && ant.roxzoneSeg ? ` (última: ${fmtT(ant.roxzoneSeg)})` : ""}</div>}
+            {completo && <button type="button" className="gt-dsf-link" style={{ marginTop: 12 }} onClick={abrirCartao}>Compartilhar resultado ↗</button>}
             {formato === "amrap" && (
               <div className="gt-bt-res">
                 <label>Rodadas<input className="gt-input" inputMode="numeric" value={rodadas} onChange={(e) => setRodadas(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
@@ -22730,10 +23318,11 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
             {rot.modo === "up" && st.parciais.length > 0 && listaParciais()}
           </div>
         )}
+        {cartao && <DesafioCartaoModal dados={cartao} render={cartaoResultadoRender} arquivo="movo-resultado.png" onClose={() => setCartao(null)} />}
       </div>
       <div className="gt-focus-footer gt-bt-acoes">
         {!st.ini && <button type="button" className="gt-btn" onClick={iniciar}>▶ Começar</button>}
-        {st.ini && !st.fim && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : rot.estacoes[st.parciais.length + 1].roxzone ? "Saí da corrida" : estacao && estacao.roxzone ? "Comecei a estação" : "Próxima estação"}</button>}
+        {st.ini && !st.fim && !acabou && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : rot.estacoes[st.parciais.length + 1].roxzone ? "Saí da corrida" : estacao && estacao.roxzone ? "Comecei a estação" : "Próxima estação"}</button>}
         {st.ini && !st.fim && (st.pausaEm ? <button type="button" className="gt-btn" onClick={retomar}>▶ Continuar</button> : <button type="button" className="gt-btn secondary" onClick={pausar}>Pausar</button>)}
         {st.ini && !st.fim && <button type="button" className="gt-btn secondary" onClick={encerrar}>Encerrar</button>}
         {st.fim && <button type="button" className="gt-btn" onClick={salvar}>Salvar resultado</button>}
@@ -23048,7 +23637,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
               {bloco.notas && <div className="gt-ex-desc">{bloco.notas}</div>}
               {tipo === "corrida" && bloco.corrida && (
                 <div className="gt-bloco-corrida">
-                  <PlanoEtapas etapas={bloco.corrida.etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
+                  <PlanoEtapas etapas={corridaNoMeuRitmo(bloco.corrida, ritmosLer()).etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
                   <button type="button" className={`gt-bloco-feito ${res && res.concluido ? "on" : ""}`} aria-pressed={!!(res && res.concluido)}
                     onClick={() => onBlocoResultado && onBlocoResultado(bid, res && res.concluido ? null : { formato: "corrida", concluido: true, em: Date.now() }, [])}>
                     {res && res.concluido ? "✓ Corrida feita" : "Marcar corrida como feita"}
@@ -23453,7 +24042,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
   const kmNum = parseFloat(String(rpeModal.km || "").replace(",", ".")) || 0;
   const durNum = Number(rpeModal.duracaoMin) || 0;
   const temNota = !!String(rpeModal.nota || "").trim();
-  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota || !!rpeModal.video);
+  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : rpeModal.prova && tempoParaSeg(rpeModal.tempoProva) > 0 ? true : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota || !!rpeModal.video);
   // Atividades (vôlei, natação…) já têm o "Comentário do dia" no card; aqui o comentário é de treino e corrida.
   const comNota = !rpeModal.item || rpeModal.item.tipo !== "atividade";
   return (
@@ -23480,7 +24069,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
           </div>
         )}
         <h3>{rpeModal.manual ? "Registrar corrida" : rpeModal.celeb ? "Como foi? (opcional)" : `Como foi "${rpeModal.label}"?`}</h3>
-        <p>{rpeModal.manual ? "Registre a corrida que você já fez, no dia escolhido. Ela entra na sua evolução e no controle de carga." : coachVeNota ? `Ajuda ${coachVeNota} a ajustar seus próximos treinos. Leva 10 segundos.` : "Ajuda a acompanhar seu cansaço. Leva 10 segundos."}</p>
+        <p>{rpeModal.manual ? "Registre a corrida que você já fez, no dia escolhido. Ela entra na sua evolução e no controle de carga." : rpeModal.prova ? "Guarde seu tempo de prova. O resto é opcional." : coachVeNota ? `Ajuda ${coachVeNota} a ajustar seus próximos treinos. Leva 10 segundos.` : "Ajuda a acompanhar seu cansaço. Leva 10 segundos."}</p>
         {rpeModal.manual && (
           <>
             <div className="gt-field-label">TIPO</div>
@@ -23504,6 +24093,14 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
             />
           </>
         )}
+        {rpeModal.prova && (
+          <>
+            <div className="gt-field-label">TEMPO DA PROVA</div>
+            <input type="text" inputMode="numeric" placeholder="ex: 52:34 ou 1:58:10" className="gt-rpe-duracao" aria-label="Tempo da prova" value={rpeModal.tempoProva || ""} onChange={(e) => setRpeModal({ ...rpeModal, tempoProva: e.target.value.replace(/[^0-9:]/g, "").slice(0, 8) })} />
+            {tempoParaSeg(rpeModal.tempoProva) > 0 && kmNum > 0 && <div className="gt-rpe-hint" style={{ marginTop: 6 }}>Pace médio: {planoFmtPace(tempoParaSeg(rpeModal.tempoProva) / 60 / kmNum)} /km</div>}
+          </>
+        )}
+        {!rpeModal.prova && <>
         <div className="gt-field-label">DURAÇÃO (MIN) · OPCIONAL</div>
         <input
           type="number"
@@ -23514,6 +24111,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
           onChange={(e) => setRpeModal({ ...rpeModal, duracaoMin: e.target.value })}
         />
         {rpeModal.corrida && kmNum > 0 && durNum > 0 && <div className="gt-rpe-hint" style={{ marginTop: 6 }}>Pace médio: {planoFmtPace(durNum / kmNum)} /km</div>}
+        </>}
         <div className="gt-field-label">QUÃO PESADO FOI? (1 A 10) · OPCIONAL</div>
         <div className="gt-rpe-scale">
           {rpeOptions.map((n) => (
@@ -23528,7 +24126,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
           ))}
         </div>
         <div className="gt-rpe-hint">1 = muito leve · 5 = moderado · 10 = esforço máximo</div>
-        <div className="gt-field-label">DOR PÓS-SESSÃO (0-10) · OPCIONAL</div>
+        <div className="gt-field-label">{rpeModal.prova ? "DOR DEPOIS DA PROVA" : "DOR PÓS-SESSÃO"} (0-10) · OPCIONAL</div>
         <div className="gt-rpe-scale">
           {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
             <button
@@ -23555,7 +24153,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
               onChange={(e) => setRpeModal({ ...rpeModal, nota: e.target.value })}
             />
             {coachVeNota && <div className="gt-rpe-hint">{coachVeNota} vê este comentário.</div>}
-            {coachVeNota && uid && !rpeModal.manual && (
+            {coachVeNota && uid && !rpeModal.manual && (rpeModal.video || midiaLigada("video_aluno")) && (
               <div className="gt-rpe-video">
                 {rpeModal.video ? (
                   <>

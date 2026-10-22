@@ -17,7 +17,7 @@ const CORS = {
 const APP = "https://app.movoapp.com.br/";
 
 // --- Placar do desafio: mesma conta do app (desafioNormalizeRules / desafioContarLista / desafioStandings) ---
-type Regras = { meta: number; pontos: number[]; bonusJuntos: number; maxPorDia: number; dias: number[] };
+type Regras = { km: boolean; meta: number; pontos: number[]; bonusJuntos: number; maxPorDia: number; dias: number[] };
 function regrasNorm(raw: Record<string, unknown> | null): Regras {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const meta = Math.min(7, Math.max(1, Math.round(Number(r.meta)) || 4));
@@ -26,6 +26,7 @@ function regrasNorm(raw: Record<string, unknown> | null): Regras {
   pontos = pontos.slice(0, meta + 1);
   const d = Array.isArray(r.dias) ? Array.from(new Set((r.dias as unknown[]).map(Number).filter((n) => n >= 0 && n <= 6 && Number.isInteger(n)))).sort() : [];
   return {
+    km: r.modo === "km", // desafio de distância (fase 5): placar = km de corrida da semana
     meta, pontos,
     bonusJuntos: Math.min(5, Math.max(0, Math.round(Number(r.bonusJuntos)) || 0)),
     maxPorDia: Math.min(3, Math.max(0, Math.round(Number(r.maxPorDia)) || 0)),
@@ -34,7 +35,14 @@ function regrasNorm(raw: Record<string, unknown> | null): Regras {
 }
 const somaDias = (iso: string, n: number) => { const t = new Date(iso + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const diaSemana = (iso: string) => new Date(iso + "T12:00:00Z").getUTCDay();
-type Ck = { user_id: string; date: string; tipo: string };
+type Ck = { user_id: string; date: string; tipo: string; label?: string | null; km?: number | null };
+// Km do check-in: a coluna km ou o " · 5,2 km" do rótulo (igual desafioCheckinKm no app).
+function kmDe(c: Ck) {
+  const k = Number(c.km);
+  if (k > 0) return k;
+  const m = String(c.label || "").match(/ · (\d+(?:,\d+)?) km$/);
+  return m ? parseFloat(m[1].replace(",", ".")) : 0;
+}
 type Jt = { date: string; from_user: string; to_user: string; status: string };
 function contar(cks: Ck[], uid: string, ini: string, fim: string, r: Regras) {
   const vistos = new Set<string>(); const porDia: Record<string, number> = {};
@@ -49,6 +57,10 @@ function contar(cks: Ck[], uid: string, ini: string, fim: string, r: Regras) {
 function semana(r: Regras, membros: string[], cks: Ck[], juntos: Jt[], ini: string, fim: string) {
   const tem = (uid: string, d: string) => r.dias.indexOf(diaSemana(d)) >= 0 && cks.some((c) => c.user_id === uid && c.date === d);
   const rows = membros.map((uid) => {
+    if (r.km) {
+      const minhas = cks.filter((c) => c.user_id === uid && c.date >= ini && c.date <= fim && r.dias.indexOf(diaSemana(c.date)) >= 0 && kmDe(c) > 0);
+      return { uid, count: minhas.length, pts: Math.round(minhas.reduce((t, c) => t + kmDe(c), 0) * 10) / 10 };
+    }
     const count = contar(cks, uid, ini, fim, r);
     const bonus = juntos.filter((t) => t.status === "confirmed" && t.date >= ini && t.date <= fim && (t.from_user === uid || t.to_user === uid) && tem(t.from_user, t.date) && tem(t.to_user, t.date)).length;
     return { uid, count, pts: r.pontos[Math.min(count, r.pontos.length - 1)] + bonus * r.bonusJuntos };
@@ -105,7 +117,7 @@ Deno.serve(async (req) => {
       if (!comPush.size) return json({ ok: true, pessoas: 0 });
       const { data: chs } = await admin.from("challenges").select("id,nome,start_date,weeks,rules,stakes").lte("start_date", somaDias(hoje, -1));
       // Por pessoa: os resultados das semanas que fecharam entre hoje-7 e ontem.
-      const porPessoa: Record<string, { ch: { id: string; nome: string }; num: number; idx: number; venceu: boolean; serie: number; fim: boolean; vencedor: string; pts: number; pos: number; empate: boolean; premio: boolean; ref: string }[]> = {};
+      const porPessoa: Record<string, { ch: { id: string; nome: string }; num: number; idx: number; venceu: boolean; serie: number; fim: boolean; vencedor: string; pts: number; pos: number; empate: boolean; premio: boolean; ref: string; km: boolean }[]> = {};
       for (const ch of (chs || []) as { id: string; nome: string; start_date: string; weeks: number; rules: Record<string, unknown>; stakes: Record<string, unknown> }[]) {
         const fimDesafio = somaDias(ch.start_date, ch.weeks * 7 - 1);
         if (fimDesafio < somaDias(hoje, -7)) continue;
@@ -115,7 +127,9 @@ Deno.serve(async (req) => {
         const { data: mem } = await admin.from("challenge_members").select("user_id").eq("challenge_id", ch.id);
         const membros = ((mem || []) as { user_id: string }[]).map((m) => m.user_id);
         if (membros.length < 2 || !membros.some((u) => comPush.has(u))) continue;
-        const { data: cks } = await admin.from("challenge_checkins").select("user_id,date,tipo").eq("challenge_id", ch.id);
+        // Sem a coluna km (fase5.sql não aplicado), lê sem ela; o km sai do rótulo.
+        const ck1 = await admin.from("challenge_checkins").select("user_id,date,tipo,label,km").eq("challenge_id", ch.id);
+        const cks: unknown[] | null = ck1.error ? (await admin.from("challenge_checkins").select("user_id,date,tipo,label").eq("challenge_id", ch.id)).data : ck1.data;
         const { data: jt } = await admin.from("challenge_together").select("date,from_user,to_user,status").eq("challenge_id", ch.id);
         const { data: nomes } = await admin.from("app_data").select("user_id,display_name").in("user_id", membros);
         const nomeDe = (uid: string) => { const n = ((nomes || []) as { user_id: string; display_name: string | null }[]).find((x) => x.user_id === uid); return (n && n.display_name && n.display_name.trim().split(" ")[0]) || "Alguém"; };
@@ -134,7 +148,7 @@ Deno.serve(async (req) => {
             (porPessoa[uid] = porPessoa[uid] || []).push({
               ch: { id: ch.id, nome: ch.nome }, num: i + 1, idx: i, venceu: w.winners.indexOf(uid) >= 0, serie, fim: i === ch.weeks - 1,
               vencedor: v ? (w.winners.length > 1 ? w.winners.map(nomeDe).join(" e ") : nomeDe(v)) : "", pts: v ? (w.rows.find((x) => x.uid === v) || { pts: 0 }).pts : 0,
-              pos, empate: !v, premio: !!(ch.stakes && (ch.stakes as Record<string, unknown>).semana), ref: `${ch.id}:${i + 1}`,
+              pos, empate: !v, premio: !!(ch.stakes && (ch.stakes as Record<string, unknown>).semana), ref: `${ch.id}:${i + 1}`, km: r.km,
             });
           }
         }
@@ -160,7 +174,7 @@ Deno.serve(async (req) => {
         } else if (it.empate) {
           msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: it.premio ? "Semana empatada. Ninguém paga nada." : "Semana empatada." };
         } else {
-          msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: `${it.vencedor} venceu com ${it.pts} ponto${Math.abs(it.pts) === 1 ? "" : "s"}. Você ficou em ${it.pos}º.` };
+          msg = { title: `${it.ch.nome}: semana ${it.num} fechada`, body: `${it.vencedor} venceu com ${it.km ? `${String(it.pts).replace(".", ",")} km` : `${it.pts} ponto${Math.abs(it.pts) === 1 ? "" : "s"}`}. Você ficou em ${it.pos}º.` };
         }
         const url = novos.length > 1 && !it.venceu ? `${APP}?desafios=1` : `${APP}?resultado=${it.ch.id}&semana=${it.idx}`;
         const res = await mandar(uid, "desafios", it.ref, { ...msg, url, tag: "desafios" });
