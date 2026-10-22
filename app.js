@@ -1131,6 +1131,8 @@ function exercicioLimpo(ex) {
     observacoes: ex.observacoes || "",
     videoUrl: ex.videoUrl || "",
   };
+  // Vídeo próprio do treinador (bucket privado "videos", pasta biblioteca), anexado no envio.
+  if (ex.videoCoach && /^[0-9a-f-]{36}\/biblioteca\/[\w.-]{1,60}$/.test(String(ex.videoCoach.p || ""))) out.videoCoach = { p: ex.videoCoach.p, s: Number(ex.videoCoach.s) || null };
   const kg = blocoNumero(ex.cargaKg, 0.1, 1000); if (kg != null) out.cargaKg = String(kg);
   const pct = blocoNumero(ex.pct1rm, 1, 120); if (pct != null) out.pct1rm = pct;
   const rir = blocoNumero(ex.rir, 0, 10); if (rir != null) out.rir = rir;
@@ -4079,6 +4081,15 @@ const APP_CSS = `
   .gt-chip button { min-width:32px; min-height:32px; }
   .gt-hist-notas { background:var(--surface-2); border-radius:10px; padding:10px 12px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:6px; }
   .gt-hoje-importar { margin-top:8px; }
+  .gt-video { display:flex; flex-direction:column; gap:6px; flex-basis:100%; margin-top:4px; }
+  .gt-video .gt-ex-video-toggle { align-self:flex-start; }
+  .gt-video-player { width:100%; max-height:60vh; border-radius:10px; background:#000; }
+  .gt-video-off { font-size:13px; color:var(--text-muted); }
+  .gt-video-add { display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; border:1px dashed var(--border); border-radius:10px; font-size:14px; color:var(--text); cursor:pointer; padding:0 12px; }
+  .gt-video-add.off { opacity:.5; pointer-events:none; }
+  .gt-video-prog { position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:var(--surface-2); font-size:14px; overflow:hidden; }
+  .gt-video-prog i { position:absolute; left:0; bottom:0; height:3px; background:var(--accent); }
+  .gt-rpe-video { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
   .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
   .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
   .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
@@ -13500,6 +13511,221 @@ function CoachAvaliacaoAba({ aluno, det, showToast }) {
   );
 }
 
+// ---------- Fase 4: vídeos (bucket privado "videos") ----------
+// <uid>/sessao/...: vídeo da execução no comentário da sessão (até 30 s; o treinador vê por 90 dias).
+// <uid>/biblioteca/...: vídeo próprio do treinador (até 60 s, até 20), mostrado aos alunos no exercício de mesmo nome.
+const VIDEO_MAX_SEG = { sessao: 30, biblioteca: 60 };
+const VIDEO_DIAS = 90;
+const VIDEO_MAX_BYTES = 12 * 1024 * 1024;
+const VIDEO_BIBLIOTECA_MAX = 20;
+function videoAbrir(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
+    v.onloadedmetadata = () => res({ v, url });
+    v.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Não consegui abrir esse vídeo.")); };
+    v.src = url;
+  });
+}
+// Reduz para no máximo 854 px no lado maior, sem áudio, ~1 Mbps (30 s ≈ 4 MB). Se o celular não
+// consegue regravar, sobe o original quando ele cabe no limite.
+async function videoCompactar(file, maxSeg, onProg) {
+  const { v, url } = await videoAbrir(file);
+  const limpar = () => { try { v.pause(); } catch (e) {} URL.revokeObjectURL(url); };
+  const dur = isFinite(v.duration) ? v.duration : 0;
+  if (dur > maxSeg + 0.5) { limpar(); throw new Error(`Esse vídeo tem ${Math.round(dur)} s. Use até ${maxSeg} s: corte no app de fotos e escolha de novo.`); }
+  const original = { blob: file, mime: file.type || "video/mp4", dur: Math.round(dur) || null };
+  if (file.size <= maxSeg * 160000) { limpar(); return original; }
+  const tipos = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = typeof MediaRecorder !== "undefined" && HTMLCanvasElement.prototype.captureStream ? tipos.find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } }) : null;
+  if (!mime || !dur) {
+    limpar();
+    if (file.size <= VIDEO_MAX_BYTES) return original;
+    throw new Error("Esse vídeo é grande demais para este celular compactar. Grave em qualidade menor ou mais curto.");
+  }
+  const k = Math.min(1, 854 / Math.max(v.videoWidth || 854, v.videoHeight || 480));
+  const c = document.createElement("canvas");
+  c.width = Math.max(2, Math.round(((v.videoWidth || 854) * k) / 2) * 2);
+  c.height = Math.max(2, Math.round(((v.videoHeight || 480) * k) / 2) * 2);
+  const ctx = c.getContext("2d");
+  const rec = new MediaRecorder(c.captureStream(30), { mimeType: mime, videoBitsPerSecond: 1000000 });
+  const partes = [];
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) partes.push(e.data); };
+  const parou = new Promise((res) => { rec.onstop = res; });
+  const acabou = new Promise((res) => { v.onended = res; });
+  rec.start(500);
+  try { await v.play(); } catch (e) { rec.stop(); limpar(); if (file.size <= VIDEO_MAX_BYTES) return original; throw new Error("Não consegui preparar esse vídeo."); }
+  const quadro = () => {
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    if (onProg) onProg(Math.min(1, v.currentTime / dur));
+    if (!v.ended) { if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(quadro); else requestAnimationFrame(quadro); }
+  };
+  quadro();
+  await acabou;
+  rec.stop(); await parou; limpar();
+  const blob = new Blob(partes, { type: mime.split(";")[0] });
+  if (!blob.size || (blob.size > file.size && file.size <= VIDEO_MAX_BYTES)) return original;
+  if (blob.size > VIDEO_MAX_BYTES) throw new Error("O vídeo ficou grande demais. Use um mais curto.");
+  return { blob, mime: mime.split(";")[0], dur: Math.round(dur) };
+}
+async function videoSubir(uid, pasta, file, onProg) {
+  const r = await videoCompactar(file, VIDEO_MAX_SEG[pasta] || 30, onProg);
+  const ext = /webm/.test(r.mime) ? "webm" : /quicktime/.test(r.mime) ? "mov" : "mp4";
+  const path = `${uid}/${pasta}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabaseClient.storage.from("videos").upload(path, r.blob, { contentType: r.mime });
+  if (error) {
+    logErroModulo("video_upload", error.message);
+    throw new Error(/row-level|policy/i.test(error.message) && pasta === "biblioteca" ? `Você chegou ao limite de ${VIDEO_BIBLIOTECA_MAX} vídeos. Apague um para enviar outro.` : "Não consegui enviar o vídeo. Tente de novo.");
+  }
+  return { p: path, s: r.dur, em: todayISO() };
+}
+const videoUrlCache = {};
+async function videoUrlAssinada(path) {
+  const c = videoUrlCache[path];
+  if (c && c.ate > Date.now()) return c.url;
+  const { data, error } = await supabaseClient.storage.from("videos").createSignedUrl(path, 3600);
+  if (error || !data) return null;
+  videoUrlCache[path] = { url: data.signedUrl, ate: Date.now() + 50 * 60 * 1000 };
+  return data.signedUrl;
+}
+function videoExpirou(v) { return !!(v && v.em && addDays(v.em, VIDEO_DIAS) < todayISO()); }
+// Toca um vídeo privado. Só busca o endereço quando a pessoa toca em "Ver vídeo".
+function VideoPrivado({ video, rotulo }) {
+  const [url, setUrl] = useState(null); // null fechado, "" carregando, false erro
+  if (!video || !video.p) return null;
+  if (videoExpirou(video)) return <div className="gt-video-off">Vídeo apagado depois de {VIDEO_DIAS} dias.</div>;
+  async function abrir(e) {
+    e.stopPropagation();
+    if (url) { setUrl(null); return; }
+    setUrl("");
+    const u = await videoUrlAssinada(video.p);
+    setUrl(u || false);
+  }
+  return (
+    <div className="gt-video" onClick={(e) => e.stopPropagation()}>
+      <button type="button" className="gt-ex-video-toggle" onClick={abrir}>▶ {url ? "Esconder vídeo" : rotulo || "Ver vídeo"}{video.s ? ` · ${video.s} s` : ""}</button>
+      {url === "" && <div className="gt-video-off">Carregando…</div>}
+      {url === false && <div className="gt-video-off">Vídeo indisponível agora.</div>}
+      {url && <video className="gt-video-player" src={url} controls playsInline autoPlay muted preload="metadata" />}
+    </div>
+  );
+}
+// Botão que escolhe/grava um vídeo, compacta e sobe. onPronto({p, s, em}).
+function VideoEnviar({ uid, pasta, rotulo, onPronto, onErro, disabled }) {
+  const [prog, setProg] = useState(null);
+  async function escolher(ev) {
+    const f = (ev.target.files || [])[0];
+    ev.target.value = "";
+    if (!f) return;
+    setProg(0);
+    try { const v = await videoSubir(uid, pasta, f, (x) => setProg(x)); setProg(null); onPronto(v); }
+    catch (e) { setProg(null); onErro((e && e.message) || "Não consegui enviar o vídeo."); }
+  }
+  if (prog != null) return <div className="gt-video-prog" role="status">Preparando vídeo… {Math.round(prog * 100)}%<i style={{ width: `${Math.round(prog * 100)}%` }} /></div>;
+  return (
+    <label className={`gt-video-add ${disabled ? "off" : ""}`}>
+      {rotulo}
+      <input type="file" accept="video/*" style={{ display: "none" }} disabled={disabled} onChange={escolher} />
+    </label>
+  );
+}
+// Aluno: apaga do armazenamento os vídeos de sessão com mais de 90 dias, ou todos se não tem mais treinador.
+async function videosLimparSessao(uid, temTreinador) {
+  try {
+    const { data } = await supabaseClient.storage.from("videos").list(`${uid}/sessao`, { limit: 200 });
+    const limite = Date.now() - VIDEO_DIAS * 86400000;
+    const sai = (data || []).filter((o) => !temTreinador || (o.created_at && Date.parse(o.created_at) < limite)).map((o) => `${uid}/sessao/${o.name}`);
+    if (sai.length) await supabaseClient.storage.from("videos").remove(sai);
+  } catch (e) {}
+}
+
+// Treinador: biblioteca de vídeos próprios (um por exercício). O vídeo vai junto no envio quando o nome bate.
+function coachVideosMapa(lista) {
+  const m = {};
+  (lista || []).forEach((v) => { const k = normalizeSearch(v.exercicio); if (!m[k]) m[k] = v; });
+  return m;
+}
+// Põe "videoCoach" nos exercícios do envio que têm vídeo na biblioteca (payload {dias, fichas} ou plano).
+function coachAnexarVideos(obj, mapa) {
+  if (!mapa || !Object.keys(mapa).length) return obj;
+  const visita = (x) => {
+    if (Array.isArray(x)) return x.map(visita);
+    if (!x || typeof x !== "object") return x;
+    const o = {};
+    Object.entries(x).forEach(([k, v]) => { o[k] = visita(v); });
+    if (typeof o.nome === "string" && ("series" in o || "repeticoes" in o)) {
+      const v = mapa[normalizeSearch(o.nome)];
+      if (v) o.videoCoach = { p: v.path, s: v.dur || null };
+      else delete o.videoCoach;
+    }
+    return o;
+  };
+  return visita(obj);
+}
+function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
+  const [lista, setLista] = useState(undefined);
+  const [picker, setPicker] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [grupo, setGrupo] = useState(CATALOG_GRUPOS[0].label);
+  const [exAlvo, setExAlvo] = useState(null);
+  const [erro, setErro] = useState("");
+  async function carregar() {
+    const { data, error } = await supabaseClient.from("coach_videos").select("*").order("created_at", { ascending: false });
+    setLista(error ? null : data || []);
+  }
+  useEffect(() => { carregar(); }, []);
+  async function apagar(v) {
+    if (!window.confirm(`Apagar o vídeo de ${v.exercicio}? Os alunos deixam de ver nos próximos envios.`)) return;
+    await supabaseClient.storage.from("videos").remove([v.path]).catch(() => {});
+    await supabaseClient.from("coach_videos").delete().eq("id", v.id);
+    logEvent("coach_video_apagado");
+    carregar();
+  }
+  async function pronto(v) {
+    const { error } = await supabaseClient.from("coach_videos").insert({ exercicio: exAlvo.nome, path: v.p, dur: v.s });
+    if (error) { setErro("Não consegui salvar agora."); supabaseClient.storage.from("videos").remove([v.p]).catch(() => {}); return; }
+    const antigo = (lista || []).find((x) => normalizeSearch(x.exercicio) === normalizeSearch(exAlvo.nome));
+    if (antigo) { await supabaseClient.from("coach_videos").delete().eq("id", antigo.id); supabaseClient.storage.from("videos").remove([antigo.path]).catch(() => {}); }
+    logEvent("coach_video_enviado", { dur: v.s });
+    showToast(`Vídeo de ${exAlvo.nome} salvo`);
+    setExAlvo(null); carregar();
+  }
+  const n = (lista || []).length;
+  return (
+    <div className="gt-focus gt-med" style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-label="Meus vídeos">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Meus vídeos</div><div className="gt-focus-title-hint">{lista ? `${n} de ${VIDEO_BIBLIOTECA_MAX}` : ""}</div></div>
+      </div>
+      <div className="gt-focus-body gt-med-body">
+        <div className="gt-plano-dica">Grave você mesmo a execução. Quando o exercício estiver no treino que você enviar, o aluno vê o seu vídeo no lugar do vídeo do catálogo.</div>
+        {lista === undefined && <div className="gt-empty">Carregando…</div>}
+        {lista === null && <div className="gt-co-erro" role="alert">Não consegui abrir agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+        {exAlvo ? (
+          <div className="gt-co-plano-aluno">
+            <div className="t">{exAlvo.nome}</div>
+            <div className="d">Até {VIDEO_MAX_SEG.biblioteca} s. O app reduz o tamanho antes de enviar.</div>
+            <VideoEnviar uid={uid} pasta="biblioteca" rotulo="Escolher ou gravar vídeo" onPronto={pronto} onErro={setErro} />
+            <button type="button" className="gt-co-link" onClick={() => setExAlvo(null)}>Cancelar</button>
+          </div>
+        ) : (
+          lista && <button type="button" className="gt-btn" disabled={n >= VIDEO_BIBLIOTECA_MAX} onClick={() => { setErro(""); setPicker(true); }}>{n >= VIDEO_BIBLIOTECA_MAX ? `Limite de ${VIDEO_BIBLIOTECA_MAX} vídeos` : "Adicionar vídeo"}</button>
+        )}
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        {(lista || []).map((v) => (
+          <div key={v.id} className="gt-med-item">
+            <div className="gt-med-item-top"><b>{v.exercicio}</b><span className="gt-med-nota">{coachDataCurta(v.created_at)}</span></div>
+            <VideoPrivado video={{ p: v.path, s: v.dur }} rotulo="Ver vídeo" />
+            <button type="button" className="gt-co-link gt-med-apagar" style={{ alignSelf: "flex-start", marginTop: 0, paddingLeft: 0 }} onClick={() => apagar(v)}>Apagar</button>
+          </div>
+        ))}
+      </div>
+      {picker && <ExercisePickerModal titulo="Vídeo de qual exercício?" search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo} isAdded={() => false} onAdd={(cat) => { setPicker(false); setExAlvo(cat); }} onClose={() => setPicker(false)} />}
+    </div>
+  );
+}
+
 // ---------- Treinador: convidar ----------
 function CoachConvidarModal({ coachNome, onClose, onCriado, showToast, existente }) {
   const [label, setLabel] = useState("");
@@ -13906,6 +14132,7 @@ function CoachSessaoCard({ data, sess, nomes, notas, onComentar, nomeAluno, meuI
       <div className="gt-co-sessao-head"><b>{titulo}</b><span className="ok">Concluído</span></div>
       <div className="gt-co-sessao-meta">{coachDataCurta(data)}{min ? ` · ${min} min` : ""}{rpe ? ` · esforço ${rpe}` : ""}{dor != null ? ` · dor ${dor}` : ""}</div>
       {comentariosAluno.map((t, i) => <div key={i} className="gt-co-sessao-aluno"><small>{nomeAluno || "Aluno"} · {coachDataCurta(data)}</small>{t}</div>)}
+      {cargas.filter((c) => c && c.video && c.video.p).map((c) => <VideoPrivado key={c.video.p} video={c.video} rotulo={`Vídeo de ${String(nomeAluno || "").split(" ")[0] || "quem treina com você"}`} />)}
       {notas.map((n) => <CoachNotaItem key={n.id} n={n} meuId={meuId} nomeAluno={nomeAluno} />)}
       {!aberto
         ? <button type="button" className="gt-co-comentar" onClick={() => setAberto(true)}>Comentar esta sessão…</button>
@@ -14041,6 +14268,13 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     return () => { vivo = false; };
   }, [aluno.link_id]);
   const [anamSim, setAnamSim] = useState([]);
+  const [videosMapa, setVideosMapa] = useState(null);
+  useEffect(() => {
+    if (ehModelo) return;
+    let vivo = true;
+    supabaseClient.from("coach_videos").select("exercicio,path,dur").then(({ data }) => { if (vivo) setVideosMapa(coachVideosMapa(data || [])); }, () => {});
+    return () => { vivo = false; };
+  }, []);
   useEffect(() => {
     if (ehModelo || aluno.status !== "ativo") return;
     let vivo = true;
@@ -14178,7 +14412,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     setEnviando(true);
     const plano = comoPlano && planoLiberado;
     const rem = podeAjustar ? { ajuste: true, remover } : {};
-    const payload = plano ? { semana: sem, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao, ...rem } : { ...sem, ...rem };
+    const semV = coachAnexarVideos(sem, videosMapa);
+    const payload = plano ? { semana: semV, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao, ...rem } : { ...semV, ...rem };
     const item = { link_id: aluno.link_id, nome: aluno.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
     const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
     setEnviando(false);
@@ -14186,7 +14421,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       try { localStorage.removeItem(chaveRasc); } catch (e) {}
       logEvent(plano ? "coach_plano_enviado" : "coach_semana_enviada");
       if (aluno.status === "ativo") avisarPorPush("treinador", { link_id: item.link_id });
-      showToast(aluno.status === "pendente" ? `${plano ? "Plano guardado" : "Semana guardada"}: chega pra ${primeiroNome} quando ele aceitar` : plano ? `Plano de ${plSemanas} semanas enviado para ${primeiroNome}` : `Semana da ${primeiroNome} enviada`);
+      showToast(aluno.status === "pendente" ? `${plano ? "Plano guardado" : "Semana guardada"}: chega quando ${primeiroNome} aceitar o convite` : plano ? `Plano de ${plSemanas} semanas enviado para ${primeiroNome}` : `Semana de ${primeiroNome} enviada`);
       onEnviado(); onClose();
       return;
     }
@@ -14938,7 +15173,7 @@ function CoachCadastroModal({ nomeInicial, inicial, onClose, onFeito, showToast 
 }
 
 // ---------- Treinador: perfil (editável) ----------
-function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPend, showToast, onSalvou, onTrocar, onConfig, onSair, onAjuda, onFeedback }) {
+function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPend, showToast, onSalvou, onTrocar, onConfig, onSair, onAjuda, onFeedback, onVideos }) {
   const uid = session.user.id;
   const [nome, setNome] = useState((nomePessoal || "").trim() || coachInfo.nome_exibicao || "");
   const [bio, setBio] = useState(coachInfo.bio || "");
@@ -14989,6 +15224,11 @@ function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPen
         <div className="tx"><div className="t">{nomeVis}</div>{cref.trim() && <div className="d">CREF {cref.trim().replace(/^cref\s*/i, "")}</div>}{bio.trim() && <div className="b">{bio.trim()}</div>}</div>
       </div>
       <div className="gt-settings-hint">Só quem recebe ou aceita um convite seu vê esse perfil.</div>
+      <div className="gt-co-sec" style={{ marginTop: 16 }}>MEUS VÍDEOS</div>
+      <div className="gt-co-lista-menu">
+        <button type="button" className="gt-co-linha" onClick={onVideos}><Icon name="video-camera" weight="duotone" size={22} /><span>Vídeos dos exercícios</span><i aria-hidden="true">›</i></button>
+      </div>
+      <div className="gt-settings-hint">Grave a execução do seu jeito. O aluno vê o seu vídeo no exercício.</div>
       <div className="gt-co-sec" style={{ marginTop: 16 }}>CONTA</div>
       <div className="gt-co-lista-menu">
         <button type="button" className="gt-co-linha" onClick={onTrocar}><Icon name="hoje" weight="duotone" size={22} /><span>Trocar para “Meu treino”</span><i aria-hidden="true">›</i></button>
@@ -15978,6 +16218,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   const status = coachInfo.status || (coachInfo.liberado ? "ativo" : "suspenso");
   const ativo = status === "ativo";
   const [aba, setAba] = useState(() => (ativo ? "alunos" : "perfil"));
+  const [videosAberto, setVideosAberto] = useState(false);
   const [lista, setLista] = useState(() => { try { return (JSON.parse(localStorage.getItem("treino-app:coachLista") || "null") || {}).lista || []; } catch (e) { return []; } });
   const [atualizadoEm, setAtualizadoEm] = useState(() => { try { return (JSON.parse(localStorage.getItem("treino-app:coachLista") || "null") || {}).em || 0; } catch (e) { return 0; } });
   const [carregando, setCarregando] = useState(ativo);
@@ -16114,8 +16355,9 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
         )}
         {aba === "perfil" && (
           <CoachPerfilTab coachInfo={coachInfo} session={session} nomePessoal={nomePessoal} onNome={onNome} nAtivos={nAtivos} nPend={nPend} showToast={showToast}
-            onSalvou={onInfo} onTrocar={onTrocar} onConfig={onConfig} onSair={onSair} onAjuda={onAjuda} onFeedback={onFeedback} />
+            onSalvou={onInfo} onTrocar={onTrocar} onConfig={onConfig} onSair={onSair} onAjuda={onAjuda} onFeedback={onFeedback} onVideos={() => setVideosAberto(true)} />
         )}
+        {videosAberto && <CoachVideosTela uid={session.user.id} onClose={() => setVideosAberto(false)} showToast={showToast} logEvent={logEvent} />}
       </div>
       <nav className="gt-tabbar gt-co-tabbar" aria-label="Modo treinador">
         {TABS.map(([k, t, ic, badge]) => (
@@ -18201,6 +18443,8 @@ function App() {
     const [l, a] = await Promise.all([coachCall("coach_my_coach"), coachCall("coach_my_assignments")]);
     if (l.ok) {
       setCoachLinks(l.data || []);
+      // Vídeos de sessão: apaga os de mais de 90 dias (ou todos, sem treinador). Uma vez por dia, sem custo de servidor.
+      try { const hoje = todayISO(); if (session && localStorage.getItem("treino-app:videosLimpos") !== hoje) { localStorage.setItem("treino-app:videosLimpos", hoje); videosLimparSessao(session.user.id, (l.data || []).some((x) => x.status === "ativo" || x.status === "pausado")); } } catch (e) {}
       if ((l.data || []).length) coachCall("minhas_anamneses").then((r) => { if (r.ok) setAnamneses(r.data || []); });
       else setAnamneses([]);
       const { next, virou } = planosSemVinculo(planosRef.current, l.data || []);
@@ -18497,7 +18741,7 @@ function App() {
     return { log: {}, extras: [], removed: [], cargas: {}, ...s };
   }
 
-  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota) {
+  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota, video) {
     const key = itemKey(item);
     const session = sessionShapeFor(dateIso);
     const entry = { duracaoMin: duracaoMin > 0 ? duracaoMin : null, rpe: rpe > 0 ? rpe : null, updatedAt: Date.now() };
@@ -18505,6 +18749,7 @@ function App() {
     // Comentário da sessão (texto livre do aluno). Vai junto com a carga; o treinador vê se o aluno compartilha as cargas.
     const notaLimpa = String(nota || "").trim().slice(0, 500);
     if (notaLimpa) entry.nota = notaLimpa;
+    if (video && video.p) entry.video = { p: video.p, s: video.s || null, em: video.em || todayISO() }; // vídeo da execução (o treinador vê por 90 dias)
     const anterior = (session.cargas || {})[key];
     if (distanciaKm > 0) entry.distanciaKm = distanciaKm; // corrida digitada na hora (treino do plano / registro manual)
     else if (anterior && anterior.distanciaKm) entry.distanciaKm = anterior.distanciaKm; // vem do Strava; não perder ao editar duração/esforço
@@ -18524,6 +18769,7 @@ function App() {
       rpe: existing && existing.rpe != null ? String(existing.rpe) : "",
       dor: existing && existing.dor != null ? existing.dor : null,
       nota: existing && existing.nota ? existing.nota : "",
+      video: existing && existing.video ? existing.video : null,
     });
   }
 
@@ -18745,9 +18991,10 @@ function App() {
       logEvent("corrida_registrada_manual");
       logTreino("corrida", "manual");
       showToast("Corrida registrada");
-    } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim()) {
-      saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota);
+    } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim() || rpeModal.video) {
+      saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota, rpeModal.video);
       if (String(rpeModal.nota || "").trim()) logEvent("sessao_comentario");
+      if (rpeModal.video && rpeModal.video.novo) logEvent("sessao_video", { s: rpeModal.video.s || null });
       showToast(String(rpeModal.nota || "").trim() && coachVeNota ? `Salvo. ${coachVeNota} vai ver.` : rpeModal.corrida ? "Corrida registrada" : "Treino registrado");
     }
     setRpeModal(null);
@@ -19297,6 +19544,7 @@ function App() {
               onSave={saveRpeModal}
               onSkip={() => setRpeModal(null)}
               coachVeNota={coachVeNota}
+              uid={session ? session.user.id : null}
             />
           )}
 
@@ -19639,6 +19887,7 @@ function App() {
                           : <span className="gt-text-muted">Duração/esforço não registrados</span>}
                         <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>{cg ? "editar ✎" : "registrar ✎"}</button>
                         {cg && cg.nota && <div className="gt-sessao-nota">{cg.nota}</div>}
+                        {cg && cg.video && <VideoPrivado video={cg.video} rotulo="Ver vídeo da execução" />}
                       </div>
                     );
                   })()}
@@ -19717,7 +19966,7 @@ function App() {
                             : <span className="gt-text-muted">Duração/esforço não registrados</span>;
                         })()}
                         <button type="button" className="gt-item-carga-edit" onClick={() => openRpeModalFor(item, selectedDate, treino.nome)}>editar ✎</button>
-                        {(() => { const n = ((sessions[selectedDate]?.cargas || {})[key] || {}).nota; return n ? <div className="gt-sessao-nota">{n}</div> : null; })()}
+                        {(() => { const c = (sessions[selectedDate]?.cargas || {})[key] || {}; return <>{c.nota ? <div className="gt-sessao-nota">{c.nota}</div> : null}{c.video ? <VideoPrivado video={c.video} rotulo="Ver vídeo da execução" /> : null}</>; })()}
                       </div>
                     )}
                   </div>
@@ -20485,6 +20734,7 @@ function App() {
           onSave={saveRpeModal}
           onSkip={() => setRpeModal(null)}
           coachVeNota={coachVeNota}
+          uid={session ? session.user.id : null}
         />
       )}
 
@@ -22626,9 +22876,10 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
           <div className="gt-ex-detail">
             {ex.descricao && <div className="gt-ex-desc">{ex.descricao}</div>}
             {ex.observacoes && <div className="gt-ex-obs"><Ei e="⚠" /> {ex.observacoes}</div>}
+            {ex.videoCoach && <VideoPrivado video={ex.videoCoach} rotulo="Ver vídeo do seu treinador" />}
             {(() => {
               const ytId = extractYoutubeId(ex.videoUrl);
-              if (!ytId) return null;
+              if (!ytId || ex.videoCoach) return null;
               const videoShown = videoOpenId === ex.id;
               return (
                 <div className="gt-ex-video-wrap">
@@ -23159,12 +23410,13 @@ function FichaPromptModal({ prompt, setPrompt, onSave, onSkip }) {
   );
 }
 
-function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota }) {
+function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
+  const [videoErro, setVideoErro] = useState("");
   const rpeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const kmNum = parseFloat(String(rpeModal.km || "").replace(",", ".")) || 0;
   const durNum = Number(rpeModal.duracaoMin) || 0;
   const temNota = !!String(rpeModal.nota || "").trim();
-  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota);
+  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota || !!rpeModal.video);
   // Atividades (vôlei, natação…) já têm o "Comentário do dia" no card; aqui o comentário é de treino e corrida.
   const comNota = !rpeModal.item || rpeModal.item.tipo !== "atividade";
   return (
@@ -23266,6 +23518,21 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota }) {
               onChange={(e) => setRpeModal({ ...rpeModal, nota: e.target.value })}
             />
             {coachVeNota && <div className="gt-rpe-hint">{coachVeNota} vê este comentário.</div>}
+            {coachVeNota && uid && !rpeModal.manual && (
+              <div className="gt-rpe-video">
+                {rpeModal.video ? (
+                  <>
+                    <VideoPrivado video={rpeModal.video} rotulo="Ver seu vídeo" />
+                    <button type="button" className="gt-co-link" style={{ paddingLeft: 0 }} onClick={() => setRpeModal((m) => ({ ...m, video: null }))}>Tirar vídeo</button>
+                  </>
+                ) : (
+                  <VideoEnviar uid={uid} pasta="sessao" rotulo={<><Ei e="🎥" /> Mandar vídeo da execução (até {VIDEO_MAX_SEG.sessao} s)</>}
+                    onPronto={(v) => { setVideoErro(""); setRpeModal((m) => ({ ...m, video: { ...v, novo: true } })); }} onErro={setVideoErro} />
+                )}
+                {videoErro && <div className="gt-plano-erro" role="alert">{videoErro}</div>}
+                <div className="gt-rpe-hint">{coachVeNota} vê o vídeo por {VIDEO_DIAS} dias. Depois ele é apagado.</div>
+              </div>
+            )}
           </>
         )}
         <div className="gt-modal-actions">
