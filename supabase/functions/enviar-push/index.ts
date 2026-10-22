@@ -1,6 +1,7 @@
 // Notificações push (Web Push). Tipos:
 //  - "teste": manda para os aparelhos de quem chamou (botão em Configurações).
 //  - "treinador": o treinador avisa o aluno de um treino novo (body.link_id); só vínculo ativo do próprio treinador.
+//  - "anamnese": pedido do treinador (avisa o aluno) ou resposta do aluno (avisa o treinador); body.link_id e body.evento.
 //  - "desafios": resultado das semanas de desafio que fecharam nos últimos 7 dias; só a função agendada chama
 //    (segunda às 9h de Brasília, header x-cron-secret). Um aviso por pessoa, mesmo com vários desafios.
 // Sem lembrete diário nem cobrança de treino (decisão do Andre, 21/10).
@@ -196,6 +197,38 @@ Deno.serve(async (req) => {
       const res = await mandar(l.student_id, "treinador", linkId, {
         title: `${nome} mandou um treino novo`, body: "Abra o Movo para ver e aceitar.", tag: `treinador-${linkId}`,
       });
+      return json({ ok: true, enviado: res.ok > 0 });
+    }
+
+    // Anamnese: "pedido" (o treinador pediu, avisa o aluno) ou "respondida" (o aluno respondeu, avisa o treinador).
+    // Usa a categoria "treinador" das preferências. No máximo um aviso por pessoa e vínculo a cada 10 minutos.
+    if (tipo === "anamnese") {
+      const linkId = String(body.link_id || "");
+      const evento = String(body.evento || "");
+      const { data: l } = await admin.from("coach_links").select("id,coach_id,student_id,status").eq("id", linkId).maybeSingle();
+      if (!l || l.status !== "ativo") return json({ ok: false, erro: "vinculo_invalido" }, 403);
+      const { data: a } = await admin.from("coach_anamneses").select("respostas,respondida_em").eq("link_id", linkId).maybeSingle();
+      if (!a) return json({ ok: false, erro: "sem_anamnese" }, 404);
+      let para = "", msg: { title: string; body: string; tag: string };
+      if (evento === "pedido" && l.coach_id === me) {
+        const { data: p } = await admin.from("coach_profiles").select("nome_exibicao").eq("user_id", me).maybeSingle();
+        const nome = String((p && p.nome_exibicao) || "Seu treinador").trim().split(" ")[0];
+        para = l.student_id;
+        msg = { title: `${nome} pediu um questionário de saúde`, body: "Leva uns 3 minutos. Abra o Movo para responder.", tag: `anamnese-${linkId}` };
+      } else if (evento === "respondida" && l.student_id === me && a.respondida_em) {
+        const { data: lk } = await admin.from("coach_links").select("student_label").eq("id", linkId).maybeSingle();
+        const { data: ad } = await admin.from("app_data").select("display_name").eq("user_id", me).maybeSingle();
+        const nome = String((ad && ad.display_name) || (lk && lk.student_label) || "Seu aluno").trim().split(" ")[0];
+        const parq = Array.isArray(a.respostas && a.respostas.parq) ? a.respostas.parq : [];
+        const nSim = parq.filter((x: unknown) => x === true).length;
+        para = l.coach_id;
+        msg = { title: `${nome} respondeu a anamnese`, body: nSim ? `${nSim} "sim" no PAR-Q. Veja antes do próximo treino.` : "Toque para ver as respostas.", tag: `anamnese-${linkId}` };
+      } else return json({ ok: false, erro: "nao_autorizado" }, 403);
+      const desde = new Date(Date.now() - 10 * 60000).toISOString();
+      const { count } = await admin.from("push_envios").select("id", { count: "exact", head: true })
+        .eq("user_id", para).eq("tipo", "treinador").eq("ref", `anamnese-${linkId}`).gte("criado_em", desde);
+      if ((count || 0) > 0) return json({ ok: true, enviado: false, motivo: "recente" });
+      const res = await mandar(para, "treinador", `anamnese-${linkId}`, msg);
       return json({ ok: true, enviado: res.ok > 0 });
     }
 

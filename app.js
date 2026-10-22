@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v218";
+const APP_BUILD = "v219";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1131,6 +1131,8 @@ function exercicioLimpo(ex) {
     observacoes: ex.observacoes || "",
     videoUrl: ex.videoUrl || "",
   };
+  // Vídeo próprio do treinador (bucket privado "videos", pasta biblioteca), anexado no envio.
+  if (ex.videoCoach && /^[0-9a-f-]{36}\/biblioteca\/[\w.-]{1,60}$/.test(String(ex.videoCoach.p || ""))) out.videoCoach = { p: ex.videoCoach.p, s: Number(ex.videoCoach.s) || null, n: String(ex.videoCoach.n || "").slice(0, 40) };
   const kg = blocoNumero(ex.cargaKg, 0.1, 1000); if (kg != null) out.cargaKg = String(kg);
   const pct = blocoNumero(ex.pct1rm, 1, 120); if (pct != null) out.pct1rm = pct;
   const rir = blocoNumero(ex.rir, 0, 10); if (rir != null) out.rir = rir;
@@ -1683,6 +1685,18 @@ function histTitulo(s) {
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 }
 // Prepara o que será criado, para a tela de revisão. Não altera nada.
+// Títulos que viram ficha nova: os que se repetem (2+ vezes nos 90 dias mais recentes do arquivo), até 8.
+// Títulos genéricos ("Morning Workout", "Treino") e o resto entram só em "Histórico importado", com as cargas.
+const HIST_TITULOS_GENERICOS = /^(morning|afternoon|evening|night|midday|lunch|late night|early morning)? ?(workout|treino|training|session)( \d+)?$|^(treino|workout)$/;
+function histTitulosRepetidos(sessoes) {
+  const datas = (sessoes || []).map((s) => s.d).filter(Boolean).sort();
+  if (!datas.length) return new Set();
+  const corte = new Date(datas[datas.length - 1] + "T12:00:00"); corte.setDate(corte.getDate() - 90);
+  const corteISO = corte.toISOString().slice(0, 10);
+  const cont = {};
+  sessoes.forEach((s) => { const k = histNorm(s.n); if (k && s.d >= corteISO && !HIST_TITULOS_GENERICOS.test(k)) cont[k] = (cont[k] || 0) + 1; });
+  return new Set(Object.keys(cont).filter((k) => cont[k] >= 2).sort((a, b) => cont[b] - cont[a]).slice(0, 8));
+}
 function histPlanejar(juntado, ctx) {
   const treinos = ctx.treinos || [], sessions = ctx.sessions || {}, schedule = ctx.schedule || {}, atividades = ctx.atividades || [];
   const seus = [];
@@ -1701,11 +1715,12 @@ function histPlanejar(juntado, ctx) {
   const fichas = new Map();
   const sessoes = [];
   const novosEx = new Map();
+  const repetidos = histTitulosRepetidos(juntado.sessoes);
   juntado.sessoes.forEach((s) => {
     let key = histNorm(s.n);
     let existente = treinos.find((t) => histNorm(t.nome) === key) || null;
     let nomeFicha = histTitulo(s.n);
-    if (!existente && !ctx.criarFichas) { key = "__hist"; nomeFicha = "Histórico importado"; }
+    if (!existente && (!ctx.criarFichas || !repetidos.has(key))) { key = "__hist"; nomeFicha = "Histórico importado"; }
     if (!fichas.has(key)) fichas.set(key, { key, nome: existente ? existente.nome : nomeFicha, existenteId: existente ? existente.id : null, ex: new Map(), nSessoes: 0, ultimaData: "" });
     const f = fichas.get(key);
     const exs = [];
@@ -2448,7 +2463,8 @@ function logExercicioLivre(nome, origem) {
 // Seletor de exercícios em tela cheia. Com onConfirm, é em lote: tocar marca, tocar de novo
 // desmarca, o número é a ordem em que entram, e nada vai para a ficha até "Adicionar N".
 // Sem onConfirm (treino de hoje, treinador), cada toque adiciona na hora, como antes.
-function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, canRemove, onRemove, onClose, titulo }) {
+// unico: escolhe um exercício só (o toque já escolhe; sem "+" e sem "Concluir"). selo(ex): texto à direita da linha.
+function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, canRemove, onRemove, onClose, titulo, unico, selo }) {
   const lote = typeof onConfirm === "function";
   const [filtro, setFiltro] = useState("Todos");
   const [sel, setSel] = useState([]);
@@ -2513,7 +2529,8 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
           <span className="gt-xp-row-nome">{ex.nome}</span>
           {meta && <span className="gt-xp-row-meta">{meta}</span>}
         </span>
-        {added ? <span className={`gt-xp-tag ${removable ? "tirar" : ""}`}>{removable ? "Tirar" : canRemove ? "NO TREINO" : "NA FICHA"}</span>
+        {unico ? (selo && selo(ex) ? <span className="gt-xp-selo">{selo(ex)}</span> : null)
+          : added ? <span className={`gt-xp-tag ${removable ? "tirar" : ""}`}>{removable ? "Tirar" : canRemove ? "NO TREINO" : "NA FICHA"}</span>
           : <span className={`gt-xp-marca ${pos >= 0 ? "on" : ""}`} aria-hidden="true">{pos >= 0 ? pos + 1 : "+"}</span>}
       </button>
     );
@@ -2574,11 +2591,11 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
         {corpo}
         <div style={{ height: 24 }} />
       </div>
-      <div className="gt-focus-footer">
+      {!unico && <div className="gt-focus-footer">
         {lote
           ? <button className="gt-btn" disabled={!sel.length} onClick={() => onConfirm(sel)}>{!sel.length ? "Escolha os exercícios" : sel.length === 1 ? "Adicionar 1 exercício" : `Adicionar ${sel.length} exercícios`}</button>
           : <button className="gt-btn" onClick={onClose}>Concluir</button>}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -3975,6 +3992,136 @@ const APP_CSS = `
   .gt-co-perms.gt-push-tipos { margin:4px 0 8px; padding:0; background:none; }
   .gt-push-links { display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--text-muted); }
   .gt-push-links .gt-co-link { padding-left:0; padding-right:0; }
+  .gt-med-body, .gt-anam-body { display:flex; flex-direction:column; gap:6px; padding:4px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
+  .gt-med-cmp .gt-focus-body { padding:4px 16px 24px; }
+  .gt-med-resumo { display:grid; grid-template-columns:repeat(auto-fit, minmax(96px, 1fr)); gap:8px; margin-bottom:10px; }
+  .gt-med-stat { background:var(--surface); border-radius:14px; padding:12px; }
+  .gt-med-stat .t { font-size:12px; color:var(--text-muted); }
+  .gt-med-stat .v { font-family:'Oswald',sans-serif; font-size:24px; line-height:1.2; font-variant-numeric:tabular-nums; }
+  .gt-med-stat .d { font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .gt-med-vazio { background:var(--surface); border-radius:14px; padding:16px; margin-bottom:10px; }
+  .gt-med-vazio .t { font-weight:700; font-size:16px; margin-bottom:4px; }
+  .gt-med-vazio .d { font-size:14px; color:var(--text-muted); }
+  .gt-med-share { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 10px; font-size:13px; color:var(--text-muted); margin:10px 0 2px; }
+  .gt-med-share .gt-co-link { padding-left:0; padding-right:0; }
+  .gt-med-item { background:var(--surface); border-radius:14px; padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px; }
+  .gt-med-item.toca { cursor:pointer; }
+  .gt-med-item.toca:active { background:var(--surface-2); }
+  .gt-med-item-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .gt-med-tag { font-size:11px; color:var(--info); background:rgba(90,176,255,.12); border-radius:999px; padding:2px 8px; }
+  .gt-med-vals { font-size:14px; }
+  .gt-med-nota { font-size:13px; color:var(--text-muted); }
+  .gt-med-thumbs { display:flex; gap:6px; margin-top:4px; }
+  .gt-med-thumbs img, .gt-med-thumbs .gt-med-foto-vazia { width:64px; height:84px; object-fit:cover; border-radius:8px; background:var(--surface-2); display:block; }
+  .gt-med-form { max-height:90vh; overflow-y:auto; }
+  .gt-med-form textarea.gt-med-ta { height:auto; min-height:64px; resize:vertical; }
+  .gt-med-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+  .gt-med-grid2 label { display:flex; flex-direction:column; min-width:0; }
+  .gt-med-lbl { font-size:12px; color:var(--text-muted); margin-bottom:4px; }
+  .gt-med-mais { align-self:flex-start; margin:8px 0 0; padding-left:0; }
+  .gt-med-fotos { display:flex; gap:8px; flex-wrap:wrap; }
+  .gt-med-foto { position:relative; width:84px; height:112px; border-radius:10px; overflow:hidden; background:var(--surface-2); display:flex; align-items:center; justify-content:center; }
+  .gt-med-foto img { width:100%; height:100%; object-fit:cover; }
+  .gt-med-foto button { position:absolute; top:4px; right:4px; width:28px; height:28px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; cursor:pointer; }
+  .gt-med-foto-add { border:1px dashed var(--border); cursor:pointer; color:var(--text-muted); font-size:13px; }
+  .gt-med-foto-vazia { display:block; width:100%; height:100%; background:var(--surface-2); }
+  .gt-med-apagar { color:var(--warn); margin-top:8px; align-self:center; }
+  .gt-med-cmp-par { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .gt-med-cmp-lado { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .gt-med-cmp-lado img, .gt-med-cmp-lado .gt-med-foto-vazia { width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:10px; }
+  .gt-anam-parq { background:var(--surface); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .gt-anam-parq .q { font-size:14px; }
+  .gt-anam-card .gt-btn { align-self:flex-start; margin-top:8px; }
+  .gt-anam-resp { margin:6px 0 0; display:flex; flex-direction:column; gap:8px; }
+  .gt-anam-resp div { font-size:13px; }
+  .gt-anam-resp dt { color:var(--text-muted); }
+  .gt-anam-resp dd { margin:2px 0 0; }
+  .gt-anam-resp .sim dd { color:var(--amber); font-weight:600; }
+  /* Revisões de UX e design (fase 4) */
+  .gt-anam .gt-provas-pill, .gt-med-cmp .gt-provas-pill { min-height:44px; padding:0 16px; font-size:14px; display:inline-flex; align-items:center; }
+  .gt-anam-parq .gt-provas-filters { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .gt-anam-parq .gt-provas-pill { justify-content:center; }
+  .gt-anam-parq .gt-provas-pill.on.sim { background:var(--amber); border-color:var(--amber); color:#14161A; }
+  .gt-anam-parq.falta { box-shadow:inset 0 0 0 1px var(--warn); }
+  .gt-anam-dias.gt-provas-filters { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .gt-anam-dias .gt-provas-pill { padding:0; justify-content:center; }
+  .gt-anam-card .gt-btn.small { min-height:40px; padding:8px 16px; font-size:14px; }
+  .gt-anam-share { margin-top:14px; flex-shrink:0; align-items:flex-start; color:var(--text); }
+  .gt-med-body > *, .gt-anam-body > * { flex-shrink:0; }
+  .gt-med-form .gt-med-acoes { position:sticky; bottom:-18px; background:var(--surface); padding:12px 0 calc(12px + env(safe-area-inset-bottom, 0px)); margin:12px 0 -18px; z-index:1; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .gt-med-quemve { flex-basis:100%; margin:0 0 4px; }
+  .gt-med-form textarea.gt-med-ta { font-family:'Inter',sans-serif; font-size:14px; margin:0; min-height:72px; }
+  .gt-med-form .gt-sheet-head { margin-bottom:14px; }
+  .gt-med-grid2 .gt-input { height:44px; }
+  .gt-med-sec { margin-top:16px; }
+  .gt-med-foto button { width:32px; height:32px; top:2px; right:2px; }
+  .gt-med-foto-pose { position:absolute; left:0; right:0; bottom:0; font-size:11px; text-align:center; padding:2px 0; background:rgba(0,0,0,.55); color:#fff; }
+  .gt-med-stat .d { white-space:nowrap; }
+  .gt-med-stat .v { font-size:26px; }
+  .gt-med-desde { margin:-4px 0 10px; }
+  .gt-med-topo { margin-top:0; }
+  .gt-med-topo .gt-btn:first-child { flex:2; }
+  .gt-med-topo .gt-btn.secondary { flex:1; }
+  .gt-med-editar { margin-left:auto; font-size:13px; color:var(--accent); }
+  .gt-med-cmp-sel { display:flex; flex-direction:column; min-width:0; }
+  .gt-med-cmp-par + .gt-med-cmp-par { margin-top:8px; }
+  .gt-med-cmp-delta { text-align:center; margin-top:16px; }
+  .gt-med-cmp-delta .l { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); letter-spacing:.05em; }
+  .gt-med-cmp-delta .v { font-family:'Oswald',sans-serif; font-size:32px; font-variant-numeric:tabular-nums; }
+  .gt-med-cmp-delta .de { font-size:13px; color:var(--text-muted); }
+  .gt-med-resumo-linhas { font-size:14px; color:var(--text-muted); display:flex; flex-direction:column; gap:2px; margin:0 0 8px; }
+  .gt-med-resumo-linhas b { color:var(--text); font-weight:600; }
+  .gt-co-plano-aluno > .gt-co-link { align-self:flex-start; padding:0; min-height:40px; }
+  .gt-co-plano-aluno > .t { font-weight:600; font-size:15px; }
+  .gt-anam-resp { gap:0; }
+  .gt-anam-resp div { padding:8px 0; border-top:1px solid var(--border); font-size:14px; }
+  .gt-anam-resp dt { font-size:12px; }
+  .gt-plano-chk input { accent-color:var(--accent); width:20px; height:20px; flex-shrink:0; margin-top:1px; }
+  .gt-plano-chk { font-size:14px; min-height:44px; align-items:center; }
+  .gt-plano-chk small { font-size:12px; color:var(--text-muted); }
+  .gt-hist-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .gt-chip button { min-width:32px; min-height:32px; }
+  .gt-hist-notas { background:var(--surface-2); border-radius:10px; padding:10px 12px; font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:6px; }
+  .gt-hoje-importar { margin-top:8px; }
+  .gt-video { display:flex; flex-direction:column; gap:6px; flex-basis:100%; margin-top:4px; }
+  .gt-video .gt-ex-video-toggle { align-self:flex-start; }
+  .gt-ex-video-toggle { min-height:44px; padding:0 16px; font-size:13px; display:inline-flex; align-items:center; gap:6px; }
+  .gt-video { margin-bottom:8px; }
+  .gt-video-acoes { display:flex; gap:16px; }
+  .gt-video-acoes .gt-co-link { padding-left:0; }
+  .gt-video-apagar { color:var(--warn); }
+  .gt-xp-selo { font-size:13px; color:var(--info); white-space:nowrap; }
+  .gt-video-player { width:100%; max-height:60vh; border-radius:10px; background:#000; }
+  .gt-video-off { font-size:13px; color:var(--text-muted); }
+  .gt-video-add { display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; border:1px dashed var(--border); border-radius:10px; font-size:14px; color:var(--text); cursor:pointer; padding:0 12px; }
+  .gt-video-add.off { opacity:.5; pointer-events:none; }
+  .gt-video-prog { position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:var(--surface-2); font-size:14px; overflow:hidden; }
+  .gt-video-prog i { position:absolute; left:0; bottom:0; height:3px; background:var(--accent); }
+  .gt-rpe-video { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+  /* Modo treinador no computador (fase 4): menu lateral, lista mais larga, telas do aluno e modais centralizados.
+     Só a partir de 960 px e só no modo treinador; o celular e o modo aluno não mudam. */
+  @media (min-width: 960px) {
+    .gt-root.gt-shell.gt-coach-mode { max-width:1240px; display:grid; grid-template-columns:220px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+    .gt-shell.gt-coach-mode > .gt-header { grid-column:2; grid-row:1; }
+    .gt-shell.gt-coach-mode > .gt-body { grid-column:2; grid-row:2; }
+    .gt-shell.gt-coach-mode > .gt-co-tabbar { grid-column:1; grid-row:1 / span 2; flex-direction:column; justify-content:flex-start; gap:4px; max-width:none; width:auto; height:100%; margin:0; padding:76px 12px 16px; border-top:none; border-right:1px solid var(--border); }
+    .gt-coach-mode .gt-co-tabbar .gt-tab { flex:0 0 auto; flex-direction:row; justify-content:flex-start; gap:12px; padding:10px 12px; font-size:15px; border-radius:10px; min-height:44px; }
+    .gt-coach-mode .gt-co-tabbar .gt-tab.active { background:var(--surface-2); }
+    .gt-coach-mode .gt-co-body { padding-left:32px; padding-right:32px; }
+    .gt-coach-mode .gt-co-body > * { max-width:980px; }
+    .gt-coach-mode .gt-co-lista { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
+    .gt-coach-mode .gt-co-hoje-item { max-width:none; }
+    .gt-coach-mode .gt-focus { left:calc(max(0px, (100vw - 1240px) / 2) + 220px); right:auto; width:calc(min(1240px, 100vw) - 220px); max-width:none; margin:0; border-left:1px solid var(--border); }
+    .gt-coach-mode .gt-focus .gt-focus-body > *:not(.gt-modal-backdrop) { max-width:900px; }
+    .gt-coach-mode .gt-focus .gt-focus-header { box-sizing:border-box; max-width:956px; padding-left:28px; padding-right:28px; }
+    .gt-coach-mode .gt-focus .gt-focus-footer { padding-left:28px; padding-right:28px; }
+    .gt-coach-mode .gt-focus .gt-focus-footer > * { max-width:900px; }
+    .gt-coach-mode .gt-co-composer > .gt-co-aviso { margin:8px 28px 0; max-width:900px; }
+    .gt-coach-mode .gt-focus .gt-focus-body { padding-left:28px; padding-right:28px; }
+    .gt-coach-mode .gt-modal-backdrop { align-items:center; }
+    .gt-coach-mode .gt-modal { max-width:560px; border-radius:14px; border:1px solid var(--border); max-height:86vh; }
+    .gt-coach-mode .gt-toast { bottom:32px; }
+  }
   .gt-push-convite { text-align:center; display:flex; flex-direction:column; gap:10px; padding-bottom:calc(18px + env(safe-area-inset-bottom)); }
   .gt-push-convite h3 { margin:0; font-size:20px; line-height:1.25; }
   .gt-push-convite p { margin:0 0 6px; color:var(--text-muted); font-size:15px; }
@@ -4488,8 +4635,223 @@ function histImagemB64(file) {
     img.src = url;
   });
 }
-// Um arquivo vira uma lista de "fontes": { nome, tipo: texto|pdf|imagem, texto|b64, cabecalho? }.
-async function histLerArquivo(file) {
+// Hevy e Strong exportam CSV com o mesmo jeito de nomear ("Bench Press (Barbell)"). Lemos aqui mesmo,
+// sem IA: é instantâneo, não gasta cota e não tem limite de tamanho.
+const HIST_APP_NOMES = {
+  "bench press (barbell)": "Supino reto com barra", "bench press (dumbbell)": "Supino reto com halteres", "bench press (smith machine)": "Supino reto na Smith",
+  "bench press (machine)": "Supino reto na máquina", "chest press (machine)": "Supino reto na máquina", "incline bench press (barbell)": "Supino inclinado com barra",
+  "incline bench press (dumbbell)": "Supino inclinado com halteres", "incline bench press (smith machine)": "Supino inclinado na Smith", "incline chest press (machine)": "Supino inclinado na máquina",
+  "decline bench press (barbell)": "Supino declinado com barra", "decline bench press (dumbbell)": "Supino declinado com halteres", "close grip bench press": "Supino fechado (pegada fechada)",
+  "bench press - close grip (barbell)": "Supino fechado (pegada fechada)", "floor press (barbell)": "Supino no chão (floor press)", "chest fly (dumbbell)": "Crucifixo reto com halteres",
+  "incline chest fly (dumbbell)": "Crucifixo inclinado com halteres", "chest fly (machine)": "Peck deck (voador)", "butterfly (pec deck)": "Peck deck (voador)", "pec deck (machine)": "Peck deck (voador)",
+  "cable crossover": "Crucifixo no cross-over", "cable fly crossovers": "Crucifixo no cross-over", "low cable fly crossovers": "Crossover polia baixa", "push up": "Flexão de braço", "push-up": "Flexão de braço",
+  "chest dip": "Paralelas (dips)", "triceps dip": "Paralelas (dips)", "dip": "Paralelas (dips)", "bench dip": "Mergulho no banco (dips)", "pullover (dumbbell)": "Pullover com halter",
+  "squat (barbell)": "Agachamento livre ou na máquina", "full squat": "Agachamento livre ou na máquina", "squat (smith machine)": "Agachamento na Smith", "front squat (barbell)": "Agachamento frontal (front squat)",
+  "front squat": "Agachamento frontal (front squat)", "goblet squat": "Agachamento goblet", "goblet squat (kettlebell)": "Agachamento goblet", "goblet squat (dumbbell)": "Agachamento goblet", "hack squat": "Agachamento hack",
+  "hack squat (machine)": "Agachamento hack", "bulgarian split squat": "Agachamento búlgaro", "bulgarian split squat (dumbbell)": "Agachamento búlgaro", "box squat (barbell)": "Agachamento no caixote (box squat)",
+  "overhead squat (barbell)": "Agachamento overhead (overhead squat)", "pistol squat": "Agachamento pistol", "sumo squat": "Agachamento sumô", "air squat": "Agachamento com peso corporal (air squat)", "squat (bodyweight)": "Agachamento com peso corporal (air squat)",
+  "jump squat": "Agachamento com salto (jump squat)", "leg press": "Leg press 45°", "leg press (machine)": "Leg press 45°", "horizontal leg press": "Leg press horizontal", "single leg press": "Leg press unilateral",
+  "leg extension (machine)": "Cadeira extensora", "leg extension": "Cadeira extensora", "seated leg curl (machine)": "Cadeira flexora (flexora sentada)", "lying leg curl (machine)": "Mesa flexora",
+  "leg curl (machine)": "Mesa flexora", "standing leg curl": "Mesa flexora em pé", "hip abduction (machine)": "Cadeira abdutora", "hip adduction (machine)": "Cadeira adutora",
+  "lunge (dumbbell)": "Afundo (avanço) com halteres", "lunge (barbell)": "Afundo com barra", "lunge": "Afundo (avanço) com halteres", "walking lunge": "Afundo caminhando (passada)", "walking lunge (dumbbell)": "Afundo caminhando (passada)",
+  "reverse lunge": "Afundo reverso (avanço para trás)", "reverse lunge (dumbbell)": "Afundo reverso (avanço para trás)", "split squat (dumbbell)": "Afundo estático (split squat)", "lateral lunge": "Afundo lateral",
+  "step up": "Step up", "step up (dumbbell)": "Step up", "hip thrust (barbell)": "Elevação pélvica (hip thrust)", "hip thrust": "Elevação pélvica (hip thrust)", "hip thrust (machine)": "Hip thrust na máquina",
+  "hip thrust (smith machine)": "Hip thrust na Smith", "glute bridge": "Ponte de glúteo (glute bridge)", "single leg glute bridge": "Ponte de glúteo unilateral", "glute kickback (machine)": "Coice na máquina (glúteo)",
+  "cable kickback": "Glúteo na polia (coice)", "glute kickback (cable)": "Glúteo na polia (coice)", "standing calf raise": "Panturrilha em pé", "standing calf raise (machine)": "Panturrilha em pé",
+  "standing calf raise (smith machine)": "Panturrilha em pé", "seated calf raise": "Panturrilha sentado", "seated calf raise (machine)": "Panturrilha sentado", "calf press on leg press": "Panturrilha no leg press",
+  "calf press (machine)": "Panturrilha no leg press", "deadlift (barbell)": "Levantamento terra (deadlift)", "deadlift": "Levantamento terra (deadlift)", "sumo deadlift": "Levantamento terra sumô",
+  "sumo deadlift (barbell)": "Levantamento terra sumô", "trap bar deadlift": "Levantamento terra com barra hexagonal (trap bar)", "romanian deadlift (barbell)": "Stiff com halteres ou barra",
+  "romanian deadlift (dumbbell)": "Stiff com halteres ou barra", "romanian deadlift": "Stiff com halteres ou barra", "stiff leg deadlift": "Stiff com halteres ou barra", "straight leg deadlift": "Stiff com halteres ou barra",
+  "single leg romanian deadlift": "Stiff unilateral", "good morning (barbell)": "Good morning", "rack pull": "Rack pull", "back extension": "Hiperextensão lombar", "hyperextension": "Hiperextensão lombar",
+  "back extension (hyperextension)": "Hiperextensão lombar", "nordic hamstrings curls": "Curl nórdico (nordic curl)", "glute ham raise": "Glute-ham raise (GHD)",
+  "pull up": "Barra fixa (pull-up)", "pull-up": "Barra fixa (pull-up)", "pull up (assisted)": "Barra fixa assistida", "assisted pull up": "Barra fixa assistida", "chin up": "Barra fixa supinada (chin-up)",
+  "chin-up": "Barra fixa supinada (chin-up)", "neutral grip pull up": "Barra fixa pegada neutra", "lat pulldown (cable)": "Puxada frente na polia", "lat pulldown (machine)": "Puxada frente na polia",
+  "lat pulldown": "Puxada frente na polia", "lat pulldown - close grip (cable)": "Puxada com triângulo (pegada neutra)", "close grip lat pulldown": "Puxada com triângulo (pegada neutra)",
+  "reverse grip lat pulldown (cable)": "Puxada com pegada supinada", "single arm lat pulldown": "Puxada unilateral na polia", "straight arm lat pulldown (cable)": "Pulldown braço reto (pullover na polia)",
+  "straight arm pulldown": "Pulldown braço reto (pullover na polia)", "seated cable row - v grip (cable)": "Remada baixa na polia", "seated cable row": "Remada baixa na polia", "seated row (cable)": "Remada baixa na polia",
+  "seated row (machine)": "Remada na máquina sentada", "seated wide-grip row (cable)": "Remada aberta na polia", "bent over row (barbell)": "Remada curvada com barra ou halteres", "bent over row (dumbbell)": "Remada curvada com barra ou halteres",
+  "bent over row": "Remada curvada com barra ou halteres", "pendlay row (barbell)": "Remada Pendlay", "dumbbell row": "Remada unilateral com halteres", "single arm dumbbell row": "Remada unilateral com halteres",
+  "dumbbell row (single arm)": "Remada unilateral com halteres", "one arm dumbbell row": "Remada unilateral com halteres", "t bar row": "Remada cavalinho (T-bar)", "t-bar row": "Remada cavalinho (T-bar)",
+  "chest supported incline row (dumbbell)": "Remada com apoio no peito (chest supported)", "chest supported row": "Remada com apoio no peito (chest supported)", "inverted row": "Remada invertida (barra baixa)",
+  "meadows rows (barbell)": "Remada Meadows", "landmine row": "Remada landmine", "face pull (cable)": "Face pull na polia", "face pull": "Face pull na polia", "shrug (barbell)": "Encolhimento com barra",
+  "shrug (dumbbell)": "Encolhimento com halteres (trapézio)", "overhead press (barbell)": "Desenvolvimento militar com barra", "overhead press (dumbbell)": "Desenvolvimento com halteres",
+  "shoulder press (dumbbell)": "Desenvolvimento com halteres", "seated overhead press (dumbbell)": "Desenvolvimento com halteres", "shoulder press (machine)": "Desenvolvimento na máquina",
+  "seated shoulder press (machine)": "Desenvolvimento na máquina", "overhead press (smith machine)": "Desenvolvimento na Smith", "seated overhead press (barbell)": "Desenvolvimento sentado com barra",
+  "arnold press (dumbbell)": "Desenvolvimento Arnold", "arnold press": "Desenvolvimento Arnold", "push press": "Push press", "lateral raise (dumbbell)": "Elevação lateral com halteres", "lateral raise": "Elevação lateral com halteres",
+  "lateral raise (cable)": "Elevação lateral na polia", "single arm lateral raise (cable)": "Elevação lateral na polia", "lateral raise (machine)": "Elevação lateral na máquina", "front raise (dumbbell)": "Elevação frontal com halteres",
+  "front raise (barbell)": "Elevação frontal com barra", "front raise (cable)": "Elevação frontal na polia", "front raise (plate)": "Elevação frontal com anilha", "plate front raise": "Elevação frontal com anilha",
+  "rear delt reverse fly (dumbbell)": "Crucifixo inverso com halteres", "reverse fly (dumbbell)": "Crucifixo inverso com halteres", "rear delt reverse fly (machine)": "Crucifixo inverso na máquina",
+  "reverse fly (machine)": "Crucifixo inverso na máquina", "rear delt reverse fly (cable)": "Crucifixo inverso na polia", "upright row (barbell)": "Remada alta", "upright row": "Remada alta",
+  "bicep curl (barbell)": "Rosca direta com barra ou halteres", "bicep curl (dumbbell)": "Rosca alternada com halteres", "biceps curl (barbell)": "Rosca direta com barra ou halteres", "biceps curl (dumbbell)": "Rosca alternada com halteres",
+  "curl (barbell)": "Rosca direta com barra ou halteres", "bicep curl (cable)": "Rosca direta na polia baixa", "ez bar biceps curl": "Rosca com barra W", "bicep curl (ez bar)": "Rosca com barra W", "ez bar curl": "Rosca com barra W",
+  "hammer curl (dumbbell)": "Rosca martelo", "hammer curl": "Rosca martelo", "hammer curl (cable)": "Rosca martelo na corda (polia)", "rope cable curl": "Rosca martelo na corda (polia)", "preacher curl (barbell)": "Rosca Scott (concentrada)",
+  "preacher curl (dumbbell)": "Rosca Scott (concentrada)", "preacher curl (machine)": "Rosca Scott na máquina", "concentration curl": "Rosca Scott (concentrada)", "incline curl (dumbbell)": "Rosca inclinada com halteres",
+  "incline dumbbell curl": "Rosca inclinada com halteres", "spider curl (dumbbell)": "Rosca spider", "reverse curl (barbell)": "Rosca inversa", "reverse curl": "Rosca inversa", "zottman curl (dumbbell)": "Rosca Zottman",
+  "drag curl": "Rosca drag", "21s bicep curl": "Rosca 21", "bayesian curl": "Rosca Bayesian", "wrist curl (barbell)": "Rosca de punho (wrist curl)", "wrist curl (dumbbell)": "Rosca de punho (wrist curl)",
+  "triceps pushdown": "Tríceps na polia com barra reta", "triceps pushdown (cable - straight bar)": "Tríceps na polia com barra reta", "triceps rope pushdown": "Tríceps na polia (corda)", "triceps pushdown (rope)": "Tríceps na polia (corda)",
+  "triceps extension (cable)": "Tríceps na polia (corda)", "triceps pushdown (v bar)": "Tríceps na polia com barra V", "skullcrusher (barbell)": "Tríceps testa (com barra ou halteres)", "skullcrusher (dumbbell)": "Tríceps testa (com barra ou halteres)",
+  "skull crusher (barbell)": "Tríceps testa (com barra ou halteres)", "lying triceps extension (barbell)": "Tríceps testa (com barra ou halteres)", "overhead triceps extension (cable)": "Tríceps francês na polia",
+  "triceps extension (dumbbell)": "Tríceps francês", "overhead triceps extension (dumbbell)": "Tríceps francês", "triceps extension (barbell)": "Tríceps francês", "single arm triceps extension (dumbbell)": "Tríceps francês unilateral com halter",
+  "triceps kickback (dumbbell)": "Tríceps coice com halter", "triceps kickback (cable)": "Tríceps coice na polia", "triceps dip (machine)": "Mergulho na máquina", "seated dip machine": "Mergulho na máquina",
+  "triceps extension (machine)": "Tríceps na máquina", "diamond push up": "Flexão diamante", "jm press (barbell)": "JM press",
+  "crunch": "Abdominal supra (crunch)", "crunch (machine)": "Abdominal na polia ou máquina", "cable crunch": "Abdominal na polia ou máquina", "sit up": "Abdominal completo (sit-up)", "sit-up": "Abdominal completo (sit-up)",
+  "decline crunch": "Abdominal declinado", "bicycle crunch": "Abdominal bicicleta", "v up": "Abdominal canivete (V-up)", "ab wheel": "Abdominal com roda (ab wheel)", "ab wheel rollout": "Abdominal com roda (ab wheel)",
+  "plank": "Prancha", "side plank": "Prancha lateral", "hanging leg raise": "Elevação de pernas na barra fixa", "hanging knee raise": "Elevação de joelhos na barra fixa", "leg raise": "Elevação de pernas", "lying leg raise": "Elevação de pernas",
+  "knee raise parallel bars": "Elevação de joelhos na cadeira romana", "captains chair knee raise": "Elevação de joelhos na cadeira romana", "russian twist": "Rotação russa (russian twist)", "mountain climber": "Escalador (mountain climber)",
+  "dead bug": "Dead bug (inseto morto)", "hollow body hold": "Hollow hold (barquinha)", "toes to bar": "Toes to bar", "pallof press": "Pallof press", "cable woodchopper": "Lenhador na polia (wood chop)", "wood chop (cable)": "Lenhador na polia (wood chop)",
+  "kettlebell swing": "Kettlebell swing", "farmers walk": "Caminhada do fazendeiro (farmers carry)", "farmer's walk": "Caminhada do fazendeiro (farmers carry)", "thruster (barbell)": "Thruster com barra", "thruster (dumbbell)": "Thruster com halteres",
+  "power clean": "Power clean", "clean and jerk": "Clean and jerk (arremesso)", "snatch": "Squat snatch (arranco)", "hang clean": "Hang clean", "burpee": "Burpee", "box jump": "Salto na caixa (box jump)", "wall ball": "Wall ball (bola na parede)",
+  "battle ropes": "Corda naval (battle rope)", "jump rope": "Pular corda", "jumping jack": "Polichinelo (jumping jack)", "sled push": "Sled push (empurrar trenó)", "muscle up": "Muscle-up na barra", "rope climb": "Subida na corda (rope climb)",
+  "handstand push up": "Flexão em parada de mão (handstand push-up)", "rowing machine": "Remo ergômetro", "rowing (machine)": "Remo ergômetro", "row (machine)": "Remo ergômetro", "elliptical trainer": "Elíptico", "elliptical": "Elíptico",
+  "stair machine": "Escada (simulador de escada)", "stair climber": "Escada (simulador de escada)", "cycling (indoor)": "Bicicleta ergométrica", "stationary bike": "Bicicleta ergométrica", "spinning": "Spinning (bike indoor)",
+  "air bike": "Bike de ar (air bike)", "ski erg": "SkiErg", "skierg": "SkiErg", "treadmill": "Esteira (caminhada/corrida)", "walking": "Caminhada ao ar livre", "swimming": "Natação",
+};
+// Cardio sem carga: vira atividade (como corrida no app).
+const HIST_APP_ATIV = { running: "Corrida", "running (treadmill)": "Corrida na esteira", treadmill: "Esteira", walking: "Caminhada", cycling: "Bike", "cycling (indoor)": "Bike indoor", "stationary bike": "Bike indoor",
+  spinning: "Bike indoor", swimming: "Natação", "rowing machine": "Remo", "rowing (machine)": "Remo", "row (machine)": "Remo", elliptical: "Elíptico", "elliptical trainer": "Elíptico", hiking: "Trilha",
+  "stair machine": "Escada", "stair climber": "Escada", "ski erg": "SkiErg", skierg: "SkiErg", "air bike": "Air bike" };
+function histAppChave(s) { return String(s || "").toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ").trim(); }
+function histAppNomeEx(nome) {
+  const k = histAppChave(nome);
+  if (HIST_APP_NOMES[k]) return HIST_APP_NOMES[k];
+  const base = k.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return HIST_APP_NOMES[base] || String(nome || "").trim();
+}
+// Lê CSV com aspas ("a, b" e "" dentro). Separador: vírgula ou ponto e vírgula (o que aparecer mais no cabeçalho).
+function histCsvLinhas(texto) {
+  const t = String(texto || "").replace(/^﻿/, "");
+  const cab = t.split(/\r?\n/)[0] || "";
+  const sep = (cab.match(/;/g) || []).length > (cab.match(/,/g) || []).length ? ";" : ",";
+  const linhas = []; let campo = "", linha = [], aspas = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (aspas) {
+      if (c === '"') { if (t[i + 1] === '"') { campo += '"'; i++; } else aspas = false; }
+      else campo += c;
+    } else if (c === '"') aspas = true;
+    else if (c === sep) { linha.push(campo); campo = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && t[i + 1] === "\n") i++;
+      linha.push(campo); campo = "";
+      if (linha.some((x) => x !== "")) linhas.push(linha);
+      linha = [];
+    } else campo += c;
+  }
+  linha.push(campo);
+  if (linha.some((x) => x !== "")) linhas.push(linha);
+  return linhas;
+}
+// Qual app gerou o CSV, pelo cabeçalho. null = não é do Hevy nem do Strong.
+function histAppDetectar(texto) {
+  const cab = histAppChave(String(texto || "").replace(/^﻿/, "").split(/\r?\n/)[0]).replace(/"/g, "");
+  if (/exercise_title/.test(cab) && /start_time/.test(cab) && /set_index|reps/.test(cab)) return "Hevy";
+  if (/exercise name/.test(cab) && /workout name/.test(cab) && /set order/.test(cab)) return "Strong";
+  return null;
+}
+const HIST_MESES_EN = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+// "2024-10-21 18:30:00", "21 Oct 2024, 18:30", "Oct 21, 2024", "21/10/2024" -> "2024-10-21".
+function histAppData(s) {
+  const t = String(s || "").trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = t.match(/^(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?\s+(\d{4})/);
+  if (m && HIST_MESES_EN[m[2].toLowerCase()]) return `${m[3]}-${String(HIST_MESES_EN[m[2].toLowerCase()]).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = t.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  if (m && HIST_MESES_EN[m[1].toLowerCase()]) return `${m[3]}-${String(HIST_MESES_EN[m[1].toLowerCase()]).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return null;
+}
+function histAppMin(ini, fim, dur) {
+  const n = Number(dur);
+  if (isFinite(n) && n > 0) return n > 600 ? Math.round(n / 60) : Math.round(n); // Strong novo manda segundos
+  const h = String(dur || "").match(/(\d+)\s*h/), mi = String(dur || "").match(/(\d+)\s*m/);
+  if (h || mi) return (h ? Number(h[1]) * 60 : 0) + (mi ? Number(mi[1]) : 0) || null;
+  const a = Date.parse(String(ini || "").replace(",", "")), b = Date.parse(String(fim || "").replace(",", ""));
+  return isFinite(a) && isFinite(b) && b > a ? Math.round((b - a) / 60000) : null;
+}
+// CSV do Hevy ou do Strong -> { sessoes, ativ, avisos } no mesmo formato de histLimpar.
+// unidade: "kg" | "lb" | "auto" (só vale quando o arquivo não diz a unidade).
+function histAppLer(texto, app, unidade, hoje) {
+  const linhas = histCsvLinhas(texto);
+  const out = { sessoes: [], ativ: [], avisos: [] };
+  if (linhas.length < 2) return out;
+  const cab = linhas[0].map((c) => histAppChave(c));
+  const col = (...nomes) => { for (const n of nomes) { const i = cab.findIndex((c) => c === n || c.startsWith(n + " (") || c.startsWith(n + "_")); if (i >= 0) return i; } return -1; };
+  const iData = app === "Hevy" ? col("start_time") : col("date");
+  const iFim = col("end_time");
+  const iTreino = app === "Hevy" ? col("title") : col("workout name");
+  const iDur = col("duration", "duration (sec)");
+  const iEx = app === "Hevy" ? col("exercise_title") : col("exercise name");
+  const iTipo = col("set_type"), iOrdem = col("set order");
+  const iPeso = app === "Hevy" ? col("weight_kg", "weight_lbs") : col("weight");
+  const iReps = col("reps");
+  const iDist = app === "Hevy" ? col("distance_km", "distance_miles") : col("distance");
+  const iSeg = app === "Hevy" ? col("duration_seconds") : col("seconds");
+  const iNota = app === "Hevy" ? col("exercise_notes") : col("notes");
+  const iUnPeso = col("weight unit"), iUnDist = col("distance unit");
+  if (iData < 0 || iEx < 0) return out;
+  const cabPeso = iPeso >= 0 ? cab[iPeso] : "";
+  const pesoLb = /lbs|lb\)/.test(cabPeso) ? true : /kg/.test(cabPeso) ? false : null;
+  const cabDist = iDist >= 0 ? cab[iDist] : "";
+  const fatorDist = /miles/.test(cabDist) ? 1.609 : /meters|\(m\)/.test(cabDist) ? 0.001 : 1;
+  let assumiuKg = false, converteuLb = false;
+  const sess = new Map(), ativ = new Map();
+  const num = (v) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return v !== "" && isFinite(n) ? n : null; };
+  for (let r = 1; r < linhas.length; r++) {
+    const L = linhas[r];
+    const d = histAppData(L[iData]);
+    const exNome = (L[iEx] || "").trim();
+    if (!d || !exNome || !histDataValida(d, hoje)) continue;
+    const ordem = iOrdem >= 0 ? String(L[iOrdem] || "").trim() : "";
+    if (/^rest/i.test(ordem)) continue;
+    const tipo = iTipo >= 0 ? String(L[iTipo] || "").toLowerCase() : "";
+    if (tipo === "warmup" || /^w/i.test(ordem)) continue; // aquecimento não entra na carga
+    const nomeTreino = (iTreino >= 0 && (L[iTreino] || "").trim()) || "Treino";
+    const chave = `${d}|${nomeTreino}`;
+    let peso = iPeso >= 0 ? num(L[iPeso]) : null;
+    const lbLinha = iUnPeso >= 0 ? /lb/i.test(L[iUnPeso] || "") : null;
+    const ehLb = lbLinha != null ? lbLinha : pesoLb != null ? pesoLb : unidade === "lb";
+    if (peso != null && pesoLb == null && lbLinha == null && unidade !== "lb") assumiuKg = true;
+    if (peso != null && ehLb) { peso = Math.round((peso / 2.2046) * 10) / 10; converteuLb = true; }
+    if (peso === 0) peso = null;
+    const reps = iReps >= 0 ? num(L[iReps]) : null;
+    let km = iDist >= 0 ? num(L[iDist]) : null;
+    if (km != null) {
+      const fUn = iUnDist >= 0 ? (/mi/i.test(L[iUnDist] || "") ? 1.609 : /^m$|meters/i.test(L[iUnDist] || "") ? 0.001 : 1) : fatorDist;
+      km = Math.round(km * fUn * 100) / 100 || null;
+    }
+    const seg = iSeg >= 0 ? num(L[iSeg]) : null;
+    const k = histAppChave(exNome);
+    const kAtiv = HIST_APP_ATIV[k] || HIST_APP_ATIV[k.replace(/\s*\([^)]*\)\s*$/, "")];
+    if (!reps && (km || seg) && (kAtiv || (km && !peso))) {
+      const nAtiv = kAtiv || histTitulo(exNome);
+      const ka = `${d}|${histNorm(nAtiv)}`;
+      const a = ativ.get(ka) || { d, n: nAtiv, km: null, min: null };
+      if (km) a.km = Math.round(((a.km || 0) + km) * 100) / 100;
+      if (seg) a.min = Math.round((a.min || 0) + seg / 60) || null;
+      ativ.set(ka, a);
+      continue;
+    }
+    if (peso == null && reps == null) continue;
+    let s = sess.get(chave);
+    if (!s) { s = { d, n: nomeTreino.slice(0, 60), min: histAppMin(L[iData], iFim >= 0 ? L[iFim] : "", iDur >= 0 ? L[iDur] : ""), ex: [] }; sess.set(chave, s); }
+    const nomePt = histAppNomeEx(exNome).slice(0, 80);
+    let e = s.ex.find((x) => x.n === nomePt);
+    if (!e) { e = { n: nomePt, s: [], o: "" }; s.ex.push(e); }
+    e.s.push({ peso, reps: reps == null ? null : Math.round(reps) });
+    const nota = iNota >= 0 ? String(L[iNota] || "").trim() : "";
+    if (nota && !e.o) e.o = nota.slice(0, 200);
+  }
+  out.sessoes = [...sess.values()].map((s) => ({ ...s, min: s.min && s.min >= 1 && s.min <= 400 ? s.min : null }));
+  out.ativ = [...ativ.values()].map((a) => ({ ...a, min: a.min && a.min >= 1 ? a.min : null }));
+  if (converteuLb) out.avisos.push(`Cargas do ${app} convertidas de lb para kg.`);
+  else if (assumiuKg) out.avisos.push(`O arquivo do ${app} não diz a unidade; considerei kg. Se for lb, escolha "lb" e importe de novo.`);
+  return out;
+}
+// Um arquivo vira uma lista de "fontes": { nome, tipo: texto|pdf|imagem|app, texto|b64, cabecalho? }.
+// Com opts.apps, CSV do Hevy ou do Strong vira tipo "app" e é lido aqui mesmo, sem IA.
+async function histLerArquivo(file, opts) {
   const nome = file.name || "arquivo";
   const ext = (nome.split(".").pop() || "").toLowerCase();
   const tipo = file.type || "";
@@ -4517,6 +4879,8 @@ async function histLerArquivo(file) {
   }
   if (/^(txt|csv|tsv|md|json|log|text)$/.test(ext) || /^text\//.test(tipo) || !ext) {
     const texto = await file.text();
+    const app = opts && opts.apps ? histAppDetectar(texto) : null;
+    if (app) return [{ nome, tipo: "app", app, texto }];
     return [{ nome, tipo: "texto", texto, cabecalho: /^(csv|tsv)$/.test(ext) ? (texto.split("\n")[0] || "").trim() : "" }];
   }
   throw new Error(`${nome}: formato não suportado. Use texto, CSV, Excel, PDF, zip do WhatsApp ou foto.`);
@@ -4572,6 +4936,10 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
   const fmtD = (iso) => { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
   const semLimite = uso && uso.limite >= 1000;
   const podeUsar = uso && (semLimite || uso.usados < uso.limite);
+  // CSV do Hevy/Strong é lido no aparelho; a IA só entra se houver outro arquivo ou texto colado.
+  const precisaIA = !fontes.length || fontes.some((f) => f.tipo !== "app") || !!colado.trim();
+  const appsCsv = [...new Set(fontes.filter((f) => f.tipo === "app").map((f) => f.app))];
+  const inicioRef = useRef(Date.now());
 
   async function escolherArquivos(ev) {
     const lista = Array.from(ev.target.files || []);
@@ -4581,7 +4949,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     const novas = [];
     const erros = [];
     for (const f of lista) {
-      try { (await histLerArquivo(f)).forEach((x) => novas.push({ ...x, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` })); }
+      try { (await histLerArquivo(f, { apps: true })).forEach((x) => novas.push({ ...x, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` })); }
       catch (e) { erros.push(e && e.message ? e.message : `${f.name}: não consegui ler.`); }
     }
     if (!vivoRef.current) return;
@@ -4620,7 +4988,15 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
   async function analisar() {
     setErro("");
     const { partes, cortadas } = histMontarPartes(fontes, colado, lado);
-    if (!partes.length) { setErro("Escolha um arquivo ou cole o texto do seu histórico."); return; }
+    const locais = fontes.filter((f) => f.tipo === "app").map((f) => histAppLer(f.texto, f.app, unidade, hojeISO));
+    if (!partes.length && !locais.length) { setErro("Escolha um arquivo ou cole o texto do seu histórico."); return; }
+    if (!partes.length) {
+      const j = histJuntar(locais);
+      if (!j.sessoes.length && !j.ativ.length) { setErro("Não encontrei treinos nesse arquivo."); return; }
+      onEvent("hist_import_app", { apps: appsCsv.join(",") });
+      setFalhas(0); setJuntado(j); setEtapa("revisao");
+      return;
+    }
     let r;
     try {
       const resp = await supabaseClient.rpc("reserve_ai_generation", { p_kind: "historico", p_label: "importar histórico", max_per_month: 3 });
@@ -4649,7 +5025,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     };
     await Promise.all([worker(), worker(), worker()]);
     if (cancelRef.current || !vivoRef.current) return;
-    const bons = resultados.filter(Boolean);
+    const bons = resultados.filter(Boolean).concat(locais);
     const devolver = async () => { try { await supabaseClient.rpc("refund_plan_generation", { p_id: reservaRef.current }); } catch (e) {} };
     if (!bons.length) {
       await devolver();
@@ -4674,7 +5050,9 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
     const impId = `imp-${Date.now().toString(36)}`;
     const res = onAplicar(plano, impId);
     setResumo(res); setImpAtual(impId);
-    onEvent("hist_import_aplicado");
+    onEvent("hist_import_aplicado", { origem: precisaIA ? "ia" : "app", app: appsCsv.join(","), sessoes: plano.sessoes.length,
+      fichas: plano.fichas.filter((f) => !f.existenteId && f.key !== "__hist").length, novos_ex: plano.novosExercicios.length,
+      seg_ate_aplicar: Math.round((Date.now() - inicioRef.current) / 1000) });
     setEtapa("ok");
   }
   function fechar() {
@@ -4696,25 +5074,34 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 
         {etapa === "inicio" && (
           <div className="gt-plano-form">
-            <div className="gt-plano-dica">Traga seus treinos de outro app, planilha, anotações ou conversa de WhatsApp. A IA lê, o app organiza e você confere tudo antes de salvar.</div>
+            <div className="gt-plano-dica">Traga seus treinos de outro app, planilha, anotações ou conversa de WhatsApp. Você confere tudo antes de salvar.</div>
             <label className="gt-btn secondary" style={{ textAlign: "center", cursor: "pointer" }}>
               {lendoArq ? "Lendo arquivos…" : <><Ei e="📎" /> Escolher arquivos</>}
               <input type="file" multiple style={{ display: "none" }} accept=".txt,.csv,.tsv,.md,.json,.xlsx,.xlsm,.xls,.ods,.pdf,.zip,image/*" onChange={escolherArquivos} disabled={lendoArq} />
             </label>
-            <div className="gt-plano-dica">Aceita: texto/CSV, Excel, PDF, fotos e prints, e a conversa exportada do WhatsApp (.txt ou .zip).</div>
-            {fontes.map((f) => (
-              <div className="gt-chip" key={f.id} style={{ alignSelf: "flex-start" }}>
-                <span className="tag">{f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{f.nome}</span>
-                <button type="button" title="Remover" onClick={() => setFontes((p) => p.filter((x) => x.id !== f.id))}>✕</button>
+            <div className="gt-plano-dica">Aceita: CSV do Hevy e do Strong (exporte nas configurações do app), prints do MFIT e de outros apps, texto/CSV, Excel, PDF, fotos e a conversa exportada do WhatsApp (.txt ou .zip).</div>
+            {appsCsv.length > 0 && !precisaIA && <div className="gt-plano-aviso info">{appsCsv.length === 1 ? `Arquivo do ${appsCsv[0]} reconhecido.` : `Arquivos do ${appsCsv.join(" e do ")} reconhecidos.`} A leitura é feita no seu celular, sem IA e sem contar nas importações do mês.</div>}
+            {fontes.length > 0 && (
+              <div className="gt-chips gt-hist-chips">
+                {fontes.map((f) => (
+                  <div className="gt-chip" key={f.id}>
+                    <span className="tag">{f.tipo === "app" ? f.app.toUpperCase() : f.tipo === "pdf" ? "PDF" : f.tipo === "imagem" ? "FOTO" : "TEXTO"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{f.nome}</span>
+                    <button type="button" aria-label={`Tirar ${f.nome}`} title="Remover" onClick={() => setFontes((p) => p.filter((x) => x.id !== f.id))}>✕</button>
+                  </div>
+                ))}
               </div>
-            ))}
-            <label className="gt-plano-lbl">Ou cole o texto aqui</label>
-            <textarea className="gt-input" rows={4} placeholder="Ex.: 12/03 Treino A — supino 40kg 3x10, agachamento 60kg 3x8…" value={colado} onChange={(e) => setColado(e.target.value)} />
-            <label className="gt-plano-lbl">Unidade das cargas</label>
-            <div className="gt-provas-filters" style={{ margin: 0 }}>
-              {[["auto", "Detectar"], ["kg", "kg"], ["lb", "lb"]].map(([id, nm]) => <button key={id} type="button" className={`gt-provas-pill ${unidade === id ? "on" : ""}`} onClick={() => setUnidade(id)}>{nm}</button>)}
-            </div>
+            )}
+            {(precisaIA || colado.trim()) && (
+              <>
+                <label className="gt-plano-lbl">Ou cole o texto aqui</label>
+                <textarea className="gt-input" rows={fontes.length ? 2 : 4} placeholder="Ex.: 12/03 Treino A — supino 40kg 3x10, agachamento 60kg 3x8…" value={colado} onChange={(e) => setColado(e.target.value)} />
+                <label className="gt-plano-lbl">Unidade das cargas</label>
+                <div className="gt-provas-filters" style={{ margin: 0 }}>
+                  {[["auto", "Detectar"], ["kg", "kg"], ["lb", "lb"]].map(([id, nm]) => <button key={id} type="button" className={`gt-provas-pill ${unidade === id ? "on" : ""}`} onClick={() => setUnidade(id)}>{nm}</button>)}
+                </div>
+              </>
+            )}
             {(colado.trim() || fontes.some((f) => f.tipo === "texto")) && (
               <>
                 <label className="gt-plano-lbl">Seu nome na conversa (opcional)</label>
@@ -4730,12 +5117,12 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
               </>
             )}
             {erro && <div className="gt-plano-erro">{erro}</div>}
-            {uso === false && <div className="gt-plano-aviso aviso">A importação ainda não foi ativada neste app.</div>}
-            {uso && !semLimite && <div className="gt-plano-dica" style={{ textAlign: "center" }}>{podeUsar ? `Restam ${uso.limite - uso.usados} de ${uso.limite} importações neste mês.` : `Você já usou as ${uso.limite} importações deste mês.`}</div>}
-            {uso && !semLimite && !podeUsar && <LinkPlanos />}
-            <div className="gt-plano-foot">O arquivo é enviado para a IA só para ler seus treinos e não fica guardado.</div>
+            {precisaIA && uso === false && <div className="gt-plano-aviso aviso">A importação ainda não foi ativada neste app.</div>}
+            {precisaIA && uso && !semLimite && <div className="gt-plano-dica" style={{ textAlign: "center" }}>{podeUsar ? `Restam ${uso.limite - uso.usados} de ${uso.limite} importações neste mês.` : `Você já usou as ${uso.limite} importações deste mês.`}</div>}
+            {precisaIA && uso && !semLimite && !podeUsar && <LinkPlanos />}
+            {precisaIA && <div className="gt-plano-foot">O arquivo é enviado para a IA só para ler seus treinos e não fica guardado.</div>}
             <div className="gt-modal-actions" style={{ marginTop: 6 }}>
-              <button type="button" className="gt-btn" disabled={!podeUsar || lendoArq || (!fontes.length && !colado.trim())} onClick={analisar}>Analisar com IA</button>
+              <button type="button" className="gt-btn" disabled={(precisaIA && !podeUsar) || lendoArq || (!fontes.length && !colado.trim())} onClick={analisar}>{precisaIA ? "Analisar com IA" : "Ler arquivo"}</button>
               <button type="button" className="gt-btn secondary" onClick={onClose}>Fechar</button>
             </div>
             {importacoes.length > 0 && (
@@ -4772,7 +5159,9 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
               <div className="ti">{plano.sessoes.length} {plano.sessoes.length === 1 ? "treino" : "treinos"}{plano.ativ.length ? ` e ${plano.ativ.length} ${plano.ativ.length === 1 ? "atividade" : "atividades"}` : ""}</div>
               {plano.periodo && <div className="mt">de {fmtD(plano.periodo.ini)} até {fmtD(plano.periodo.fim)}</div>}
             </div>
-            <label className="gt-plano-chk"><input type="checkbox" checked={criarFichas} onChange={(e) => setCriarFichas(e.target.checked)} /> <span>Criar uma ficha para cada tipo de treino (o histórico fica ligado a elas)</span></label>
+            {(() => { const n = juntado ? histTitulosRepetidos(juntado.sessoes).size : 0; return n > 0 && (
+              <label className="gt-plano-chk"><input type="checkbox" checked={criarFichas} onChange={(e) => setCriarFichas(e.target.checked)} /> <span>Criar fichas com os treinos que você repete ({n})<br /><small>O resto entra só no histórico, com as cargas.</small></span></label>
+            ); })()}
             {juntado.ativ.length > 0 && <label className="gt-plano-chk"><input type="checkbox" checked={incluirAtiv} onChange={(e) => setIncluirAtiv(e.target.checked)} /> <span>Importar também corridas e outras atividades ({juntado.ativ.length})</span></label>}
             <label className="gt-plano-lbl">Fichas</label>
             {plano.fichas.map((f) => (
@@ -4782,10 +5171,14 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
                 <div className="gt-tc-resumo">{f.exercicios.map((e) => e.nome).join(" · ")}</div>
               </div>
             ))}
-            {plano.novosExercicios.length > 0 && <div className="gt-plano-aviso info">Exercícios que não estão no catálogo (serão criados): {plano.novosExercicios.join(", ")}.</div>}
+            {(plano.novosExercicios.length > 0 || plano.avisos.length > 0) && (
+              <div className="gt-hist-notas">
+                {plano.novosExercicios.length > 0 && <div>Exercícios novos no Movo (vamos criar como seus): {plano.novosExercicios.join(", ")}.</div>}
+                {plano.avisos.map((a, i) => <div key={i}>{a}</div>)}
+              </div>
+            )}
             {plano.puladas > 0 && <div className="gt-plano-aviso aviso">{plano.puladas === 1 ? "1 registro cai" : `${plano.puladas} registros caem`} em dias que você já preencheu e {plano.puladas === 1 ? "será mantido" : "serão mantidos"} como está (não sobrescrevo).</div>}
             {falhas > 0 && <div className="gt-plano-aviso aviso">{falhas} {falhas === 1 ? "parte do arquivo não pôde" : "partes do arquivo não puderam"} ser lida{falhas === 1 ? "" : "s"}. O período delas não entra agora; você pode importar de novo depois.</div>}
-            {plano.avisos.map((a, i) => <div className="gt-plano-aviso info" key={i}>{a}</div>)}
             <div className="gt-modal-actions" style={{ marginTop: 8 }}>
               <button type="button" className="gt-btn" disabled={!plano.sessoes.length && !plano.ativ.length} onClick={confirmarImportacao}>Importar</button>
               <button type="button" className="gt-btn secondary" onClick={() => setEtapa("inicio")}>Voltar</button>
@@ -4795,7 +5188,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 
         {etapa === "ok" && resumo && (
           <div className="gt-plano-form">
-            <div className="gt-plano-aviso info"><b>Importado ✓</b> {resumo.sessoes} treinos{resumo.atividades ? `, ${resumo.atividades} atividades` : ""}{resumo.fichas ? ` e ${resumo.fichas} fichas novas` : ""}. Veja no calendário e na aba Evolução.</div>
+            <div className="gt-plano-aviso info"><b>Importado ✓</b> {resumo.sessoes} {resumo.sessoes === 1 ? "treino" : "treinos"}{resumo.atividades ? `, ${resumo.atividades} ${resumo.atividades === 1 ? "atividade" : "atividades"}` : ""}{resumo.fichas ? ` e ${resumo.fichas} ${resumo.fichas === 1 ? "ficha nova" : "fichas novas"}` : ""}. Veja no calendário, em Evolução e em Minhas fichas.</div>
             <div className="gt-modal-actions" style={{ marginTop: 8 }}>
               <button type="button" className="gt-btn" onClick={onClose}>Pronto</button>
               <button type="button" className="gt-btn secondary" onClick={() => { if (window.confirm("Desfazer esta importação?")) { onDesfazer(impAtual); onEvent("hist_import_desfeito"); onClose(); } }}>Desfazer</button>
@@ -10852,13 +11245,14 @@ const COACH_FLAGS_PADRAO = { esforcoDor: true, lote: false };
 function coachFlags() {
   try { return { ...COACH_FLAGS_PADRAO, ...JSON.parse(localStorage.getItem("treino-app:coachFlags") || "{}") }; } catch (e) { return { ...COACH_FLAGS_PADRAO }; }
 }
-const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_dor: false, ver_corrida: true, ver_contato: true, ajustar_semana: false };
+const COACH_PERMS_PADRAO = { ver_treinos: true, ver_cargas: true, ver_esforco_dor: false, ver_corrida: true, ver_contato: true, ajustar_semana: false, ver_medidas: false };
 const COACH_PERM_ITENS = [
   { k: "ver_treinos", t: "Meus treinos e agenda", d: "Fichas, dias e histórico de sessões" },
   { k: "ver_cargas", t: "Cargas e repetições", d: "O que você levantou em cada exercício" },
-  { k: "ver_esforco_dor", t: "Esforço e dor", d: "Dado de saúde: só liga se você quiser. O treinador usa pra ajustar a carga.", sensivel: true },
+  { k: "ver_esforco_dor", t: "Esforço e dor", d: "Dado de saúde: só liga se você quiser. Seu treinador usa pra ajustar a carga.", sensivel: true },
   { k: "ver_corrida", t: "Corridas", d: "Distância, ritmo e tempo" },
-  { k: "ver_contato", t: "Meu telefone", d: "Só se você tiver preenchido. O treinador pode te chamar no WhatsApp." },
+  { k: "ver_contato", t: "Meu telefone", d: "Só se você tiver preenchido. Seu treinador pode te chamar no WhatsApp." },
+  { k: "ver_medidas", t: "Medidas e fotos", d: "Dado de saúde: peso, medidas e fotos de Minhas medidas. Só liga se você quiser." },
 ];
 const COACH_DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const COACH_DIAS_CURTO = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
@@ -11773,8 +12167,9 @@ function coachOrdenarAlunos(lista, hojeISO) {
   return lista.slice().sort((x, y) => peso(x) - peso(y) || (y.dor_max_recente || 0) - (x.dor_max_recente || 0) || (y.dias_sem_treino || 0) - (x.dias_sem_treino || 0) || String(x.nome).localeCompare(String(y.nome), "pt-BR"));
 }
 // Fila "Para hoje" do treinador: um item por aluno, com o motivo mais urgente e uma ação.
-// Ordem: mensagem sem resposta, dor alta, semana recusada, sem treinar, sem plano.
-function coachParaHoje(lista, hojeISO) {
+// Ordem: mensagem sem resposta, anamnese com "sim" no PAR-Q, dor alta, anamnese respondida, semana recusada,
+// sem treinar, sem plano. anams: [{ link_id, respondida_em, sim: [índices] }] ainda não abertas pelo treinador.
+function coachParaHoje(lista, hojeISO, anams) {
   const out = [];
   (lista || []).forEach((a) => {
     if (a.status !== "ativo") return;
@@ -11782,8 +12177,11 @@ function coachParaHoje(lista, hojeISO) {
     const primeiro = String(a.nome || "").split(" ")[0];
     let it = null;
     const diasEnvio = a.ultimo_envio && a.ultimo_envio.quando ? Math.floor((new Date(hojeISO + "T12:00:00") - new Date(a.ultimo_envio.quando)) / 86400000) : null;
+    const an = (anams || []).find((x) => x.link_id === a.link_id);
     if (a.nao_lidas > 0) it = { ordem: 0, motivo: a.nao_lidas === 1 ? "Mensagem nova" : `${a.nao_lidas} mensagens novas`, acao: "responder", botao: "Responder" };
+    else if (an && (an.sim || []).length) it = { ordem: 0.5, motivo: `Anamnese: ${an.sim.length} "sim" no PAR-Q`, acao: "avaliacao", botao: "Ver" };
     else if (!a.bloqueado && a.dor_max_recente != null && a.dor_max_recente >= 7) it = { ordem: 1, motivo: `Dor ${a.dor_max_recente}/10 recente`, acao: "abrir", botao: "Abrir" };
+    else if (an) it = { ordem: 1.5, motivo: "Respondeu a anamnese", acao: "avaliacao", botao: "Ver" };
     else if (a.ultimo_envio && a.ultimo_envio.status === "recusado") it = { ordem: 2, motivo: "Recusou o treino da semana", acao: "montar", botao: "Montar" };
     else if (!a.bloqueado && c.atencao) it = { ordem: 3, motivo: c.motivo, acao: "abrir", botao: "Abrir" };
     else if (c.semPlano) it = { ordem: 4, motivo: diasEnvio != null ? `Último treino enviado há ${diasEnvio} dias` : "Nenhum treino enviado ainda", acao: "montar", botao: "Montar" };
@@ -11939,7 +12337,7 @@ function CoachConviteModal({ code, onClose, onDone, showToast, flags }) {
 }
 
 // ---------- Aluno: Meu treinador ----------
-function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConvite, dados, flags }) {
+function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConvite, dados, flags, anamnese, onAbrirAnamnese }) {
   const [codigo, setCodigo] = useState("");
   const [confirmar, setConfirmar] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -12011,6 +12409,13 @@ function CoachMeuTreinadorModal({ links, onClose, reload, showToast, onAbrirConv
             </div><div className="gt-co-perm">
               <div className="tx"><div className="t">Aplicar direto o que {link.coach_nome} mandar</div><div className="d">Semanas e planos de {link.coach_nome} entram direto. Você vê um aviso no Hoje e pode desfazer por lá.</div></div>
               <CoachSwitch checked={autoLigado} onChange={mudarAuto} label="Aceite automático" semTexto />
+            </div></div>
+            </>)}
+            {anamnese && (<>
+            <div className="gt-co-sec">QUESTIONÁRIO DE SAÚDE</div>
+            <div className="gt-co-perms"><div className="gt-co-perm">
+              <div className="tx"><div className="t">{anamnese.respostas ? `Respondida em ${coachDataCurta(anamnese.respondida_em)}` : "Esperando sua resposta"}</div><div className="d">Só {link.coach_nome} vê. Você pode mudar ou apagar.</div></div>
+              <button type="button" className="gt-btn small secondary" onClick={() => onAbrirAnamnese(anamnese)}>{anamnese.respostas ? "Ver ou mudar" : "Responder"}</button>
             </div></div>
             </>)}
             <div className="gt-modal-actions gt-modal-actions-col" style={{ marginTop: 12 }}>
@@ -12459,6 +12864,906 @@ function CoachNotaHoje({ notas, linkId, nomeCoach, onEnviar }) {
   );
 }
 
+// ---------- Fase 4: Minhas medidas, avaliação do treinador e anamnese ----------
+// Medidas e fotos são do aluno (tabela user_medidas, bucket privado "medidas"). O treinador só vê com a
+// permissão "ver_medidas". Avaliações são do treinador (coach_avaliacoes) e aparecem para o aluno junto.
+const MEDIDAS_CAMPOS = [["cintura", "Cintura"], ["abdomen", "Abdômen"], ["quadril", "Quadril"], ["peito", "Peito"], ["braco", "Braço"], ["coxa", "Coxa"], ["panturrilha", "Panturrilha"]];
+// Fotos com pose fixa (vai no nome do arquivo: <uid>/<pose>-<id>.jpg), para comparar frente com frente.
+const MED_POSES = [["frente", "Frente"], ["lado", "Lado"], ["costas", "Costas"]];
+function medFotoPose(caminho) { const m = /\/(frente|lado|costas)-/.exec(String(caminho || "")); return m ? m[1] : null; }
+// { frente: caminho, lado: caminho, costas: caminho }; fotos antigas sem pose ocupam as vagas livres na ordem.
+function medFotosPorPose(fotos) {
+  const out = {};
+  (fotos || []).forEach((f) => { const p = medFotoPose(f); if (p && !out[p]) out[p] = f; });
+  (fotos || []).forEach((f) => { if (medFotoPose(f)) return; const livre = MED_POSES.find(([k]) => !out[k]); if (livre) out[livre[0]] = f; });
+  return out;
+}
+function medNum(v, min, max) {
+  if (v == null || String(v).trim() === "") return null;
+  const n = Number(String(v).replace(",", "."));
+  return isFinite(n) && n >= min && n <= max ? Math.round(n * 10) / 10 : null;
+}
+function medFmt(n, un) { return n == null ? "–" : `${String(Number(n)).replace(".", ",")}${un ? " " + un : ""}`; }
+function medDelta(atual, antes, un) {
+  if (atual == null || antes == null) return "";
+  const d = Math.round((Number(atual) - Number(antes)) * 10) / 10;
+  if (!d) return "sem mudança";
+  return `${d > 0 ? "+" : "−"}${String(Math.abs(d)).replace(".", ",")} ${un}`;
+}
+// URLs assinadas (1 h) para as fotos privadas. Devolve { caminho: url }.
+async function medFotoUrls(caminhos) {
+  const lista = [...new Set((caminhos || []).filter(Boolean))];
+  if (!lista.length) return {};
+  try {
+    const { data } = await supabaseClient.storage.from("medidas").createSignedUrls(lista, 3600);
+    const out = {};
+    (data || []).forEach((x) => { if (x && x.signedUrl && x.path) out[x.path] = x.signedUrl; });
+    return out;
+  } catch (e) { return {}; }
+}
+// Linha do tempo: registros do aluno e avaliações do treinador, mais recentes primeiro.
+function medLinha(meus, avals) {
+  return [...(meus || []).map((m) => ({ ...m, tipo: "meu" })), ...(avals || []).map((a) => ({ ...a, tipo: "aval" }))]
+    .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : a.tipo === "aval" ? -1 : 1));
+}
+const MED_RESUMO_CAMPOS = [
+  ["Peso", "kg", (x) => (x.peso != null ? Number(x.peso) : null)],
+  ["Gordura", "%", (x) => (x.gordura != null ? Number(x.gordura) : null)],
+  ["Cintura", "cm", (x) => (x.medidas && x.medidas.cintura != null ? Number(x.medidas.cintura) : null)],
+];
+// Resumo: valor mais recente de cada medida e a diferença para o primeiro registro dela.
+function medResumo(linha) {
+  const pega = (fn) => {
+    const com = linha.filter((x) => fn(x) != null);
+    if (!com.length) return null;
+    const atual = com[0], primeiro = com[com.length - 1];
+    return { v: fn(atual), desde: com.length > 1 ? primeiro.data : null, antes: com.length > 1 ? fn(primeiro) : null };
+  };
+  return MED_RESUMO_CAMPOS.map(([t, un, fn]) => [t, un, pega(fn)]).filter((r) => r[2]);
+}
+function MedValores({ m }) {
+  const partes = [];
+  if (m.peso != null) partes.push(`${medFmt(m.peso, "kg")}`);
+  if (m.gordura != null) partes.push(`${medFmt(m.gordura, "%")} de gordura`);
+  MEDIDAS_CAMPOS.forEach(([k, t]) => { if (m.medidas && m.medidas[k] != null) partes.push(`${t.toLowerCase()} ${medFmt(m.medidas[k], "cm")}`); });
+  return partes.length ? <div className="gt-med-vals">{partes.join(" · ")}</div> : null;
+}
+function medTeclaAbre(fn) { return (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } }; }
+function MedThumbs({ fotos, urls }) {
+  if (!(fotos || []).length) return null;
+  const porPose = medFotosPorPose(fotos);
+  const lista = MED_POSES.filter(([k]) => porPose[k]);
+  return (
+    <div className="gt-med-thumbs" aria-label={lista.length === 1 ? "1 foto" : `${lista.length} fotos`}>
+      {lista.map(([k, t]) => urls[porPose[k]] ? <img key={k} src={urls[porPose[k]]} alt={t} /> : <span key={k} className="gt-med-foto-vazia" />)}
+    </div>
+  );
+}
+
+function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
+  const [data, setData] = useState(inicial.data || todayISO());
+  const [peso, setPeso] = useState(inicial.peso != null ? String(inicial.peso).replace(".", ",") : "");
+  const [gordura, setGordura] = useState(inicial.gordura != null ? String(inicial.gordura).replace(".", ",") : "");
+  const [med, setMed] = useState(() => { const o = {}; MEDIDAS_CAMPOS.forEach(([k]) => { const v = inicial.medidas && inicial.medidas[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
+  const [maisMedidas, setMaisMedidas] = useState(MEDIDAS_CAMPOS.some(([k]) => inicial.medidas && inicial.medidas[k] != null));
+  const [nota, setNota] = useState(inicial.nota || "");
+  const [fotos, setFotos] = useState(() => medFotosPorPose(inicial.fotos)); // { pose: caminho já salvo }
+  const [novas, setNovas] = useState({}); // { pose: { blob, url } }
+  const [urls, setUrls] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const novasRef = useRef(novas); novasRef.current = novas;
+  useEffect(() => { medFotoUrls(inicial.fotos || []).then(setUrls); }, []);
+  useEffect(() => () => Object.values(novasRef.current).forEach((n) => URL.revokeObjectURL(n.url)), []);
+  const total = Object.keys(fotos).length + Object.keys(novas).length;
+  async function addFoto(pose, ev) {
+    const f = (ev.target.files || [])[0];
+    ev.target.value = "";
+    if (!f) return;
+    try {
+      const b = await feedbackPrintReduzir(f);
+      setNovas((p) => { if (p[pose]) URL.revokeObjectURL(p[pose].url); return { ...p, [pose]: { blob: b, url: URL.createObjectURL(b) } }; });
+      setFotos((p) => { const o = { ...p }; delete o[pose]; return o; });
+    } catch (e) { setErro("Não consegui abrir essa foto."); }
+  }
+  function tirarFoto(pose) {
+    if (novas[pose]) { URL.revokeObjectURL(novas[pose].url); setNovas((p) => { const o = { ...p }; delete o[pose]; return o; }); }
+    setFotos((p) => { const o = { ...p }; delete o[pose]; return o; });
+  }
+  async function salvar() {
+    setErro("");
+    const pesoN = medNum(peso, 20, 400), gordN = medNum(gordura, 2, 70);
+    if (peso.trim() && pesoN == null) { setErro("Peso entre 20 e 400 kg."); return; }
+    if (gordura.trim() && gordN == null) { setErro("Gordura entre 2% e 70%."); return; }
+    const medidas = {};
+    for (const [k, t] of MEDIDAS_CAMPOS) {
+      if (!med[k].trim()) continue;
+      const n = medNum(med[k], 10, 300);
+      if (n == null) { setErro(`${t}: use centímetros, entre 10 e 300.`); return; }
+      medidas[k] = n;
+    }
+    if (pesoN == null && gordN == null && !Object.keys(medidas).length && !total) { setErro("Preencha pelo menos o peso, uma medida ou uma foto."); return; }
+    if (!data || data > todayISO()) { setErro("Escolha uma data até hoje."); return; }
+    setBusy(true);
+    const subidas = {};
+    for (const [pose, n] of Object.entries(novas)) {
+      const nome = `${uid}/${pose}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error } = await supabaseClient.storage.from("medidas").upload(nome, n.blob, { contentType: "image/jpeg" });
+      if (error) {
+        logErroModulo("medidas_foto", error.message); setBusy(false); setErro("Não consegui enviar a foto. Tente de novo.");
+        if (Object.keys(subidas).length) supabaseClient.storage.from("medidas").remove(Object.values(subidas)).catch(() => {});
+        return;
+      }
+      subidas[pose] = nome;
+    }
+    const final = { ...fotos, ...subidas };
+    const lista = MED_POSES.map(([k]) => final[k]).filter(Boolean);
+    const row = { data, peso: pesoN, gordura: gordN, medidas, nota: nota.trim() || null, fotos: lista, updated_at: new Date().toISOString() };
+    const q = inicial.id ? supabaseClient.from("user_medidas").update(row).eq("id", inicial.id) : supabaseClient.from("user_medidas").insert(row);
+    const { error } = await q;
+    if (error) {
+      setBusy(false); logErroModulo("medidas_salvar", error.message); setErro("Não consegui salvar agora. Tente de novo.");
+      if (Object.keys(subidas).length) supabaseClient.storage.from("medidas").remove(Object.values(subidas)).catch(() => {});
+      return;
+    }
+    const saiu = (inicial.fotos || []).filter((f) => !lista.includes(f));
+    if (saiu.length) supabaseClient.storage.from("medidas").remove(saiu).catch(() => {});
+    setBusy(false);
+    onSalvo(inicial.id ? "editado" : "novo", { fotos: lista.length });
+  }
+  async function apagar() {
+    if (!window.confirm("Apagar este registro e as fotos dele?")) return;
+    setBusy(true);
+    const { error } = await supabaseClient.from("user_medidas").delete().eq("id", inicial.id);
+    setBusy(false);
+    if (error) { setErro("Não consegui apagar agora."); return; }
+    if ((inicial.fotos || []).length) supabaseClient.storage.from("medidas").remove(inicial.fotos).catch(() => {});
+    onSalvo("apagado");
+  }
+  return (
+    <div className="gt-modal-backdrop" onClick={() => !busy && onClose()}>
+      <div className="gt-modal gt-med-form" role="dialog" aria-modal="true" aria-label={inicial.id ? "Editar medidas" : "Registrar medidas"} onClick={(e) => e.stopPropagation()}>
+        <div className="gt-sheet-head"><h3>{inicial.id ? "Editar registro" : "Registrar medidas"}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={onClose}>✕</button></div>
+        <div className="gt-med-grid2">
+          <label><span className="gt-field-label">Data</span><input className="gt-input" type="date" value={data} max={todayISO()} onChange={(e) => setData(e.target.value)} /></label>
+          <label><span className="gt-field-label">Peso (kg)</span><input className="gt-input" inputMode="decimal" placeholder="Ex.: 72,5" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
+        </div>
+        {!maisMedidas && <button type="button" className="gt-co-link gt-med-mais" onClick={() => setMaisMedidas(true)}>+ Gordura e medidas do corpo</button>}
+        {maisMedidas && (
+          <>
+            <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span><input className="gt-input" inputMode="decimal" placeholder="Se você souber" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
+            <div className="gt-co-sec gt-med-sec">MEDIDAS (CM)</div>
+            <div className="gt-med-grid2">
+              {MEDIDAS_CAMPOS.map(([k, t]) => (
+                <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="gt-co-sec gt-med-sec">FOTOS</div>
+        <div className="gt-med-fotos">
+          {MED_POSES.map(([k, t]) => {
+            const src = novas[k] ? novas[k].url : fotos[k] ? urls[fotos[k]] : null;
+            if (novas[k] || fotos[k]) return (
+              <div className="gt-med-foto" key={k}>
+                {src ? <img src={src} alt={t} /> : <span className="gt-med-foto-vazia" />}
+                <span className="gt-med-foto-pose">{t}</span>
+                <button type="button" aria-label={`Tirar foto de ${t.toLowerCase()}`} onClick={() => tirarFoto(k)}>✕</button>
+              </div>
+            );
+            return (
+              <label className="gt-med-foto gt-med-foto-add" key={k}><span>+ {t}</span>
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => addFoto(k, e)} /></label>
+            );
+          })}
+        </div>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Anotação</span>
+          <input className="gt-input" maxLength={300} placeholder="Opcional" value={nota} onChange={(e) => setNota(e.target.value)} /></label>
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        <div className="gt-modal-actions gt-med-acoes">
+          <div className="gt-plano-dica gt-med-quemve">{quemVe}</div>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
+          <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
+        </div>
+        {inicial.id && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar registro</button>}
+      </div>
+    </div>
+  );
+}
+
+function MedComparar({ linha, urls, onClose }) {
+  const comFoto = linha.filter((x) => x.tipo === "meu" && (x.fotos || []).length);
+  const [a, setA] = useState(comFoto.length ? comFoto[comFoto.length - 1].id : null);
+  const [b, setB] = useState(comFoto.length ? comFoto[0].id : null);
+  // "Antes" é sempre a data mais antiga, qualquer que seja o seletor.
+  const X = comFoto.find((x) => x.id === a), Y = comFoto.find((x) => x.id === b);
+  const [A, B] = X && Y && X.data > Y.data ? [Y, X] : [X, Y];
+  const pa = medFotosPorPose(A && A.fotos), pb = medFotosPorPose(B && B.fotos);
+  const poses = MED_POSES.filter(([k]) => pa[k] && pb[k]);
+  const [pose, setPose] = useState("frente");
+  const poseAtual = poses.some(([k]) => k === pose) ? pose : poses.length ? poses[0][0] : null;
+  const foto = (por, x) => {
+    const c = poseAtual ? por[poseAtual] : Object.values(por)[0];
+    return c && urls[c] ? <img src={urls[c]} alt={`${x ? coachDataCurta(x.data) : ""}`} /> : <span className="gt-med-foto-vazia" />;
+  };
+  const seletor = (rot, val, set) => (
+    <label className="gt-med-cmp-sel"><span className="gt-field-label">{rot}</span>
+      <select className="gt-input" aria-label={`Data do ${rot.toLowerCase()}`} value={val || ""} onChange={(e) => set(e.target.value)}>
+        {comFoto.map((x) => <option key={x.id} value={x.id}>{coachDataCurta(x.data)}{x.peso != null ? ` · ${medFmt(x.peso, "kg")}` : ""}</option>)}
+      </select>
+    </label>
+  );
+  const deltas = A && B && A.id !== B.id ? MED_RESUMO_CAMPOS.map(([t, un, fn]) => (fn(A) != null && fn(B) != null ? { t, un, de: fn(A), para: fn(B) } : null)).filter(Boolean) : [];
+  return (
+    <div className="gt-focus gt-med-cmp" role="dialog" aria-modal="true" aria-label="Comparar fotos">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Comparar fotos</div></div>
+      </div>
+      <div className="gt-focus-body">
+        <div className="gt-med-cmp-par">{seletor("Antes", a, setA)}{seletor("Depois", b, setB)}</div>
+        <div className="gt-med-cmp-par">
+          <div className="gt-med-cmp-lado">{foto(pa, A)}</div>
+          <div className="gt-med-cmp-lado">{foto(pb, B)}</div>
+        </div>
+        {poses.length > 1 && (
+          <div className="gt-provas-filters" style={{ justifyContent: "center", marginTop: 10 }}>
+            {poses.map(([k, t]) => <button key={k} type="button" aria-pressed={poseAtual === k} className={`gt-provas-pill ${poseAtual === k ? "on" : ""}`} onClick={() => setPose(k)}>{t}</button>)}
+          </div>
+        )}
+        {A && B && poses.length === 0 && <div className="gt-plano-dica" style={{ textAlign: "center" }}>Essas datas não têm foto da mesma pose.</div>}
+        {deltas.map((d) => (
+          <div className="gt-med-cmp-delta" key={d.t}>
+            <div className="l">{d.t.toUpperCase()}</div>
+            <div className="v">{medDelta(d.para, d.de, d.un)}</div>
+            <div className="de">{medFmt(d.de, d.un)} → {medFmt(d.para, d.un)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MinhasMedidasTela({ uid, onClose, showToast, logEvent, coachLink, onCompartilhar }) {
+  const [meus, setMeus] = useState(undefined); // undefined carregando, null indisponível
+  const [avals, setAvals] = useState([]);
+  const [avalsErro, setAvalsErro] = useState(false);
+  const [urls, setUrls] = useState({});
+  const [form, setForm] = useState(null);
+  const [cmp, setCmp] = useState(false);
+  async function carregar() {
+    const [m, a] = await Promise.all([
+      supabaseClient.from("user_medidas").select("*").order("data", { ascending: false }).limit(200),
+      coachCall("minhas_avaliacoes"),
+    ]);
+    if (m.error) { setMeus(null); logErroModulo("medidas_ler", m.error.message); return; }
+    setMeus(m.data || []);
+    setAvals(a.ok ? a.data || [] : []);
+    setAvalsErro(!a.ok);
+    medFotoUrls((m.data || []).flatMap((x) => x.fotos || [])).then(setUrls);
+  }
+  useEffect(() => { carregar(); logEvent("medidas_aberto"); }, []);
+  const linha = useMemo(() => medLinha(meus || [], avals), [meus, avals]);
+  const resumo = useMemo(() => medResumo(linha), [linha]);
+  const desde = resumo.map((r) => r[2].desde).filter(Boolean).sort()[0] || null;
+  const nComFoto = (meus || []).filter((x) => (x.fotos || []).length).length;
+  const coachNome = coachLink ? coachLink.coach_nome : "";
+  const coachPrimeiro = coachNome ? String(coachNome).trim().split(" ")[0] : "";
+  const compartilha = !!(coachLink && (coachLink.permissions || {}).ver_medidas);
+  const quemVe = compartilha ? `Você e ${coachPrimeiro} veem este registro.` : "Só você vê este registro.";
+  async function mudarCompartilhar(on) {
+    if (on && !window.confirm(`${coachPrimeiro} vai ver seu peso, suas medidas e suas fotos, inclusive os registros antigos. Você pode parar quando quiser.`)) return;
+    const ok = await onCompartilhar(on);
+    if (ok) { showToast(on ? `${coachPrimeiro} agora vê suas medidas` : `${coachPrimeiro} não vê mais suas medidas`); logEvent("medidas_compartilhar", { on }); }
+  }
+  return (
+    <div className="gt-focus gt-med" role="dialog" aria-modal="true" aria-label="Minhas medidas">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Minhas medidas</div></div>
+      </div>
+      <div className="gt-focus-body gt-med-body">
+        {meus === undefined && <div className="gt-empty">Carregando…</div>}
+        {meus === null && <div className="gt-co-erro" role="alert">Não consegui abrir suas medidas agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+        {meus && (
+          <>
+            {resumo.length > 0 ? (
+              <>
+                <div className="gt-med-resumo">
+                  {resumo.map(([t, un, r]) => (
+                    <div className="gt-med-stat" key={t}>
+                      <div className="t">{t}</div>
+                      <div className="v">{medFmt(r.v, un)}</div>
+                      {r.desde && <div className="d">{medDelta(r.v, r.antes, un)}</div>}
+                    </div>
+                  ))}
+                </div>
+                {desde && <div className="gt-plano-dica gt-med-desde">Diferença desde {coachDataCurta(desde)}</div>}
+              </>
+            ) : (
+              <div className="gt-med-vazio">
+                <div className="t">Acompanhe seu corpo, não só a carga</div>
+                <div className="d">Registre peso, medidas e fotos de vez em quando. O Movo mostra o que mudou.</div>
+              </div>
+            )}
+            <div className="gt-modal-actions gt-med-topo">
+              <button type="button" className="gt-btn" onClick={() => setForm({})}>Registrar medidas</button>
+              {nComFoto >= 2 && <button type="button" className="gt-btn secondary" onClick={() => { setCmp(true); logEvent("medidas_comparar"); }}>Comparar fotos</button>}
+            </div>
+            {coachLink && (
+              <div className="gt-med-share">
+                <span>{compartilha ? `${coachPrimeiro} vê suas medidas e fotos.` : `${coachPrimeiro} não vê suas medidas.`}</span>
+                <button type="button" className="gt-co-link" onClick={() => mudarCompartilhar(!compartilha)}>{compartilha ? "Parar de compartilhar" : `Compartilhar com ${coachPrimeiro}`}</button>
+              </div>
+            )}
+            {avalsErro && <div className="gt-co-erro" role="alert">Não consegui trazer as avaliações do seu treinador agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+            {linha.length > 0 && <div className="gt-co-sec">HISTÓRICO</div>}
+            {linha.map((x) => x.tipo === "meu" ? (
+              <div key={`meu-${x.id}`} className="gt-med-item toca" role="button" tabIndex={0} aria-label={`Registro de ${coachDataCurta(x.data)}, editar`}
+                onClick={() => setForm(x)} onKeyDown={medTeclaAbre(() => setForm(x))}>
+                <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b><span className="gt-med-editar" aria-hidden="true">Editar</span></div>
+                <MedValores m={x} />
+                <MedThumbs fotos={x.fotos} urls={urls} />
+                {x.nota && <div className="gt-med-nota">{x.nota}</div>}
+              </div>
+            ) : (
+              <div key={`aval-${x.id}`} className="gt-med-item">
+                <div className="gt-med-item-top"><b>{coachDataCurta(x.data)}</b><span className="gt-med-tag">Avaliação · {x.coach_nome}</span></div>
+                <MedValores m={x} />
+                {x.testes && <div className="gt-med-nota">Testes: {x.testes}</div>}
+                {x.nota && <div className="gt-med-nota">{x.nota}</div>}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+      {form && (
+        <MedidaForm inicial={form} uid={uid} showToast={showToast} quemVe={quemVe} onClose={() => setForm(null)}
+          onSalvo={(tipo, extra) => { setForm(null); carregar(); logEvent("medidas_" + tipo, extra || {}); showToast(tipo === "apagado" ? "Registro apagado" : "Medidas salvas"); }} />
+      )}
+      {cmp && <MedComparar linha={linha} urls={urls} onClose={() => setCmp(false)} />}
+    </div>
+  );
+}
+
+// ---------- Anamnese ----------
+// O aluno vê "Questionário de saúde"; o treinador vê "Anamnese".
+const ANAMNESE_PARQ = [
+  "Algum médico já disse que você tem problema no coração e que só deve fazer exercício com orientação?",
+  "Você sente dor no peito quando faz atividade física?",
+  "No último mês, você sentiu dor no peito sem estar fazendo atividade física?",
+  "Você perde o equilíbrio por tontura ou já desmaiou?",
+  "Tem algum problema nos ossos ou articulações que pode piorar com exercício?",
+  "Toma algum remédio para pressão ou para o coração?",
+  "Existe algum outro motivo para você não fazer atividade física?",
+];
+const ANAMNESE_PARQ_CURTO = ["problema no coração", "dor no peito ao treinar", "dor no peito em repouso", "tontura ou desmaio", "ossos ou articulações", "remédio para pressão ou coração", "outro motivo"];
+const ANAMNESE_ESCOLHAS = {
+  experiencia: ["Nunca treinei", "Menos de 1 ano", "1 a 3 anos", "Mais de 3 anos"],
+  dias: ["1", "2", "3", "4", "5", "6", "7"],
+  sono: ["Menos de 6 h", "6 a 7 h", "7 a 8 h", "Mais de 8 h"],
+  trabalho: ["Sentado", "Em pé", "Fisicamente ativo"],
+};
+const ANAMNESE_TEXTOS = [
+  ["lesoes", "Lesões que você já teve", "Ex.: entorse no tornozelo em 2023"],
+  ["cirurgias", "Cirurgias", ""],
+  ["doencas", "Doenças ou condições", "Ex.: asma, diabetes, pressão alta"],
+  ["remedios", "Remédios de uso contínuo", ""],
+  ["dores", "Sente alguma dor hoje?", "Onde e quando"],
+  ["obs", "Algo mais que seu treinador deve saber?", ""],
+];
+function anamneseParqSim(r) { return r && Array.isArray(r.parq) ? r.parq.filter((x) => x === true).length : 0; }
+// "tontura ou desmaio, ossos ou articulações" (índices das respostas "sim").
+function anamneseSimTexto(idx) { return (idx || []).map((i) => ANAMNESE_PARQ_CURTO[i]).filter(Boolean).join(", "); }
+function anamneseSimIdx(r) { return r && Array.isArray(r.parq) ? r.parq.map((x, i) => (x === true ? i : -1)).filter((i) => i >= 0) : []; }
+// Anamneses que o treinador já abriu: { link_id: respondida_em }, para o aviso em "Para hoje" sumir depois de ver.
+function coachAnamVistasLer() { try { return JSON.parse(localStorage.getItem("treino-app:coachAnamVistas") || "{}") || {}; } catch (e) { return {}; } }
+function coachAnamVista(linkId, respondidaEm) {
+  try { const v = coachAnamVistasLer(); v[linkId] = respondidaEm; localStorage.setItem("treino-app:coachAnamVistas", JSON.stringify(v)); } catch (e) {}
+}
+
+function AnamneseForm({ pedido, anterior, onClose, onSalvo, compartilhaMedidas, onCompartilharMedidas }) {
+  const base = (pedido.respostas || anterior || {});
+  const [r, setR] = useState({ objetivo: "", experiencia: "", dias: "", sono: "", trabalho: "", lesoes: "", cirurgias: "", doencas: "", remedios: "", dores: "", obs: "", ...base, parq: Array.isArray(base.parq) ? base.parq.slice(0, 7) : [null, null, null, null, null, null, null] });
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const [faltando, setFaltando] = useState(false);
+  const [compartilhar, setCompartilhar] = useState(false);
+  const parqRefs = useRef([]);
+  const nome = String(pedido.coach_nome || "seu treinador").trim().split(" ")[0];
+  const editando = !!pedido.respostas;
+  const set = (k, v) => setR((p) => ({ ...p, [k]: v }));
+  const escolha = (k, titulo) => (
+    <>
+      <div className="gt-field-label" style={{ marginTop: 12 }}>{titulo}</div>
+      <div className={`gt-provas-filters ${k === "dias" ? "gt-anam-dias" : ""}`} role="group" aria-label={titulo} style={{ margin: 0 }}>
+        {ANAMNESE_ESCOLHAS[k].map((op) => <button key={op} type="button" aria-pressed={r[k] === op} className={`gt-provas-pill ${r[k] === op ? "on" : ""}`} onClick={() => set(k, r[k] === op ? "" : op)}>{op}</button>)}
+      </div>
+    </>
+  );
+  const nFalta = r.parq.filter((x) => x !== true && x !== false).length;
+  const erroFalta = faltando && nFalta ? (nFalta === 1 ? "Falta responder 1 pergunta de saúde." : `Falta responder ${nFalta} perguntas de saúde.`) : "";
+  async function salvar() {
+    if (nFalta) {
+      setFaltando(true); setErro("");
+      const i = r.parq.findIndex((x) => x !== true && x !== false);
+      try { parqRefs.current[i].scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+      return;
+    }
+    setBusy(true); setErro("");
+    const limpo = {};
+    Object.entries(r).forEach(([k, v]) => { if (k === "parq") limpo.parq = v; else if (typeof v === "string" && v.trim()) limpo[k] = v.trim().slice(0, 500); });
+    const res = await coachCall("anamnese_responder", { p_link: pedido.link_id, p_respostas: limpo });
+    if (!res.ok || !res.data) { setBusy(false); setErro(res.erro || "Não consegui enviar agora."); return; }
+    avisarPorPush("anamnese", { link_id: pedido.link_id, evento: "respondida" });
+    if (compartilhar && onCompartilharMedidas) await onCompartilharMedidas();
+    setBusy(false);
+    onSalvo(limpo, { editando, compartilhou: compartilhar });
+  }
+  async function apagar() {
+    if (!window.confirm(`Apagar suas respostas? ${nome} deixa de ver.`)) return;
+    setBusy(true);
+    const res = await coachCall("anamnese_responder", { p_link: pedido.link_id, p_respostas: null });
+    setBusy(false);
+    if (!res.ok) { setErro(res.erro); return; }
+    onSalvo(null, {});
+  }
+  return (
+    <div className="gt-focus gt-anam" role="dialog" aria-modal="true" aria-label="Questionário de saúde">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Questionário de saúde</div>
+          <div className="gt-focus-title-hint">{editando && pedido.respondida_em ? `Respondido em ${coachDataCurta(pedido.respondida_em)}` : `Pedido por ${pedido.coach_nome}`}</div></div>
+      </div>
+      <div className="gt-focus-body gt-anam-body">
+        <div className="gt-plano-dica">Ajuda {nome} a montar um treino seguro para você. Só {nome} vê, e você pode apagar quando quiser.</div>
+        <div className="gt-co-sec">OBJETIVO E ROTINA</div>
+        <label><span className="gt-field-label">Seu objetivo</span><input className="gt-input" maxLength={200} placeholder="Ex.: ganhar massa, correr 10 km, voltar a treinar" value={r.objetivo} onChange={(e) => set("objetivo", e.target.value)} /></label>
+        {escolha("experiencia", "Há quanto tempo treina")}
+        {escolha("dias", "Dias por semana para treinar")}
+        {escolha("sono", "Quanto você dorme")}
+        {escolha("trabalho", "No trabalho você fica")}
+        <div className="gt-co-sec">SAÚDE</div>
+        <div className="gt-plano-dica" style={{ marginTop: -4 }}>Responda Sim ou Não em todas.</div>
+        {ANAMNESE_PARQ.map((q, i) => {
+          const falta = faltando && r.parq[i] !== true && r.parq[i] !== false;
+          return (
+            <div className={`gt-anam-parq ${falta ? "falta" : ""}`} key={i} ref={(el) => { parqRefs.current[i] = el; }}>
+              <div className="q" id={`anam-q${i}`}>{q}</div>
+              <div className="gt-provas-filters" role="group" aria-labelledby={`anam-q${i}`} style={{ margin: 0 }}>
+                {[[true, "Sim"], [false, "Não"]].map(([v, t]) => <button key={t} type="button" aria-pressed={r.parq[i] === v} className={`gt-provas-pill ${r.parq[i] === v ? "on" : ""} ${v ? "sim" : ""}`} onClick={() => set("parq", r.parq.map((x, j) => (j === i ? v : x)))}>{t}</button>)}
+              </div>
+            </div>
+          );
+        })}
+        {anamneseParqSim(r) > 0 && <div className="gt-plano-aviso aviso">Você marcou "sim" em alguma pergunta. Antes de treinos intensos, vale falar com um médico. {nome} vai ver isso nas respostas.</div>}
+        <div className="gt-co-sec">HISTÓRICO</div>
+        {ANAMNESE_TEXTOS.map(([k, t, ph]) => (
+          <label key={k}><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>{t}</span>
+            <input className="gt-input" maxLength={500} placeholder={ph || "Opcional"} value={r[k]} onChange={(e) => set(k, e.target.value)} /></label>
+        ))}
+        {onCompartilharMedidas && !compartilhaMedidas && (
+          <label className="gt-plano-chk gt-anam-share"><input type="checkbox" checked={compartilhar} onChange={(e) => setCompartilhar(e.target.checked)} />
+            <span>Compartilhar minhas medidas e fotos com {nome}<br /><small>{nome} vai ver seu peso, suas medidas e suas fotos, inclusive os registros antigos. Você pode parar quando quiser, em Minhas medidas.</small></span></label>
+        )}
+        {(erro || erroFalta) && <div className="gt-plano-erro" role="alert">{erro || erroFalta}</div>}
+        <div className="gt-modal-actions" style={{ marginTop: 14 }}>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Enviando…" : editando ? "Salvar alterações" : `Enviar para ${nome}`}</button>
+        </div>
+        {editando && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar minhas respostas</button>}
+      </div>
+    </div>
+  );
+}
+
+function AnamnesePedidoCard({ pedido, onResponder }) {
+  const nome = String(pedido.coach_nome || "Seu treinador").trim().split(" ")[0];
+  return (
+    <div className="gt-co-nota gt-anam-card" role="region" aria-label="Questionário de saúde pedido">
+      <div className="gt-co-sec">{nome.toUpperCase()} PEDIU UM QUESTIONÁRIO DE SAÚDE</div>
+      <div className="gt-co-nota-txt">Leva uns 3 minutos. Ajuda {nome} a montar um treino seguro para você.</div>
+      <button type="button" className="gt-btn small" onClick={onResponder}>Responder</button>
+    </div>
+  );
+}
+
+// ---------- Treinador: aba Avaliação do aluno ----------
+function CoachAvaliacaoForm({ linkId, inicial, primeiro, onClose, onSalvo }) {
+  const [data, setData] = useState(inicial.data || todayISO());
+  const [peso, setPeso] = useState(inicial.peso != null ? String(inicial.peso).replace(".", ",") : "");
+  const [gordura, setGordura] = useState(inicial.gordura != null ? String(inicial.gordura).replace(".", ",") : "");
+  const [med, setMed] = useState(() => { const o = {}; MEDIDAS_CAMPOS.forEach(([k]) => { const v = inicial.medidas && inicial.medidas[k]; o[k] = v != null ? String(v).replace(".", ",") : ""; }); return o; });
+  const [testes, setTestes] = useState(inicial.testes || "");
+  const [nota, setNota] = useState(inicial.nota || "");
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  async function salvar() {
+    setErro("");
+    const pesoN = medNum(peso, 20, 400), gordN = medNum(gordura, 2, 70);
+    if (peso.trim() && pesoN == null) { setErro("Peso entre 20 e 400 kg."); return; }
+    if (gordura.trim() && gordN == null) { setErro("Gordura entre 2% e 70%."); return; }
+    const medidas = {};
+    for (const [k, t] of MEDIDAS_CAMPOS) {
+      if (!med[k].trim()) continue;
+      const n = medNum(med[k], 10, 300);
+      if (n == null) { setErro(`${t}: use centímetros, entre 10 e 300.`); return; }
+      medidas[k] = n;
+    }
+    if (pesoN == null && gordN == null && !Object.keys(medidas).length && !testes.trim() && !nota.trim()) { setErro("Preencha pelo menos um campo."); return; }
+    setBusy(true);
+    const r = await coachCall("coach_avaliacao_salvar", { p_link: linkId, p_id: inicial.id || null, p_data: data, p_peso: pesoN, p_gordura: gordN, p_medidas: medidas, p_testes: testes, p_nota: nota });
+    setBusy(false);
+    if (!r.ok) { setErro(r.erro); return; }
+    onSalvo(inicial.id ? "editada" : "nova");
+  }
+  async function apagar() {
+    if (!window.confirm("Apagar esta avaliação?")) return;
+    setBusy(true);
+    const r = await coachCall("coach_avaliacao_apagar", { p_id: inicial.id });
+    setBusy(false);
+    if (!r.ok) { setErro(r.erro); return; }
+    onSalvo("apagada");
+  }
+  return (
+    <div className="gt-modal-backdrop" onClick={() => !busy && onClose()}>
+      <div className="gt-modal gt-med-form" role="dialog" aria-modal="true" aria-label="Avaliação" onClick={(e) => e.stopPropagation()}>
+        <div className="gt-sheet-head"><h3>{inicial.id ? "Editar avaliação" : "Nova avaliação"}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={onClose}>✕</button></div>
+        <div className="gt-med-grid2">
+          <label><span className="gt-field-label">Data</span><input className="gt-input" type="date" value={data} max={todayISO()} onChange={(e) => setData(e.target.value)} /></label>
+          <label><span className="gt-field-label">Peso (kg)</span><input className="gt-input" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
+        </div>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Gordura (%)</span><input className="gt-input" inputMode="decimal" value={gordura} onChange={(e) => setGordura(e.target.value)} /></label>
+        <div className="gt-co-sec gt-med-sec">MEDIDAS (CM)</div>
+        <div className="gt-med-grid2">
+          {MEDIDAS_CAMPOS.map(([k, t]) => (
+            <label key={k}><span className="gt-med-lbl">{t}</span><input className="gt-input" inputMode="decimal" aria-label={`${t} em centímetros`} value={med[k]} onChange={(e) => setMed({ ...med, [k]: e.target.value })} /></label>
+          ))}
+        </div>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Testes</span>
+          <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} placeholder="Ex.: Cooper 2.400 m · flexões 25 · sentar e alcançar 28 cm" value={testes} onChange={(e) => setTestes(e.target.value)} /></label>
+        <label><span className="gt-field-label" style={{ display: "block", marginTop: 10 }}>Observações ({primeiro} vê)</span>
+          <textarea className="gt-input gt-med-ta" rows={2} maxLength={1000} value={nota} onChange={(e) => setNota(e.target.value)} /></label>
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        <div className="gt-modal-actions gt-med-acoes">
+          <div className="gt-plano-dica gt-med-quemve">{primeiro} vê esta avaliação em Minhas medidas. Anotação só sua vai na aba Notas.</div>
+          <button type="button" className="gt-btn" disabled={busy} onClick={salvar}>{busy ? "Salvando…" : "Salvar"}</button>
+          <button type="button" className="gt-btn secondary" disabled={busy} onClick={onClose}>Cancelar</button>
+        </div>
+        {inicial.id && <button type="button" className="gt-co-link gt-med-apagar" disabled={busy} onClick={apagar}>Apagar avaliação</button>}
+      </div>
+    </div>
+  );
+}
+
+function CoachAvaliacaoAba({ aluno, det, showToast }) {
+  const primeiro = String(aluno.nome || "").trim().split(" ")[0] || "Quem treina com você";
+  const [anam, setAnam] = useState(undefined); // undefined carregando | null nunca pediu | "erro"
+  const [avals, setAvals] = useState(undefined); // undefined carregando | "erro"
+  const [meds, setMeds] = useState(null);
+  const [urls, setUrls] = useState({});
+  const [form, setForm] = useState(null);
+  const [verAnam, setVerAnam] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const verMedidas = !!(det && det.permissions && det.permissions.ver_medidas);
+  const log = (n, p) => logEventFor(aluno.coach_uid, n, p);
+  async function carregar() {
+    const [a, v] = await Promise.all([
+      coachCall("coach_anamnese", { p_link: aluno.link_id }),
+      supabaseClient.from("coach_avaliacoes").select("*").eq("link_id", aluno.link_id).order("data", { ascending: false }).limit(60),
+    ]);
+    setAnam(a.ok ? a.data || null : "erro");
+    setAvals(v.error ? "erro" : v.data || []);
+    if (a.ok && a.data && a.data.respondida_em) coachAnamVista(aluno.link_id, a.data.respondida_em);
+    if (verMedidas) {
+      const m = await coachCall("coach_aluno_medidas", { p_link: aluno.link_id });
+      const lista = m.ok && Array.isArray(m.data) ? m.data : [];
+      setMeds(lista);
+      medFotoUrls(lista.flatMap((x) => x.fotos || []).slice(0, 30)).then(setUrls);
+    } else setMeds(null);
+  }
+  useEffect(() => { carregar(); }, [aluno.link_id, verMedidas]);
+  async function pedir(lembrar) {
+    setBusy(true);
+    const r = await coachCall("coach_anamnese_pedir", { p_link: aluno.link_id });
+    setBusy(false);
+    if (!r.ok) { showToast(r.erro); return; }
+    avisarPorPush("anamnese", { link_id: aluno.link_id, evento: "pedido" });
+    log("coach_anamnese_pedida", { lembrete: !!lembrar });
+    showToast(`Pedido enviado. ${primeiro} vê na tela Hoje.`);
+    carregar();
+  }
+  const resp = anam && anam !== "erro" ? anam.respostas : null;
+  const simIdx = anamneseSimIdx(resp);
+  const abertas = verAnam == null ? simIdx.length > 0 : verAnam;
+  const resumo = useMemo(() => medResumo(medLinha(meds || [], Array.isArray(avals) ? avals : [])), [meds, avals]);
+  return (
+    <>
+      <div className="gt-co-sec">ANAMNESE</div>
+      {anam === undefined && <div className="gt-empty">Carregando…</div>}
+      {anam === "erro" && <div className="gt-co-erro" role="alert">Não consegui abrir a anamnese agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+      {anam === null && (
+        <div className="gt-co-plano-aluno">
+          <div className="d">Saúde, lesões, remédios e rotina de {primeiro}, com as 7 perguntas do PAR-Q.</div>
+          <button type="button" className="gt-btn small" disabled={busy} onClick={() => pedir(false)}>Pedir anamnese</button>
+        </div>
+      )}
+      {anam && anam !== "erro" && !resp && (
+        <div className="gt-co-plano-aluno">
+          <div className="d">Pedida em {coachDataCurta(anam.pedida_em)}. Esperando {primeiro} responder.</div>
+          <button type="button" className="gt-co-link" disabled={busy} onClick={() => pedir(true)}>Lembrar de novo</button>
+        </div>
+      )}
+      {resp && (
+        <div className="gt-co-plano-aluno">
+          {resp.objetivo && <div className="t">Objetivo: {resp.objetivo}</div>}
+          <div className="d">Respondida em {coachDataCurta(anam.respondida_em)}</div>
+          {simIdx.length > 0
+            ? <div className="gt-plano-aviso aviso">{primeiro} respondeu "sim" em: {anamneseSimTexto(simIdx)}. Peça liberação médica antes de treinos intensos.</div>
+            : <div className="d">Nenhum "sim" nas perguntas de saúde (PAR-Q).</div>}
+          <button type="button" className="gt-co-link" onClick={() => setVerAnam(!abertas)}>{abertas ? "Esconder respostas" : "Ver respostas"}</button>
+          {abertas && (
+            <dl className="gt-anam-resp">
+              {[["experiencia", "Treina há"], ["dias", "Dias por semana"], ["sono", "Sono"], ["trabalho", "No trabalho"]].map(([k, t]) => resp[k] ? <div key={k}><dt>{t}</dt><dd>{resp[k]}</dd></div> : null)}
+              {ANAMNESE_PARQ.map((q, i) => <div key={"p" + i} className={resp.parq && resp.parq[i] ? "sim" : ""}><dt>{q}</dt><dd>{resp.parq && resp.parq[i] ? "Sim" : "Não"}</dd></div>)}
+              {ANAMNESE_TEXTOS.map(([k, t]) => resp[k] ? <div key={k}><dt>{t}</dt><dd>{resp[k]}</dd></div> : null)}
+            </dl>
+          )}
+        </div>
+      )}
+      <div className="gt-co-semana-head"><div className="gt-co-sec">AVALIAÇÕES</div><button type="button" className="gt-co-link" style={{ paddingRight: 0 }} onClick={() => setForm({})}>+ Nova avaliação</button></div>
+      {resumo.length > 0 && (
+        <div className="gt-med-resumo-linhas">
+          {resumo.map(([t, un, r]) => <div key={t}><b>{t} {medFmt(r.v, un)}</b>{r.desde ? ` · ${medDelta(r.v, r.antes, un)} desde ${coachDataCurta(r.desde)}` : ""}</div>)}
+        </div>
+      )}
+      {avals === "erro" && <div className="gt-co-erro" role="alert">Não consegui abrir as avaliações agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+      {Array.isArray(avals) && avals.length === 0 && <div className="gt-plano-dica">Registre peso, medidas e testes. {primeiro} vê em Minhas medidas.</div>}
+      {Array.isArray(avals) && avals.map((a) => (
+        <div key={a.id} className="gt-med-item toca" role="button" tabIndex={0} aria-label={`Avaliação de ${coachDataCurta(a.data)}, editar`} onClick={() => setForm(a)} onKeyDown={medTeclaAbre(() => setForm(a))}>
+          <div className="gt-med-item-top"><b>{coachDataCurta(a.data)}</b><span className="gt-med-editar" aria-hidden="true">Editar</span></div>
+          <MedValores m={a} />
+          {a.testes && <div className="gt-med-nota">Testes: {a.testes}</div>}
+          {a.nota && <div className="gt-med-nota">{a.nota}</div>}
+        </div>
+      ))}
+      <div className="gt-co-sec">MEDIDAS DE {primeiro.toUpperCase()}</div>
+      {!verMedidas && <div className="gt-plano-dica">{primeiro} não compartilha as medidas e fotos com você. Dá para ligar no fim da anamnese ou em Minhas medidas, no app de {primeiro}.</div>}
+      {verMedidas && meds && meds.length === 0 && <div className="gt-plano-dica">{primeiro} ainda não registrou medidas.</div>}
+      {verMedidas && (meds || []).map((m) => (
+        <div key={m.id} className="gt-med-item">
+          <div className="gt-med-item-top"><b>{coachDataCurta(m.data)}</b></div>
+          <MedValores m={m} />
+          <MedThumbs fotos={m.fotos} urls={urls} />
+          {m.nota && <div className="gt-med-nota">{m.nota}</div>}
+        </div>
+      ))}
+      {form && <CoachAvaliacaoForm linkId={aluno.link_id} inicial={form} primeiro={primeiro} onClose={() => setForm(null)}
+        onSalvo={(t) => { setForm(null); carregar(); if (t !== "apagada") log("coach_avaliacao_salva", { nova: t === "nova" }); showToast(t === "apagada" ? "Avaliação apagada" : "Avaliação salva"); }} />}
+    </>
+  );
+}
+
+// ---------- Fase 4: vídeos (bucket privado "videos") ----------
+// <uid>/sessao/...: vídeo da execução no comentário da sessão (até 30 s; o treinador vê por 90 dias).
+// <uid>/biblioteca/...: vídeo próprio do treinador (até 60 s, até 20), mostrado aos alunos no exercício de mesmo nome.
+const VIDEO_MAX_SEG = { sessao: 30, biblioteca: 60 };
+const VIDEO_DIAS = 90;
+const VIDEO_MAX_BYTES = 12 * 1024 * 1024;
+const VIDEO_BIBLIOTECA_MAX = 20;
+function videoAbrir(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
+    v.onloadedmetadata = () => res({ v, url });
+    v.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Não consegui abrir esse vídeo.")); };
+    v.src = url;
+  });
+}
+// Reduz para no máximo 854 px no lado maior, sem áudio, ~1 Mbps (30 s ≈ 4 MB). Se o celular não
+// consegue regravar, sobe o original quando ele cabe no limite.
+async function videoCompactar(file, maxSeg, onProg) {
+  const { v, url } = await videoAbrir(file);
+  const limpar = () => { try { v.pause(); } catch (e) {} URL.revokeObjectURL(url); };
+  const dur = isFinite(v.duration) ? v.duration : 0;
+  if (dur > maxSeg + 0.5) { limpar(); throw new Error(`Esse vídeo tem ${Math.round(dur)} s. Use até ${maxSeg} s: corte no app de fotos e escolha de novo.`); }
+  const original = { blob: file, mime: file.type || "video/mp4", dur: Math.round(dur) || null };
+  if (file.size <= maxSeg * 160000) { limpar(); return original; }
+  const tipos = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = typeof MediaRecorder !== "undefined" && HTMLCanvasElement.prototype.captureStream ? tipos.find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } }) : null;
+  if (!mime || !dur) {
+    limpar();
+    if (file.size <= VIDEO_MAX_BYTES) return original;
+    throw new Error("Esse vídeo é grande demais para este celular compactar. Grave em qualidade menor ou mais curto.");
+  }
+  const k = Math.min(1, 854 / Math.max(v.videoWidth || 854, v.videoHeight || 480));
+  const c = document.createElement("canvas");
+  c.width = Math.max(2, Math.round(((v.videoWidth || 854) * k) / 2) * 2);
+  c.height = Math.max(2, Math.round(((v.videoHeight || 480) * k) / 2) * 2);
+  const ctx = c.getContext("2d");
+  const rec = new MediaRecorder(c.captureStream(30), { mimeType: mime, videoBitsPerSecond: 1000000 });
+  const partes = [];
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) partes.push(e.data); };
+  const parou = new Promise((res) => { rec.onstop = res; });
+  const acabou = new Promise((res) => { v.onended = res; });
+  rec.start(500);
+  try { await v.play(); } catch (e) { rec.stop(); limpar(); if (file.size <= VIDEO_MAX_BYTES) return original; throw new Error("Não consegui preparar esse vídeo."); }
+  const quadro = () => {
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    if (onProg) onProg(Math.min(1, v.currentTime / dur));
+    if (!v.ended) { if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(quadro); else requestAnimationFrame(quadro); }
+  };
+  quadro();
+  await acabou;
+  rec.stop(); await parou; limpar();
+  const blob = new Blob(partes, { type: mime.split(";")[0] });
+  if (!blob.size || (blob.size > file.size && file.size <= VIDEO_MAX_BYTES)) return original;
+  if (blob.size > VIDEO_MAX_BYTES) throw new Error("O vídeo ficou grande demais. Use um mais curto.");
+  return { blob, mime: mime.split(";")[0], dur: Math.round(dur) };
+}
+async function videoSubir(uid, pasta, file, onProg) {
+  const r = await videoCompactar(file, VIDEO_MAX_SEG[pasta] || 30, onProg);
+  const ext = /webm/.test(r.mime) ? "webm" : /quicktime/.test(r.mime) ? "mov" : "mp4";
+  const path = `${uid}/${pasta}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabaseClient.storage.from("videos").upload(path, r.blob, { contentType: r.mime });
+  if (error) {
+    logErroModulo("video_upload", error.message);
+    throw new Error(/row-level|policy/i.test(error.message) && pasta === "biblioteca" ? `Você chegou ao limite de ${VIDEO_BIBLIOTECA_MAX} vídeos. Apague um para enviar outro.` : "Não consegui enviar o vídeo. Tente de novo.");
+  }
+  return { p: path, s: r.dur, em: todayISO() };
+}
+const videoUrlCache = {};
+async function videoUrlAssinada(path) {
+  const c = videoUrlCache[path];
+  if (c && c.ate > Date.now()) return c.url;
+  const { data, error } = await supabaseClient.storage.from("videos").createSignedUrl(path, 3600);
+  if (error || !data) return null;
+  videoUrlCache[path] = { url: data.signedUrl, ate: Date.now() + 50 * 60 * 1000 };
+  return data.signedUrl;
+}
+function videoExpirou(v) { return !!(v && v.em && addDays(v.em, VIDEO_DIAS) < todayISO()); }
+// Toca um vídeo privado. Só busca o endereço quando a pessoa toca em "Ver vídeo".
+function VideoPrivado({ video, rotulo }) {
+  const [url, setUrl] = useState(null); // null fechado, "" carregando, false erro
+  if (!video || !video.p) return null;
+  if (videoExpirou(video)) return <div className="gt-video-off">Vídeo apagado depois de {VIDEO_DIAS} dias.</div>;
+  async function abrir(e) {
+    e.stopPropagation();
+    if (url) { setUrl(null); return; }
+    setUrl("");
+    const u = await videoUrlAssinada(video.p);
+    setUrl(u || false);
+  }
+  return (
+    <div className="gt-video" onClick={(e) => e.stopPropagation()}>
+      <button type="button" className="gt-ex-video-toggle" onClick={abrir}>{url ? "✕ Fechar vídeo" : `▶ ${rotulo || "Ver vídeo"}${video.s ? ` · ${video.s} s` : ""}`}</button>
+      {url === "" && <div className="gt-video-off">Carregando…</div>}
+      {url === false && <div className="gt-video-off">Vídeo indisponível agora.</div>}
+      {url && <video className="gt-video-player" src={url} controls playsInline autoPlay muted preload="metadata" />}
+    </div>
+  );
+}
+// Botão que escolhe/grava um vídeo, compacta e sobe. onPronto({p, s, em}).
+function VideoEnviar({ uid, pasta, rotulo, onPronto, onErro, disabled }) {
+  const [prog, setProg] = useState(null);
+  async function escolher(ev) {
+    const f = (ev.target.files || [])[0];
+    ev.target.value = "";
+    if (!f) return;
+    setProg(0);
+    try { const v = await videoSubir(uid, pasta, f, (x) => setProg(x)); setProg(null); onPronto(v); }
+    catch (e) { setProg(null); onErro((e && e.message) || "Não consegui enviar o vídeo."); }
+  }
+  if (prog != null) return <div className="gt-video-prog" role="status">Preparando vídeo… {Math.round(prog * 100)}%<i style={{ width: `${Math.round(prog * 100)}%` }} /></div>;
+  return (
+    <label className={`gt-video-add ${disabled ? "off" : ""}`}>
+      {rotulo}
+      <input type="file" accept="video/*" style={{ display: "none" }} disabled={disabled} onChange={escolher} />
+    </label>
+  );
+}
+// Aluno: apaga do armazenamento os vídeos de sessão com mais de 90 dias, ou todos se não tem mais treinador.
+async function videosLimparSessao(uid, temTreinador) {
+  try {
+    const { data } = await supabaseClient.storage.from("videos").list(`${uid}/sessao`, { limit: 200 });
+    const limite = Date.now() - VIDEO_DIAS * 86400000;
+    const sai = (data || []).filter((o) => !temTreinador || (o.created_at && Date.parse(o.created_at) < limite)).map((o) => `${uid}/sessao/${o.name}`);
+    if (sai.length) await supabaseClient.storage.from("videos").remove(sai);
+  } catch (e) {}
+}
+
+// Treinador: biblioteca de vídeos próprios (um por exercício). O vídeo vai junto no envio quando o nome bate.
+function coachVideosMapa(lista) {
+  const m = {};
+  (lista || []).forEach((v) => { const k = normalizeSearch(v.exercicio); if (!m[k]) m[k] = v; });
+  return m;
+}
+// Põe "videoCoach" nos exercícios do envio que têm vídeo na biblioteca (payload {dias, fichas} ou plano).
+function coachAnexarVideos(obj, mapa, nomeCoach) {
+  const n = String(nomeCoach || "").trim().split(" ")[0].slice(0, 40);
+  if (!mapa || !Object.keys(mapa).length) return obj;
+  const visita = (x) => {
+    if (Array.isArray(x)) return x.map(visita);
+    if (!x || typeof x !== "object") return x;
+    const o = {};
+    Object.entries(x).forEach(([k, v]) => { o[k] = visita(v); });
+    if (typeof o.nome === "string" && ("series" in o || "repeticoes" in o)) {
+      const v = mapa[normalizeSearch(o.nome)];
+      if (v) o.videoCoach = { p: v.path, s: v.dur || null, n };
+      else delete o.videoCoach;
+    }
+    return o;
+  };
+  return visita(obj);
+}
+function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
+  const [lista, setLista] = useState(undefined);
+  const [picker, setPicker] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [grupo, setGrupo] = useState(CATALOG_GRUPOS[0].label);
+  const [exAlvo, setExAlvo] = useState(null);
+  const [erro, setErro] = useState("");
+  async function carregar() {
+    const { data, error } = await supabaseClient.from("coach_videos").select("*").order("created_at", { ascending: false });
+    setLista(error ? null : data || []);
+  }
+  useEffect(() => { carregar(); }, []);
+  async function apagar(v) {
+    if (!window.confirm(`Apagar o vídeo de ${v.exercicio}? Quem já recebeu esse exercício volta a ver só o vídeo do catálogo.`)) return;
+    await supabaseClient.storage.from("videos").remove([v.path]).catch(() => {});
+    await supabaseClient.from("coach_videos").delete().eq("id", v.id);
+    logEvent("coach_video_apagado");
+    carregar();
+  }
+  async function pronto(v) {
+    const { error } = await supabaseClient.from("coach_videos").insert({ exercicio: exAlvo.nome, path: v.p, dur: v.s });
+    if (error) { setErro("Não consegui salvar agora."); supabaseClient.storage.from("videos").remove([v.p]).catch(() => {}); return; }
+    const antigo = (lista || []).find((x) => normalizeSearch(x.exercicio) === normalizeSearch(exAlvo.nome));
+    if (antigo) { await supabaseClient.from("coach_videos").delete().eq("id", antigo.id); supabaseClient.storage.from("videos").remove([antigo.path]).catch(() => {}); }
+    logEvent("coach_video_enviado", { dur: v.s });
+    showToast(`Vídeo de ${exAlvo.nome} salvo`);
+    setExAlvo(null); carregar();
+  }
+  const n = (lista || []).length;
+  return (
+    <div className="gt-focus gt-med" style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-label="Meus vídeos">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Meus vídeos</div><div className="gt-focus-title-hint">{lista ? `${n} de ${VIDEO_BIBLIOTECA_MAX}` : ""}</div></div>
+      </div>
+      <div className="gt-focus-body gt-med-body">
+        <div className="gt-plano-dica">Grave a execução de um exercício (até {VIDEO_MAX_SEG.biblioteca} s). Quando ele estiver num treino que você enviar, quem treina com você vê este vídeo junto do vídeo do catálogo.</div>
+        {lista === undefined && <div className="gt-empty">Carregando…</div>}
+        {lista === null && <div className="gt-co-erro" role="alert">Não consegui abrir agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
+        {exAlvo ? (
+          <div className="gt-co-plano-aluno">
+            <div className="t">{exAlvo.nome}</div>
+            <div className="d">Até {VIDEO_MAX_SEG.biblioteca} s. O app reduz o tamanho antes de enviar.</div>
+            <VideoEnviar uid={uid} pasta="biblioteca" rotulo="Escolher ou gravar vídeo" onPronto={pronto} onErro={setErro} />
+            <button type="button" className="gt-co-link" onClick={() => setExAlvo(null)}>Cancelar</button>
+          </div>
+        ) : (
+          lista && <button type="button" className="gt-btn" disabled={n >= VIDEO_BIBLIOTECA_MAX} onClick={() => { setErro(""); setPicker(true); }}>{n >= VIDEO_BIBLIOTECA_MAX ? `Limite de ${VIDEO_BIBLIOTECA_MAX} vídeos` : `Adicionar vídeo (até ${VIDEO_MAX_SEG.biblioteca} s)`}</button>
+        )}
+        {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+        {(lista || []).map((v) => (
+          <div key={v.id} className="gt-med-item">
+            <div className="gt-med-item-top"><b>{v.exercicio}</b><span className="gt-med-nota">{coachDataCurta(v.created_at)}</span></div>
+            <VideoPrivado video={{ p: v.path, s: v.dur }} rotulo="Ver vídeo" />
+            <div className="gt-video-acoes">
+              <button type="button" className="gt-co-link" onClick={() => { setErro(""); setExAlvo({ nome: v.exercicio }); }}>Trocar</button>
+              <button type="button" className="gt-co-link gt-video-apagar" onClick={() => apagar(v)}>Apagar</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {picker && <ExercisePickerModal titulo="Vídeo de qual exercício?" unico search={busca} setSearch={setBusca} isAdded={() => false}
+        selo={(ex) => ((lista || []).some((x) => normalizeSearch(x.exercicio) === normalizeSearch(ex.nome)) ? "tem vídeo · trocar" : "")}
+        onAdd={(cat) => { setPicker(false); setExAlvo(cat); }} onClose={() => setPicker(false)} />}
+    </div>
+  );
+}
+
 // ---------- Treinador: convidar ----------
 function CoachConvidarModal({ coachNome, onClose, onCriado, showToast, existente }) {
   const [label, setLabel] = useState("");
@@ -12521,7 +13826,16 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
   const [filtro, setFiltro] = useState("todos");
   const hojeISO = todayISO();
   const [feitosHoje, setFeitosHoje] = useState(() => coachParaHojeFeitosLer(hojeISO));
-  const paraHoje = useMemo(() => coachParaHoje(lista, hojeISO), [lista, hojeISO]);
+  const [anams, setAnams] = useState([]);
+  useEffect(() => {
+    if (!lista.some((a) => a.status === "ativo")) return;
+    coachCall("coach_anamneses_resumo").then((r) => {
+      if (!r.ok || !Array.isArray(r.data)) return;
+      const vistas = coachAnamVistasLer();
+      setAnams(r.data.filter((x) => vistas[x.link_id] !== x.respondida_em));
+    });
+  }, [lista]);
+  const paraHoje = useMemo(() => coachParaHoje(lista, hojeISO, anams), [lista, hojeISO, anams]);
   const filaHoje = paraHoje.filter((it) => feitosHoje.indexOf(it.chave) < 0);
   const [oculto, setOculto] = useState(null); // último item ocultado (para desfazer)
   const [filaTodos, setFilaTodos] = useState(false);
@@ -12536,7 +13850,7 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
   }
   function agirHoje(it) {
     if (it.acao === "montar" && onMontar) onMontar(it.a);
-    else onAbrir(it.a, it.acao === "responder" ? "notas" : undefined);
+    else onAbrir(it.a, it.acao === "responder" ? "notas" : it.acao === "avaliacao" ? "avaliacao" : undefined);
   }
   const info = useMemo(() => lista.map((a) => ({ a, c: coachClassificar(a, hojeISO) })), [lista]);
   const cont = {
@@ -12674,7 +13988,7 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
   const nomesTreino = {};
   ((det && det.treinos) || []).forEach((t) => { nomesTreino[`treino:${t.id}`] = t.nome; });
   const temCorrida = det && det.sessoes && Object.values(det.sessoes).some((s) => Object.values(s.cargas || {}).some((c) => c && Number(c.distanciaKm) > 0));
-  const ABAS = [["semana", "Semana"], ["cargas", "Cargas"], ...(temCorrida ? [["corridas", "Corridas"]] : []), ["notas", "Notas"]];
+  const ABAS = [["semana", "Semana"], ["cargas", "Cargas"], ...(temCorrida ? [["corridas", "Corridas"]] : []), ["avaliacao", "Avaliação"], ["notas", "Notas"]];
   async function comentar(data, ref, texto) {
     const r = await coachCall("coach_add_note", { p_link: aluno.link_id, p_date: data, p_session_ref: ref, p_texto: texto });
     if (!r.ok) { showToast(r.erro); return false; }
@@ -12696,6 +14010,7 @@ function CoachAlunoView({ aluno, onClose, onMontar, showToast, treinosProprios, 
         {det && erro && <div className="gt-co-offline" role="status">{erro} Mostrando dados de {coachHaQuanto(carregadoEm)}.</div>}
         {contato && <button type="button" className="gt-btn secondary gt-co-wa" onClick={() => window.open(`https://wa.me/55${contato}`, "_blank")}>Chamar no WhatsApp · {telMostrar(contato)}</button>}
         {det && det.bloqueado && <div className="gt-co-bloq"><b>Bloqueado pelo aluno</b><div>{aluno.nome} desligou o compartilhamento de treinos. Você ainda pode enviar semanas e comentar.</div></div>}
+        {det && aba === "avaliacao" && <CoachAvaliacaoAba aluno={aluno} det={det} showToast={showToast} />}
         {det && !det.bloqueado && aba === "semana" && (
           <>
             {cl.atencao && (
@@ -12855,6 +14170,7 @@ function CoachSessaoCard({ data, sess, nomes, notas, onComentar, nomeAluno, meuI
       <div className="gt-co-sessao-head"><b>{titulo}</b><span className="ok">Concluído</span></div>
       <div className="gt-co-sessao-meta">{coachDataCurta(data)}{min ? ` · ${min} min` : ""}{rpe ? ` · esforço ${rpe}` : ""}{dor != null ? ` · dor ${dor}` : ""}</div>
       {comentariosAluno.map((t, i) => <div key={i} className="gt-co-sessao-aluno"><small>{nomeAluno || "Aluno"} · {coachDataCurta(data)}</small>{t}</div>)}
+      {cargas.filter((c) => c && c.video && c.video.p).map((c) => <VideoPrivado key={c.video.p} video={c.video} rotulo={`Vídeo de ${String(nomeAluno || "").split(" ")[0] || "quem treina com você"}`} />)}
       {notas.map((n) => <CoachNotaItem key={n.id} n={n} meuId={meuId} nomeAluno={nomeAluno} />)}
       {!aberto
         ? <button type="button" className="gt-co-comentar" onClick={() => setAberto(true)}>Comentar esta sessão…</button>
@@ -12989,6 +14305,20 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     coachCall("coach_link_aceite_auto", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok) setAlunoAuto(r.data === true); });
     return () => { vivo = false; };
   }, [aluno.link_id]);
+  const [anamSim, setAnamSim] = useState([]);
+  const [videosMapa, setVideosMapa] = useState(null);
+  useEffect(() => {
+    if (ehModelo) return;
+    let vivo = true;
+    supabaseClient.from("coach_videos").select("exercicio,path,dur").then(({ data }) => { if (vivo) setVideosMapa(coachVideosMapa(data || [])); }, () => {});
+    return () => { vivo = false; };
+  }, []);
+  useEffect(() => {
+    if (ehModelo || aluno.status !== "ativo") return;
+    let vivo = true;
+    coachCall("coach_anamnese", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok && r.data) setAnamSim(anamneseSimIdx(r.data.respostas)); });
+    return () => { vivo = false; };
+  }, [aluno.link_id]);
   const chaveRasc = `treino-app:coachRascunho:${aluno.link_id}`;
   const [sem, setSem] = useState(coachSemanaVazia);
   const [msg, setMsg] = useState("");
@@ -13120,7 +14450,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     setEnviando(true);
     const plano = comoPlano && planoLiberado;
     const rem = podeAjustar ? { ajuste: true, remover } : {};
-    const payload = plano ? { semana: sem, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao, ...rem } : { ...sem, ...rem };
+    const semV = coachAnexarVideos(sem, videosMapa, aluno.coach_nome);
+    const payload = plano ? { semana: semV, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao, ...rem } : { ...semV, ...rem };
     const item = { link_id: aluno.link_id, nome: aluno.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
     const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
     setEnviando(false);
@@ -13128,7 +14459,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       try { localStorage.removeItem(chaveRasc); } catch (e) {}
       logEvent(plano ? "coach_plano_enviado" : "coach_semana_enviada");
       if (aluno.status === "ativo") avisarPorPush("treinador", { link_id: item.link_id });
-      showToast(aluno.status === "pendente" ? `${plano ? "Plano guardado" : "Semana guardada"}: chega pra ${primeiroNome} quando ele aceitar` : plano ? `Plano de ${plSemanas} semanas enviado para ${primeiroNome}` : `Semana da ${primeiroNome} enviada`);
+      showToast(aluno.status === "pendente" ? `${plano ? "Plano guardado" : "Semana guardada"}: chega quando ${primeiroNome} aceitar o convite` : plano ? `Plano de ${plSemanas} semanas enviado para ${primeiroNome}` : `Semana de ${primeiroNome} enviada`);
       onEnviado(); onClose();
       return;
     }
@@ -13176,7 +14507,8 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
   return (
     <div className="gt-focus gt-co-composer" style={{ zIndex: 55 }} role="dialog" aria-modal="true" aria-label={ehModelo ? `Modelo ${modelo.nome}` : `Montar semana de ${aluno.nome}`}>
       <div className="gt-co-banner" role="status">{ehModelo ? <>Editando o modelo: <b>{modelo.nome}</b></> : <>Editando para: <b>{aluno.nome}</b>{aluno.status === "pendente" ? " (convite pendente)" : ""}</>}</div>
-      {!ehModelo && aluno.status === "pendente" && <div className="gt-co-aviso" role="status">{primeiroNome} ainda não aceitou o convite. A semana fica guardada e chega pra ele assim que ele entrar.</div>}
+      {!ehModelo && aluno.status === "pendente" && <div className="gt-co-aviso" role="status">{primeiroNome} ainda não aceitou o convite. A semana fica guardada e chega assim que {primeiroNome} entrar.</div>}
+      {anamSim.length > 0 && <div className="gt-co-aviso aviso" role="note">{primeiroNome} respondeu "sim" na anamnese em: {anamneseSimTexto(anamSim)}. Peça liberação médica antes de treinos intensos.</div>}
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={tentarSair}><IconVoltar /></button>
         <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
@@ -13250,7 +14582,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       <div className="gt-focus-footer gt-co-footer">
         <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
         {!ehModelo && <textarea className="gt-input" aria-label={`Mensagem para ${primeiroNome} (opcional)`} placeholder={`Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
-        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana dele` : ""}. Ele pode desfazer.</div>}
+        {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana` : ""}. Dá para desfazer pelo app.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
         <button type="button" className="gt-btn" disabled={enviando || !!motivoDesab} onClick={enviar}>{enviando ? (ehModelo ? "Salvando…" : "Enviando…") : ehModelo ? "Salvar modelo" : aluno.status === "pendente" ? `Guardar para ${primeiroNome}` : comoPlano && planoLiberado ? `Enviar plano para ${primeiroNome}` : `Enviar para ${primeiroNome}`}</button>
       </div>
@@ -13879,7 +15211,7 @@ function CoachCadastroModal({ nomeInicial, inicial, onClose, onFeito, showToast 
 }
 
 // ---------- Treinador: perfil (editável) ----------
-function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPend, showToast, onSalvou, onTrocar, onConfig, onSair, onAjuda, onFeedback }) {
+function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPend, showToast, onSalvou, onTrocar, onConfig, onSair, onAjuda, onFeedback, onVideos }) {
   const uid = session.user.id;
   const [nome, setNome] = useState((nomePessoal || "").trim() || coachInfo.nome_exibicao || "");
   const [bio, setBio] = useState(coachInfo.bio || "");
@@ -13930,6 +15262,10 @@ function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPen
         <div className="tx"><div className="t">{nomeVis}</div>{cref.trim() && <div className="d">CREF {cref.trim().replace(/^cref\s*/i, "")}</div>}{bio.trim() && <div className="b">{bio.trim()}</div>}</div>
       </div>
       <div className="gt-settings-hint">Só quem recebe ou aceita um convite seu vê esse perfil.</div>
+      <div className="gt-co-lista-menu" style={{ marginTop: 16 }}>
+        <button type="button" className="gt-co-linha" onClick={onVideos}><Icon name="video-camera" weight="duotone" size={22} /><span>Meus vídeos</span><i aria-hidden="true">›</i></button>
+      </div>
+      <div className="gt-settings-hint">Até {VIDEO_BIBLIOTECA_MAX} vídeos de até {VIDEO_MAX_SEG.biblioteca} s. Quem treina com você vê o seu vídeo no exercício.</div>
       <div className="gt-co-sec" style={{ marginTop: 16 }}>CONTA</div>
       <div className="gt-co-lista-menu">
         <button type="button" className="gt-co-linha" onClick={onTrocar}><Icon name="hoje" weight="duotone" size={22} /><span>Trocar para “Meu treino”</span><i aria-hidden="true">›</i></button>
@@ -14919,6 +16255,7 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
   const status = coachInfo.status || (coachInfo.liberado ? "ativo" : "suspenso");
   const ativo = status === "ativo";
   const [aba, setAba] = useState(() => (ativo ? "alunos" : "perfil"));
+  const [videosAberto, setVideosAberto] = useState(false);
   const [lista, setLista] = useState(() => { try { return (JSON.parse(localStorage.getItem("treino-app:coachLista") || "null") || {}).lista || []; } catch (e) { return []; } });
   const [atualizadoEm, setAtualizadoEm] = useState(() => { try { return (JSON.parse(localStorage.getItem("treino-app:coachLista") || "null") || {}).em || 0; } catch (e) { return 0; } });
   const [carregando, setCarregando] = useState(ativo);
@@ -15055,8 +16392,9 @@ function CoachApp({ onAtualizar, nomePessoal, onNome, coachInfo, session, treino
         )}
         {aba === "perfil" && (
           <CoachPerfilTab coachInfo={coachInfo} session={session} nomePessoal={nomePessoal} onNome={onNome} nAtivos={nAtivos} nPend={nPend} showToast={showToast}
-            onSalvou={onInfo} onTrocar={onTrocar} onConfig={onConfig} onSair={onSair} onAjuda={onAjuda} onFeedback={onFeedback} />
+            onSalvou={onInfo} onTrocar={onTrocar} onConfig={onConfig} onSair={onSair} onAjuda={onAjuda} onFeedback={onFeedback} onVideos={() => setVideosAberto(true)} />
         )}
+        {videosAberto && <CoachVideosTela uid={session.user.id} onClose={() => setVideosAberto(false)} showToast={showToast} logEvent={logEvent} />}
       </div>
       <nav className="gt-tabbar gt-co-tabbar" aria-label="Modo treinador">
         {TABS.map(([k, t, ic, badge]) => (
@@ -16169,8 +17507,10 @@ function App() {
       try { if (session && session.user) await supabaseClient.storage.from("avatars").remove([`${session.user.id}/a.jpg`]); } catch (e) {} // foto de perfil sai do storage junto
       try { // prints enviados em feedbacks também
         const uidP = session && session.user && session.user.id;
-        const ls = uidP ? await supabaseClient.storage.from("relatos").list(uidP, { limit: 1000 }) : null;
-        if (ls && ls.data && ls.data.length) await supabaseClient.storage.from("relatos").remove(ls.data.map((o) => `${uidP}/${o.name}`));
+        for (const bk of ["relatos", "medidas"]) { // e as fotos de Minhas medidas
+          const ls = uidP ? await supabaseClient.storage.from(bk).list(uidP, { limit: 1000 }) : null;
+          if (ls && ls.data && ls.data.length) await supabaseClient.storage.from(bk).remove(ls.data.map((o) => `${uidP}/${o.name}`));
+        }
       } catch (e) {}
       const { error } = await supabaseClient.rpc("delete_my_account");
       if (error) { logClientError("delete_my_account", error.message); return { ok: false }; }
@@ -17092,6 +18432,9 @@ function App() {
   const [coachNotas, setCoachNotas] = useState([]);
   const [coachConvite, setCoachConvite] = useState(() => { try { return localStorage.getItem("treino-app:coachInvite") || null; } catch (e) { return null; } });
   const [meuTreinadorOpen, setMeuTreinadorOpen] = useState(false);
+  const [medidasOpen, setMedidasOpen] = useState(false);
+  const [anamneses, setAnamneses] = useState([]); // pedidos de anamnese dos meus treinadores
+  const [anamAberta, setAnamAberta] = useState(null);
   const [coachRevisao, setCoachRevisao] = useState(false);
   const [coachPlanoAberto, setCoachPlanoAberto] = useState(false);
   const [coachBusy, setCoachBusy] = useState(false);
@@ -17137,6 +18480,10 @@ function App() {
     const [l, a] = await Promise.all([coachCall("coach_my_coach"), coachCall("coach_my_assignments")]);
     if (l.ok) {
       setCoachLinks(l.data || []);
+      // Vídeos de sessão: apaga os de mais de 90 dias (ou todos, sem treinador). Uma vez por dia, sem custo de servidor.
+      try { const hoje = todayISO(); if (session && localStorage.getItem("treino-app:videosLimpos") !== hoje) { localStorage.setItem("treino-app:videosLimpos", hoje); videosLimparSessao(session.user.id, (l.data || []).some((x) => x.status === "ativo" || x.status === "pausado")); } } catch (e) {}
+      if ((l.data || []).length) coachCall("minhas_anamneses").then((r) => { if (r.ok) setAnamneses(r.data || []); });
+      else setAnamneses([]);
       const { next, virou } = planosSemVinculo(planosRef.current, l.data || []);
       if (virou.length) {
         savePlanos(next);
@@ -17431,7 +18778,7 @@ function App() {
     return { log: {}, extras: [], removed: [], cargas: {}, ...s };
   }
 
-  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota) {
+  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota, video) {
     const key = itemKey(item);
     const session = sessionShapeFor(dateIso);
     const entry = { duracaoMin: duracaoMin > 0 ? duracaoMin : null, rpe: rpe > 0 ? rpe : null, updatedAt: Date.now() };
@@ -17439,6 +18786,7 @@ function App() {
     // Comentário da sessão (texto livre do aluno). Vai junto com a carga; o treinador vê se o aluno compartilha as cargas.
     const notaLimpa = String(nota || "").trim().slice(0, 500);
     if (notaLimpa) entry.nota = notaLimpa;
+    if (video && video.p) entry.video = { p: video.p, s: video.s || null, em: video.em || todayISO() }; // vídeo da execução (o treinador vê por 90 dias)
     const anterior = (session.cargas || {})[key];
     if (distanciaKm > 0) entry.distanciaKm = distanciaKm; // corrida digitada na hora (treino do plano / registro manual)
     else if (anterior && anterior.distanciaKm) entry.distanciaKm = anterior.distanciaKm; // vem do Strava; não perder ao editar duração/esforço
@@ -17458,6 +18806,7 @@ function App() {
       rpe: existing && existing.rpe != null ? String(existing.rpe) : "",
       dor: existing && existing.dor != null ? existing.dor : null,
       nota: existing && existing.nota ? existing.nota : "",
+      video: existing && existing.video ? existing.video : null,
     });
   }
 
@@ -17679,9 +19028,10 @@ function App() {
       logEvent("corrida_registrada_manual");
       logTreino("corrida", "manual");
       showToast("Corrida registrada");
-    } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim()) {
-      saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota);
+    } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim() || rpeModal.video) {
+      saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota, rpeModal.video);
       if (String(rpeModal.nota || "").trim()) logEvent("sessao_comentario");
+      if (rpeModal.video && rpeModal.video.novo) logEvent("sessao_video", { s: rpeModal.video.s || null });
       showToast(String(rpeModal.nota || "").trim() && coachVeNota ? `Salvo. ${coachVeNota} vai ver.` : rpeModal.corrida ? "Corrida registrada" : "Treino registrado");
     }
     setRpeModal(null);
@@ -18231,6 +19581,7 @@ function App() {
               onSave={saveRpeModal}
               onSkip={() => setRpeModal(null)}
               coachVeNota={coachVeNota}
+              uid={session ? session.user.id : null}
             />
           )}
 
@@ -18357,6 +19708,7 @@ function App() {
             {coachPend[0] && coachPendDiff && (
               <CoachRecebidoCard ass={coachPend[0]} diff={coachPendDiff} removidos={coachRemocoes(coachPend[0].payload, schedule, nomeNaAgenda, coachPodeAjustar).nomes} busy={coachBusy} onAceitarTudo={() => coachAplicar(coachPend[0], coachPendDiff, [0, 1, 2, 3, 4, 5, 6], "", 0)} onRevisar={() => setCoachRevisao(true)} />
             )}
+            {anamneses.filter((x) => !x.respostas).slice(0, 1).map((x) => <AnamnesePedidoCard key={x.link_id} pedido={x} onResponder={() => { setAnamAberta(x); logEvent("anamnese_aberta"); }} />)}
             {coachLinks[0] && <CoachNotaHoje notas={coachNotas} linkId={coachLinks[0].link_id} nomeCoach={coachLinks[0].coach_nome} onEnviar={coachResponder} />}
             {stravaConvite && stravaConnected === false && !templatesOpen && !treinoIAOpen && (
               <div className="gt-strava-convite" role="region" aria-label="Conectar o Strava">
@@ -18572,6 +19924,7 @@ function App() {
                           : <span className="gt-text-muted">Duração/esforço não registrados</span>}
                         <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>{cg ? "editar ✎" : "registrar ✎"}</button>
                         {cg && cg.nota && <div className="gt-sessao-nota">{cg.nota}</div>}
+                        {cg && cg.video && <VideoPrivado video={cg.video} rotulo="Ver seu vídeo" />}
                       </div>
                     );
                   })()}
@@ -18593,6 +19946,7 @@ function App() {
                     <div className="tt">Seu Movo ainda está vazio</div>
                     <div className="sb">Responda 3 perguntas rápidas e eu monto sua semana.</div>
                     <button type="button" className="gt-btn" onClick={() => { logEvent("estado_vazio_cta_hoje_montar"); openOnboardingRedo(true); }}>Montar minha semana</button>
+                    <button type="button" className="gt-co-link gt-hoje-importar" onClick={() => { logEvent("estado_vazio_cta_hoje_importar"); setHistOpen(true); }}>Vem do Hevy, Strong ou MFIT? Trazer meu histórico</button>
                   </>
                 ) : (
                   <>
@@ -18649,7 +20003,7 @@ function App() {
                             : <span className="gt-text-muted">Duração/esforço não registrados</span>;
                         })()}
                         <button type="button" className="gt-item-carga-edit" onClick={() => openRpeModalFor(item, selectedDate, treino.nome)}>editar ✎</button>
-                        {(() => { const n = ((sessions[selectedDate]?.cargas || {})[key] || {}).nota; return n ? <div className="gt-sessao-nota">{n}</div> : null; })()}
+                        {(() => { const c = (sessions[selectedDate]?.cargas || {})[key] || {}; return <>{c.nota ? <div className="gt-sessao-nota">{c.nota}</div> : null}{c.video ? <VideoPrivado video={c.video} rotulo="Ver seu vídeo" /> : null}</>; })()}
                       </div>
                     )}
                   </div>
@@ -19330,6 +20684,7 @@ function App() {
               {item("metas", "Metas de corrida", () => openProvas("metas"))}
               {item("raio", "Treinos de corrida", () => setTreinoCorrida({ data: todayISO() }))}
               <div className="gt-menu-sec">Dados</div>
+              {item("ruler", "Minhas medidas", () => setMedidasOpen(true))}
               {item("importar", "Importar histórico", () => setHistOpen(true))}
               {stravaConnected === false && <button type="button" className="gt-menu-item" onClick={ir(() => setSettingsOpen(true))}><span className="ic"><StravaIcon size={20} /></span><span className="tx">Conectar com o Strava</span></button>}
               <div className="gt-menu-sec">Social</div>
@@ -19367,7 +20722,36 @@ function App() {
         <MeuPlanoModal plano={plano} souTreinador={!!coachTem || !!(plano && plano.treinador && plano.treinador.plano !== "gratis")} onClose={() => setPlanoOpen(false)} onInteresse={planoInteresse} />
       )}
       {meuTreinadorOpen && (
-        <CoachMeuTreinadorModal links={coachLinks} flags={coachFlagsAtuais} dados={{ treinos, sessions }} reload={carregarCoachAluno} showToast={showToast} onClose={() => setMeuTreinadorOpen(false)} onAbrirConvite={(c) => { setMeuTreinadorOpen(false); setCoachConvite(c); }} />
+        <CoachMeuTreinadorModal anamnese={anamneses.find((x) => coachLinks[0] && x.link_id === coachLinks[0].link_id) || null} onAbrirAnamnese={(x) => { setMeuTreinadorOpen(false); setAnamAberta(x); }} links={coachLinks} flags={coachFlagsAtuais} dados={{ treinos, sessions }} reload={carregarCoachAluno} showToast={showToast} onClose={() => setMeuTreinadorOpen(false)} onAbrirConvite={(c) => { setMeuTreinadorOpen(false); setCoachConvite(c); }} />
+      )}
+      {medidasOpen && session && (
+        <MinhasMedidasTela uid={session.user.id} showToast={showToast} logEvent={logEvent} onClose={() => setMedidasOpen(false)}
+          coachLink={coachLinks.find((l) => l.status === "ativo") || null}
+          onCompartilhar={async (on) => {
+            const l = coachLinks.find((x) => x.status === "ativo");
+            if (!l) return false;
+            const r = await coachCall("coach_update_permissions", { p_link: l.link_id, p_perms: { ...COACH_PERMS_PADRAO, ...(l.permissions || {}), ver_medidas: on } });
+            if (!r.ok) { showToast(r.erro); return false; }
+            setCoachLinks((ls) => ls.map((x) => (x.link_id === l.link_id ? { ...x, permissions: { ...(x.permissions || {}), ver_medidas: on } } : x)));
+            return true;
+          }} />
+      )}
+      {anamAberta && (
+        <AnamneseForm pedido={anamAberta} onClose={() => setAnamAberta(null)}
+          anterior={(anamneses.find((x) => x.respostas && x.link_id !== anamAberta.link_id) || {}).respostas || null}
+          compartilhaMedidas={!!(coachLinks.find((l) => l.link_id === anamAberta.link_id) || { permissions: {} }).permissions?.ver_medidas}
+          onCompartilharMedidas={coachLinks.some((l) => l.link_id === anamAberta.link_id && l.status === "ativo") ? async () => {
+            const l = coachLinks.find((x) => x.link_id === anamAberta.link_id);
+            const r = await coachCall("coach_update_permissions", { p_link: l.link_id, p_perms: { ...COACH_PERMS_PADRAO, ...(l.permissions || {}), ver_medidas: true } });
+            if (r.ok) { setCoachLinks((ls) => ls.map((x) => (x.link_id === l.link_id ? { ...x, permissions: { ...(x.permissions || {}), ver_medidas: true } } : x))); logEvent("medidas_compartilhar", { on: true, origem: "anamnese" }); }
+          } : null}
+          onSalvo={(resp, info) => {
+            setAnamneses((ls) => ls.map((x) => (x.link_id === anamAberta.link_id ? { ...x, respostas: resp, respondida_em: resp ? new Date().toISOString() : null } : x)));
+            const horas = anamAberta.pedida_em ? Math.round((Date.now() - new Date(anamAberta.pedida_em).getTime()) / 3600000) : null;
+            logEvent(resp ? "anamnese_respondida" : "anamnese_apagada", resp ? { parq_sim: anamneseParqSim(resp), editando: !!info.editando, horas_desde_pedido: horas } : {});
+            showToast(!resp ? "Respostas apagadas" : info.editando ? "Respostas atualizadas" : `Enviado para ${String(anamAberta.coach_nome || "seu treinador").split(" ")[0]}`);
+            setAnamAberta(null);
+          }} />
       )}
       {coachRevisao && coachPend[0] && coachPendDiff && (
         <CoachRevisaoModal ass={coachPend[0]} diff={coachPendDiff} busy={coachBusy} onClose={() => setCoachRevisao(false)} onConfirmar={(dows, motivo, nRec) => coachAplicar(coachPend[0], coachPendDiff, dows, motivo, nRec)} />
@@ -19387,6 +20771,7 @@ function App() {
           onSave={saveRpeModal}
           onSkip={() => setRpeModal(null)}
           coachVeNota={coachVeNota}
+          uid={session ? session.user.id : null}
         />
       )}
 
@@ -19632,7 +21017,8 @@ function App() {
           getToken={() => (sessionRef.current ? sessionRef.current.access_token : "")}
           onAplicar={(plano, impId) => {
             const r = histAplicar(plano, { treinos, atividades, sessions, schedule }, impId);
-            updateTreinos(r.treinos); updateAtividades(r.atividades); updateSessions(r.sessions);
+            // Sem os toasts "Ficha salva"/"Salvo": a própria tela mostra "Importado ✓".
+            setTreinos(r.treinos); persist("treinos", r.treinos); setAtividades(r.atividades); persist("atividades", r.atividades); updateSessions(r.sessions);
             return r.resumo;
           }}
           onDesfazer={(impId) => {
@@ -19640,7 +21026,7 @@ function App() {
             updateTreinos(r.treinos); updateAtividades(r.atividades); updateSessions(r.sessions);
             showToast("Importação desfeita");
           }}
-          onEvent={(n) => logEvent(n)}
+          onEvent={(n, p) => logEvent(n, p)}
           onErro={(c, m) => logClientError(c, m)}
           onClose={() => setHistOpen(false)}
         />
@@ -21527,6 +22913,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
           <div className="gt-ex-detail">
             {ex.descricao && <div className="gt-ex-desc">{ex.descricao}</div>}
             {ex.observacoes && <div className="gt-ex-obs"><Ei e="⚠" /> {ex.observacoes}</div>}
+            {ex.videoCoach && <VideoPrivado video={ex.videoCoach} rotulo={ex.videoCoach.n ? `Vídeo de ${ex.videoCoach.n}` : "Vídeo de quem montou seu treino"} />}
             {(() => {
               const ytId = extractYoutubeId(ex.videoUrl);
               if (!ytId) return null;
@@ -21538,7 +22925,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
                     className="gt-ex-video-toggle"
                     onClick={(e) => { e.stopPropagation(); setVideoOpenId(videoShown ? null : ex.id); }}
                   >
-                    ▶ {videoShown ? "Esconder vídeo" : "Ver vídeo do exercício"}
+                    {videoShown ? "✕ Fechar vídeo" : ex.videoCoach ? "▶ Vídeo do catálogo" : "▶ Ver vídeo do exercício"}
                   </button>
                   {videoShown && (
                     <div className="gt-ex-video-frame">
@@ -22060,12 +23447,13 @@ function FichaPromptModal({ prompt, setPrompt, onSave, onSkip }) {
   );
 }
 
-function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota }) {
+function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
+  const [videoErro, setVideoErro] = useState("");
   const rpeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const kmNum = parseFloat(String(rpeModal.km || "").replace(",", ".")) || 0;
   const durNum = Number(rpeModal.duracaoMin) || 0;
   const temNota = !!String(rpeModal.nota || "").trim();
-  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota);
+  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota || !!rpeModal.video);
   // Atividades (vôlei, natação…) já têm o "Comentário do dia" no card; aqui o comentário é de treino e corrida.
   const comNota = !rpeModal.item || rpeModal.item.tipo !== "atividade";
   return (
@@ -22167,6 +23555,21 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota }) {
               onChange={(e) => setRpeModal({ ...rpeModal, nota: e.target.value })}
             />
             {coachVeNota && <div className="gt-rpe-hint">{coachVeNota} vê este comentário.</div>}
+            {coachVeNota && uid && !rpeModal.manual && (
+              <div className="gt-rpe-video">
+                {rpeModal.video ? (
+                  <>
+                    <VideoPrivado video={rpeModal.video} rotulo="Ver seu vídeo" />
+                    <button type="button" className="gt-co-link" style={{ paddingLeft: 0 }} onClick={() => setRpeModal((m) => ({ ...m, video: null }))}>Tirar vídeo</button>
+                  </>
+                ) : (
+                  <VideoEnviar uid={uid} pasta="sessao" rotulo={<><Ei e="🎥" /> Mandar vídeo da execução (até {VIDEO_MAX_SEG.sessao} s)</>}
+                    onPronto={(v) => { setVideoErro(""); setRpeModal((m) => ({ ...m, video: { ...v, novo: true } })); }} onErro={setVideoErro} />
+                )}
+                {videoErro && <div className="gt-plano-erro" role="alert">{videoErro}</div>}
+                <div className="gt-rpe-hint">{coachVeNota} vê o vídeo por {VIDEO_DIAS} dias. Depois ele é apagado.</div>
+              </div>
+            )}
           </>
         )}
         <div className="gt-modal-actions">
