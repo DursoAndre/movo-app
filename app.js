@@ -7510,6 +7510,11 @@ const DESAFIO_MODELOS = [
     id: "simples", nome: "Simples", desc: "1 ponto por treino, até 7 por semana.",
     rules: { meta: 7, pontos: [0, 1, 2, 3, 4, 5, 6, 7], bonusJuntos: 0, academia: { on: true, minMin: 0 }, atividades: { on: true, minMin: 0 } },
   },
+  {
+    // Fase 5: desafio de distância. Soma os km de corrida; quem correr mais na semana vence.
+    id: "km", nome: "Quem corre mais", desc: "Soma os km de corrida. Quem correr mais vence a semana.",
+    rules: { modo: "km", meta: 7, pontos: [0, 0, 0, 0, 0, 0, 0, 0], bonusJuntos: 0, academia: { on: false, minMin: 0 }, atividades: { on: true, minMin: 0, minKm: 0 } },
+  },
 ];
 
 function desafioClone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -7523,10 +7528,13 @@ function desafioNormalizeRules(raw) {
   let pontos = Array.isArray(r.pontos) ? r.pontos.map((n) => Math.round(Number(n)) || 0) : base.pontos.slice();
   while (pontos.length < meta + 1) pontos.push(pontos.length ? pontos[pontos.length - 1] : 0);
   pontos = pontos.slice(0, meta + 1);
+  const km = r.modo === "km";
   return {
+    // "treinos" (pontos por treinos na semana) ou "km" (soma da distância de corrida).
+    modo: km ? "km" : "treinos",
     meta,
     pontos,
-    bonusJuntos: Math.min(5, Math.max(0, Math.round(Number(r.bonusJuntos)) || 0)),
+    bonusJuntos: km ? 0 : Math.min(5, Math.max(0, Math.round(Number(r.bonusJuntos)) || 0)),
     academia: {
       on: !(r.academia && r.academia.on === false),
       minMin: Math.max(0, Math.round(Number(r.academia && r.academia.minMin)) || 0),
@@ -8799,8 +8807,20 @@ function desafioFmtPts(n) {
 }
 
 // Frase viva que resume a regra ("4 ou mais = +5 · 3 = +2 · ...").
+// Km de um check-in: a coluna km ou, se ela ainda não existe no banco, o " · 5,2 km" do rótulo.
+function desafioCheckinKm(c) {
+  const k = Number(c && c.km);
+  if (k > 0) return k;
+  const m = String((c && c.label) || "").match(/ · (\d+(?:,\d+)?) km$/);
+  return m ? parseFloat(m[1].replace(",", ".")) : 0;
+}
+// Placar com unidade: "+5 pts" nos desafios de treino, "23,4 km" nos de distância.
+function desafioFmtPlacar(v, rules) {
+  return rules && rules.modo === "km" ? desafioFmtKm(v || 0) : `${desafioFmtPts(v)} pts`;
+}
 function desafioRegrasResumo(rules) {
   const r = desafioNormalizeRules(rules);
+  if (r.modo === "km") return `Soma os km de corrida${r.atividades.minKm > 0 ? ` (corridas de ${desafioFmtKm(r.atividades.minKm)} ou mais)` : ""}. Quem correr mais vence a semana`;
   const partes = [];
   for (let n = r.meta; n >= 0; n--) {
     partes.push(`${n}${n === r.meta && r.meta > 0 ? "+" : ""} = ${desafioFmtPts(r.pontos[n])}`);
@@ -8896,10 +8916,11 @@ function desafioCheckinsFromSessions(sessions, atividadeById, rules, startIso, e
         const km = desafioKmDe(cargas[k], v);
         // Distância mínima só pra corrida; as outras atividades seguem só a regra de duração.
         if (r.atividades.minKm > 0 && desafioEhCorrida(a) && km < r.atividades.minKm && (km > 0 || r.exigirKm)) return;
-        out.push({ date, tipo: k, label: (a ? a.nome : "Atividade") + (km > 0 ? ` · ${desafioFmtKm(km)}` : ""), minutos: min || null });
+        if (r.modo === "km" && !(km > 0 && desafioEhCorrida(a))) return;
+        out.push({ date, tipo: k, label: (a ? a.nome : "Atividade") + (km > 0 ? ` · ${desafioFmtKm(km)}` : ""), minutos: min || null, km: km > 0 ? km : null });
       }
     });
-    if (academiaFeita && r.academia.on) {
+    if (academiaFeita && r.academia.on && r.modo !== "km") {
       const curto = r.academia.minMin > 0 && academiaMin < r.academia.minMin && (academiaMin > 0 || r.exigirDuracao);
       if (!curto && academiaExs >= r.academia.minExs) {
         out.push({ date, tipo: "academia", label: "Academia", minutos: academiaMin || null });
@@ -8936,6 +8957,12 @@ function desafioStandings(ch, members, checkins, together, today) {
     if (today < start) break;
     const fechada = today > end;
     const rows = (members || []).map((m) => {
+      if (rules.modo === "km") {
+        // Distância: pontos = km de corrida da semana (com 1 casa); count = corridas.
+        const minhas = (checkins || []).filter((c) => c.user_id === m.user_id && c.date >= start && c.date <= end && rules.dias.indexOf(weekdayOf(c.date)) >= 0 && desafioCheckinKm(c) > 0);
+        const km = Math.round(minhas.reduce((t, c) => t + desafioCheckinKm(c), 0) * 10) / 10;
+        return { user_id: m.user_id, nome: m.nome, count: minhas.length, bonus: 0, pts: km, base: km };
+      }
       const count = desafioContarCheckins(checkins, m.user_id, start, end, rules);
       const bonus = (together || []).filter((t) => (
         t.status === "confirmed" && t.date >= start && t.date <= end
@@ -8968,7 +8995,7 @@ function desafioStandings(ch, members, checkins, together, today) {
       if (!row) return;
       treinos += row.count;
       if (w.fechada) {
-        fechados += row.pts;
+        fechados = Math.round((fechados + row.pts) * 10) / 10;
         if (w.winners.indexOf(m.user_id) >= 0) vitorias++;
       } else {
         atualRow = row;
@@ -8977,7 +9004,7 @@ function desafioStandings(ch, members, checkins, together, today) {
     const aoVivo = atualRow ? Math.max(0, atualRow.pts) : 0;
     return {
       user_id: m.user_id, nome: m.nome, is_me: !!m.is_me,
-      fechados, aoVivo, total: fechados + aoVivo, treinos, vitorias,
+      fechados, aoVivo, total: Math.round((fechados + aoVivo) * 10) / 10, treinos, vitorias,
       semanaCount: atualRow ? atualRow.count : 0,
       semanaBonus: atualRow ? atualRow.bonus : 0,
     };
@@ -9181,11 +9208,13 @@ async function syncDesafioCheckins(ch, userId, sessions, atividadeById, today) {
   if (error) return { changed: false, added: [], error };
   const diff = desafioDiffCheckins(desired, data || []);
   const upserts = [...diff.adicionar, ...diff.atualizar].map((c) => ({
-    challenge_id: ch.id, user_id: userId, date: c.date, tipo: c.tipo, label: c.label || null, minutos: c.minutos || null, source: "app",
+    challenge_id: ch.id, user_id: userId, date: c.date, tipo: c.tipo, label: c.label || null, minutos: c.minutos || null, source: "app", km: c.km || null,
   }));
   let failed = null;
   if (upserts.length) {
-    const r = await supabaseClient.from("challenge_checkins").upsert(upserts, { onConflict: "challenge_id,user_id,date,tipo" });
+    let r = await supabaseClient.from("challenge_checkins").upsert(upserts, { onConflict: "challenge_id,user_id,date,tipo" });
+    // Banco sem a coluna km (fase5.sql não aplicado): manda sem ela.
+    if (r.error && /\bkm\b/.test(r.error.message || "")) r = await supabaseClient.from("challenge_checkins").upsert(upserts.map(({ km, ...x }) => x), { onConflict: "challenge_id,user_id,date,tipo" });
     if (r.error) failed = r.error;
   }
   for (const c of diff.remover) {
@@ -9207,8 +9236,8 @@ function desafioSerie(ch, st, members) {
   const series = (members || []).map((m) => {
     let acc = 0;
     const vals = [0];
-    fechadas.forEach((w) => { const r = w.rows.find((x) => x.user_id === m.user_id); acc += r ? r.pts : 0; vals.push(acc); });
-    if (atual) { const r = atual.rows.find((x) => x.user_id === m.user_id); vals.push(acc + Math.max(0, r ? r.pts : 0)); }
+    fechadas.forEach((w) => { const r = w.rows.find((x) => x.user_id === m.user_id); acc = Math.round((acc + (r ? r.pts : 0)) * 10) / 10; vals.push(acc); });
+    if (atual) { const r = atual.rows.find((x) => x.user_id === m.user_id); vals.push(Math.round((acc + Math.max(0, r ? r.pts : 0)) * 10) / 10); }
     return { user_id: m.user_id, nome: m.nome, is_me: !!m.is_me, cor: desafioCorDe(members, m.user_id), vals };
   });
   return { labels, series, temAoVivo: !!atual, liderId: st.totais[0] ? st.totais[0].user_id : null };
@@ -9222,9 +9251,10 @@ function desafioDadosCartaoGeral(ch, st, members) {
     titulo: ch.nome,
     subtitulo: fim ? "Resultado final" : `Placar geral · semana ${st.status.semanaNum || 0} de ${ch.weeks}`,
     ranking,
+    km: st.rules.modo === "km",
     perdedor: null,
     aposta: null,
-    rodape: fim && stakes.final ? `🏆 ${ranking[0] ? ranking[0].nome : ""} leva: ${stakes.final}` : "Parcial · negativos só valem no fim da semana",
+    rodape: fim && stakes.final ? `🏆 ${ranking[0] ? ranking[0].nome : ""} leva: ${stakes.final}` : st.rules.modo === "km" ? "Parcial · soma os km de corrida" : "Parcial · negativos só valem no fim da semana",
   };
 }
 function desafioDadosCartaoSemana(ch, st, members, w) {
@@ -9242,6 +9272,7 @@ function desafioDadosCartaoSemana(ch, st, members, w) {
       ? `Semana ${w.num} · 🏆 ${String(nomeDe(vencedor)).split(" ")[0]} venceu${serie > 1 ? ` · ${serie} semanas seguidas` : ""}`
       : `Semana ${w.num} · ${desafioDataCurta(w.start)} a ${desafioDataCurta(w.end)}`,
     ranking,
+    km: st.rules.modo === "km",
     perdedor: perd,
     aposta: perd ? (stakes.semana || null) : null,
     rodape: w.winners.length ? null : "Semana empatada — ninguém paga nada 😅",
@@ -9251,8 +9282,9 @@ function desafioDadosCartaoEvolucao(ch, st, members) {
   const serie = desafioSerie(ch, st, members);
   return {
     titulo: ch.nome,
-    subtitulo: `Corrida dos pontos · semana ${st.status.semanaNum || ch.weeks} de ${ch.weeks}`,
+    subtitulo: `${st.rules.modo === "km" ? "Km acumulados" : "Corrida dos pontos"} · semana ${st.status.semanaNum || ch.weeks} de ${ch.weeks}`,
     ranking: st.totais.map((t) => ({ uid: t.user_id, nome: t.nome, pts: t.total, cor: desafioCorDe(members, t.user_id) })),
+    km: st.rules.modo === "km",
     serie,
     perdedor: null,
     aposta: null,
@@ -9267,7 +9299,7 @@ function desafioSnapDe(st) {
   const atual = st.semanas.find((w) => !w.fechada);
   const bateu = {};
   const meta = st.rules.meta;
-  st.totais.forEach((t) => { if (atual && t.semanaCount >= meta) bateu[t.user_id] = true; });
+  st.totais.forEach((t) => { if (atual && st.rules.modo !== "km" && t.semanaCount >= meta) bateu[t.user_id] = true; });
   return { pos, fechadas: st.semanas.filter((w) => w.fechada).length, semanaIdx: atual ? atual.idx : -1, bateu, fim: st.status.fase === "fim" };
 }
 
@@ -9294,7 +9326,7 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
 
   if (st.status.fase === "fim" && (!prev || !prev.fim)) {
     const c = st.totais[0];
-    itens.push({ id: "fim", emoji: "🏆", texto: `Acabou! ${c.nome} é o campeão com ${desafioFmtPts(c.total)} pts${stakes.final ? ` e leva: ${stakes.final}` : ""}.`, acao: { tipo: "geral", rotulo: "Compartilhar resultado" } });
+    itens.push({ id: "fim", emoji: "🏆", texto: `Acabou! ${c.nome} é o campeão com ${desafioFmtPlacar(c.total, rules)}${stakes.final ? ` e leva: ${stakes.final}` : ""}.`, acao: { tipo: "geral", rotulo: "Compartilhar resultado" } });
   }
   if (ultima && ((prev && fechadas.length > prev.fechadas) || (!prev && ultima.end >= addDays(today, -6)))) {
     let texto;
@@ -9312,7 +9344,7 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
     }
     itens.push({ id: `semana-${ultima.num}`, emoji: venci ? "🏆" : "📅", texto, acao: { tipo: "semana", idx: ultima.idx, rotulo: venci ? "Compartilhar vitória" : "Compartilhar cartão" } });
   }
-  if (st.status.fase === "rolando" && me.semanaCount < rules.meta && st.status.diasRestantesSemana <= 2) {
+  if (rules.modo !== "km" && st.status.fase === "rolando" && me.semanaCount < rules.meta && st.status.diasRestantesSemana <= 2) {
     const dias = st.status.diasRestantesSemana;
     const falta = rules.meta - me.semanaCount;
     const alcanca = Math.min(rules.meta, me.semanaCount + dias + 1);
@@ -9332,7 +9364,7 @@ function desafioAvisos(ch, st, members, meId, today, prev) {
       itens.push({ id: "caiu", emoji: "📉", texto: passou.length ? `${passou.map((t) => t.nome).join(" e ")} ${passou.length === 1 ? "te passou" : "passaram você"} — você está em ${me.pos}º.` : `Você caiu pro ${me.pos}º lugar.` });
     }
   }
-  if (prev && st.status.fase === "rolando" && me.semanaCount < rules.meta) {
+  if (rules.modo !== "km" && prev && st.status.fase === "rolando" && me.semanaCount < rules.meta) {
     const bateuAntes = prev.semanaIdx === (st.semanas.find((w) => !w.fechada) || {}).idx ? (prev.bateu || {}) : {};
     const novos = st.totais.filter((t) => t.user_id !== meId && t.semanaCount >= rules.meta && !bateuAntes[t.user_id]);
     if (novos.length) itens.push({ id: "bateu", emoji: "🔥", texto: `${novos.map((t) => t.nome).join(" e ")} já ${novos.length === 1 ? "bateu" : "bateram"} a meta da semana.` });
@@ -9397,7 +9429,7 @@ function desafioTimeline(ch, ov, st, meId, hoje) {
     const it = {
       id: `c|${c.user_id}|${c.date}|${c.tipo}`, kind: "checkin", date: c.date, user_id: c.user_id, tipo: c.tipo,
       label: c.label || (c.tipo === "academia" ? "Academia" : "Treino"),
-      pts: pts > 0 ? pts : 0, bateu: antes < rules.meta && depois >= rules.meta,
+      pts: pts > 0 ? pts : 0, bateu: rules.modo !== "km" && antes < rules.meta && depois >= rules.meta,
       hora: desafioHoraLocal(c.created_at, c.date), ts: tsDe(c.created_at, c.date),
       claps: reacoes.filter((r) => r.target_user === c.user_id && r.date === c.date && r.tipo === c.tipo).map((r) => r.user_id),
     };
@@ -9414,7 +9446,7 @@ function desafioTimeline(ch, ov, st, meId, hoje) {
     }
   });
   // "Faltam N pra bater a meta e passar fulano": só no treino mais recente de quem ainda não bateu a meta desta semana.
-  if (st.status.fase === "rolando") {
+  if (st.status.fase === "rolando" && rules.modo !== "km") {
     st.totais.forEach((t) => {
       const it = ultimoDe[t.user_id];
       if (!it || desafioSemanaIdxDe(ch, it.date) !== st.status.semanaIdx || t.semanaCount >= rules.meta) return;
@@ -9461,7 +9493,7 @@ function desafioTimelineTexto(it, nomeDe, rules) {
     return `Semana ${it.num} fechou: 🏆 ${it.winners.map(nomeDe).join(" e ")}`;
   }
   if (it.kind === "inicio") return "O desafio começou";
-  if (it.kind === "fim") return `Desafio encerrado: ${nomeDe(it.user_id)} é o campeão com ${desafioFmtPts(it.total)} pts`;
+  if (it.kind === "fim") return `Desafio encerrado: ${nomeDe(it.user_id)} é o campeão com ${desafioFmtPlacar(it.total, rules)}`;
   return "";
 }
 function desafioTimelineDiaLabel(iso, hoje) {
@@ -9733,7 +9765,7 @@ function DesafioAnel({ count, meta }) {
 }
 
 // Pista de corrida: uma raia por pessoa, o avatar avança conforme os pontos.
-function DesafioPista({ totais, members, meta, fase }) {
+function DesafioPista({ totais, members, meta, fase, km }) {
   const W = 340;
   const laneH = 52;
   const [pronto, setPronto] = useState(false);
@@ -9774,7 +9806,7 @@ function DesafioPista({ totais, members, meta, fase }) {
   return (
     <>
     {passou && <div className="gt-pista-passou" role="status">{passou}</div>}
-    <svg className="gt-dsf-pista" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Pista de corrida do desafio. ${totais.map((t) => `${t.pos}º ${t.nome}${t.is_me ? " (você)" : ""}, ${desafioFmtPts(t.total)} pontos`).join("; ")}`}>
+    <svg className="gt-dsf-pista" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`Pista de corrida do desafio. ${totais.map((t) => `${t.pos}º ${t.nome}${t.is_me ? " (você)" : ""}, ${km ? desafioFmtKm(t.total) : `${desafioFmtPts(t.total)} pontos`}`).join("; ")}`}>
       <defs>
         <pattern id="gt-dsf-xadrez" width="8" height="8" patternUnits="userSpaceOnUse">
           <rect width="4" height="4" fill="#F2F3F1" /><rect x="4" y="4" width="4" height="4" fill="#F2F3F1" />
@@ -9800,7 +9832,7 @@ function DesafioPista({ totais, members, meta, fase }) {
               {ehUltimo && <text x="23" y={y + 24} textAnchor="start" fontSize="13">☕</text>}
             </g>
             <text x="14" y={y + 10} fontFamily="Inter, sans-serif" fontSize="10.5" fill={t.is_me ? "var(--accent)" : "var(--text-muted)"}>{t.pos}º {t.nome.length > 18 ? t.nome.slice(0, 17) + "…" : t.nome}{t.is_me ? " (você)" : ""}{fase === "rolando" && meta ? <tspan fill="var(--text-muted)" fillOpacity="0.8"> · {t.semanaCount}/{meta} na semana</tspan> : null}{t.vitorias > 0 ? <tspan fill="var(--text-muted)" fillOpacity="0.8"> · 🏆 {t.vitorias}</tspan> : null}</text>
-            <text x={W - 34} y={y + 10} textAnchor="end" fontFamily="Oswald, sans-serif" fontSize="12" fill="var(--text)">{desafioFmtPts(t.total)} pts</text>
+            <text x={W - 34} y={y + 10} textAnchor="end" fontFamily="Oswald, sans-serif" fontSize="12" fill="var(--text)">{km ? desafioFmtKm(t.total) : `${desafioFmtPts(t.total)} pts`}</text>
           </g>
         );
       })}
@@ -9834,6 +9866,8 @@ function avatarCanvas(g, im, cx, cy, r) {
 }
 
 async function desafioRenderCartao(d) {
+  // Número do placar: pontos (+5) ou, no desafio de distância, km com 1 casa (23,4).
+  const num = (v) => (d.km ? String(Math.round((v || 0) * 10) / 10).replace(".", ",") : desafioFmtPts(v).replace("−", "-"));
   const W = 1080;
   const H = 1350;
   const cv = document.createElement("canvas");
@@ -9930,7 +9964,7 @@ async function desafioRenderCartao(d) {
       g.fillStyle = "#F2F3F1"; g.font = `500 32px ${INT}`;
       g.fillText(fit(x.nome, 300) + (x === lider ? " 👑" : ""), lxx + 40, lyy);
       g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`;
-      g.fillText(desafioFmtPts(x.vals[x.vals.length - 1]).replace("−", "-"), lxx + 440, lyy); g.textAlign = "left";
+      g.fillText(num(x.vals[x.vals.length - 1]), lxx + 440, lyy); g.textAlign = "left";
     });
   } else {
   // Pódio
@@ -9951,10 +9985,10 @@ async function desafioRenderCartao(d) {
     g.textAlign = "center";
     g.fillStyle = first ? "#14161A" : "#F2F3F1";
     g.font = `600 ${first ? 120 : 92}px ${OSW}`;
-    g.fillText(desafioFmtPts(p.pts).replace("−", "-"), cx, baseY - h + (first ? 150 : 124));
+    g.fillText(num(p.pts), cx, baseY - h + (first ? 150 : 124));
     g.font = `500 28px ${INT}`;
     g.fillStyle = first ? "rgba(20,22,26,0.7)" : "#9AA0A6";
-    g.fillText("pontos", cx, baseY - h + (first ? 196 : 164));
+    g.fillText(d.km ? "km" : "pontos", cx, baseY - h + (first ? 196 : 164));
     g.font = `600 52px ${OSW}`;
     g.fillStyle = first ? "#14161A" : "#C6F135";
     g.fillText(`${idx + 1}º`, cx, baseY - 36);
@@ -9980,7 +10014,7 @@ async function desafioRenderCartao(d) {
   d.ranking.slice(3, 6).forEach((p, i) => {
     g.fillStyle = "#9AA0A6"; g.font = `600 34px ${OSW}`; g.fillText(`${i + 4}º`, 120, y);
     g.fillStyle = "#F2F3F1"; g.font = `500 32px ${INT}`; g.fillText(fit(p.nome, 560), 190, y);
-    g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`; g.fillText(`${desafioFmtPts(p.pts).replace("−", "-")} pts`, W - 120, y); g.textAlign = "left";
+    g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`; g.fillText(`${num(p.pts)} ${d.km ? "km" : "pts"}`, W - 120, y); g.textAlign = "left";
     y += extras ? 46 : 52;
   });
   }
@@ -10250,6 +10284,31 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             </div>
             {modeloId === "custom" && <div className="gt-dsf-hint" style={{ marginTop: 6 }}>Modelo personalizado — você mexeu nas regras.</div>}
 
+            {rules.modo === "km" && (
+              <>
+                <div className="gt-field-label" style={{ marginTop: 18 }}>O QUE CONTA</div>
+                <div className="gt-card gt-dsf-regra">
+                  <div className="gt-dsf-hint" style={{ marginTop: 0 }}>Toda corrida com distância registrada (Strava ou os km anotados no treino). Academia e outras atividades não entram.</div>
+                  <DesafioStepper value={rules.atividades.minKm} min={0} max={21} step={0.5} onChange={(v) => editarRegras({ ...rules, atividades: { ...rules.atividades, minKm: v } })} fmt={(v) => (v === 0 ? "qualquer distância" : `corridas de ${desafioFmtKm(v)} ou mais`)} />
+                  <div className="gt-dsf-hint" style={{ margin: "12px 0 6px" }}>Dias da semana que valem</div>
+                  <div className="gt-dsf-dias">
+                    {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                      const on = rules.dias.indexOf(d) >= 0;
+                      return (
+                        <button key={d} type="button" className={`gt-dsf-dia ${on ? "on" : ""}`} aria-pressed={on}
+                          onClick={() => {
+                            const next = on ? rules.dias.filter((x) => x !== d) : [...rules.dias, d];
+                            if (next.length === 0) return;
+                            editarRegras({ ...rules, dias: next.sort() });
+                          }}>{DESAFIO_SEMANA_NOMES[d].slice(0, 3)}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="gt-dsf-resumo"><b>Resumo:</b> {desafioRegrasResumo(rules)}.</div>
+              </>
+            )}
+            {rules.modo !== "km" && <>
             <div className="gt-field-label" style={{ marginTop: 18 }}>O QUE CONTA COMO TREINO</div>
             <div className="gt-card gt-dsf-regra">
               <label className="gt-dsf-check"><input type="checkbox" checked={rules.academia.on} onChange={(e) => editarRegras({ ...rules, academia: { ...rules.academia, on: e.target.checked } })} /> Treino de academia</label>
@@ -10319,6 +10378,7 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             <div className="gt-dsf-hint">Vale quando a outra pessoa confirma e as duas têm treino registrado no dia.</div>
 
             <div className="gt-dsf-resumo"><b>Resumo:</b> {desafioRegrasResumo(rules)}{rules.bonusJuntos > 0 ? ` · junto = ${desafioFmtPts(rules.bonusJuntos)}` : ""}</div>
+            </>}
           </div>
         )}
 
@@ -10333,7 +10393,7 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             <div className="gt-card" style={{ marginTop: 18 }}>
               <div className="gt-field-label">RESUMO</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18 }}>{nome.trim()}</div>
-              <div className="gt-dsf-hint">{dd(inicio)} → {dd(fim)} · {semanas} semana{semanas === 1 ? "" : "s"} · meta {rules.meta}/semana</div>
+              <div className="gt-dsf-hint">{dd(inicio)} → {dd(fim)} · {semanas} semana{semanas === 1 ? "" : "s"} · {rules.modo === "km" ? "quem corre mais km" : `meta ${rules.meta}/semana`}</div>
               <div className="gt-dsf-hint">{desafioRegrasResumo(rules)}</div>
               <div className="gt-dsf-hint">As regras ficam travadas quando o desafio começa. Nome e apostas dá pra editar depois.</div>
             </div>
@@ -10798,7 +10858,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
     const wr = desafioWeekRange(ch, status.semanaIdx);
     return ov.checkins.filter((c) => c.user_id === meId && c.date >= wr.start && c.date <= wr.end).sort((a, b) => a.date.localeCompare(b.date));
   })();
-  const faixa = me && status.fase === "rolando" ? desafioProximaFaixa(rules, me.semanaCount) : null;
+  const faixa = me && status.fase === "rolando" && rules.modo !== "km" ? desafioProximaFaixa(rules, me.semanaCount) : null;
   const pendentes = ov.together.filter((t) => t.to_user === meId && t.status === "pending");
   const nomeDe = (uid) => { const m = ov.members.find((x) => x.user_id === uid); return m ? m.nome : "Alguém"; };
   const outros = ov.members.filter((m) => m.user_id !== meId);
@@ -10871,11 +10931,15 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
   }
   const regrasTxt = (
     <div className="gt-dsf-regras-txt">
+              {rules.modo === "km" && <div><b>Placar:</b> {desafioRegrasResumo(rules)} ({DESAFIO_SEMANA_NOMES[ch.week_start]} a {DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
+              {rules.modo === "km" && <div><b>Conta:</b> corrida com distância registrada (Strava ou o km anotado no treino){rules.dias.length < 7 ? `, só ${rules.dias.map((d) => DESAFIO_SEMANA_NOMES[d]).join(", ")}` : ""}.</div>}
+              {rules.modo !== "km" && <>
               <div><b>Conta:</b> {desafioContamTexto(rules)}.</div>
               <div><b>Limites:</b> {desafioLimitesTexto(rules)}.</div>
               <div><b>Meta:</b> {rules.meta} treino{rules.meta === 1 ? "" : "s"} por semana ({DESAFIO_SEMANA_NOMES[ch.week_start]} a {DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>
               <div><b>Pontos:</b> {desafioRegrasResumo(rules)}</div>
               <div><b>Treinar junto:</b> {rules.bonusJuntos > 0 ? `${desafioFmtPts(rules.bonusJuntos)} pt por vez, pra cada um, com confirmação` : "sem bônus"}</div>
+              </>}
               <div><b>Semana:</b> {stakes.semana ? `quem perde ${stakes.semana}` : "sem aposta definida"}</div>
               <div><b>Final:</b> {stakes.final || "sem prêmio definido"}</div>
               {(valoresRS.semana > 0 || valoresRS.final > 0) && (() => { const cb = desafioCombinadoLinhas(stakes, ov.members.length, ch.weeks); return <div><b>Combinado em R$:</b> {cb.linhas.join(" · ")}. Pior caso pra cada um: {desafioBRL(Math.round(cb.pior * 100))}. {DESAFIO_TERMO}</div>; })()}
@@ -10962,11 +11026,30 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
           <div className="gt-card gt-dsf-campeao">
             <div style={{ fontSize: 34 }}><Ei e="🏆" size={40} /></div>
             <div className="gt-dsf-campeao-nome">{campeao.nome}</div>
-            <div className="gt-dsf-hint">campeão com {desafioFmtPts(campeao.total)} pts{stakes.final ? ` · leva: ${stakes.final}` : ""}</div>
+            <div className="gt-dsf-hint">campeão com {desafioFmtPlacar(campeao.total, rules)}{stakes.final ? ` · leva: ${stakes.final}` : ""}</div>
           </div>
         )}
 
-        {status.fase === "rolando" && me && (
+        {status.fase === "rolando" && me && rules.modo === "km" && (() => {
+          const atualW = st.semanas.find((w) => !w.fechada);
+          const minha = atualW ? atualW.rows.find((r) => r.user_id === me.user_id) : null;
+          const frente = atualW ? atualW.rows.filter((r) => r.user_id !== me.user_id && r.pts > (minha ? minha.pts : 0)).sort((a, b) => a.pts - b.pts)[0] : null;
+          return (
+            <div className="gt-card gt-dsf-minha">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="gt-field-label" style={{ marginBottom: 2 }}>MINHA SEMANA</div>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17 }}>{desafioFmtKm(minha ? minha.pts : 0)} em {me.semanaCount} corrida{me.semanaCount === 1 ? "" : "s"}</div>
+                <div className="gt-dsf-hint" style={{ marginTop: 2 }}>{frente ? `${desafioFmtKm(Math.round((frente.pts - (minha ? minha.pts : 0)) * 10) / 10)} atrás de ${String(frente.nome).split(" ")[0]}` : atualW && atualW.rows.length > 1 ? "Você lidera a semana" : "Cada km conta"}</div>
+                {meusCheckinsSemana.length > 0 && (
+                  <div className="gt-dsf-chips">
+                    {meusCheckinsSemana.map((c) => <span key={`${c.date}${c.tipo}`} className="gt-dsf-chip">{diaSemanaCurto(c.date)} · {c.label || "Corrida"}</span>)}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+        {status.fase === "rolando" && me && rules.modo !== "km" && (
           <div className="gt-card gt-dsf-minha">
             <DesafioAnel count={me.semanaCount} meta={rules.meta} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -10988,7 +11071,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
         )}
         {status.fase === "antes" && (() => {
           const dias = status.diasParaComecar;
-          const resumoRegras = `${rules.meta}x/sem${stakes.semana ? ` · ${stakes.semana}` : ""}`;
+          const resumoRegras = `${rules.modo === "km" ? "quem corre mais km" : `${rules.meta}x/sem`}${stakes.semana ? ` · ${stakes.semana}` : ""}`;
           const nPend = pendIds.length;
           const candidatos = (friends || []).filter((f) => ov.members.every((m) => m.user_id !== f.id)).length;
           const secao = (key, titulo, resumo, corpo) => (
@@ -11055,23 +11138,23 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
         {status.fase !== "antes" && (
           <div className="gt-card">
             <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>PISTA</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoGeral())}>Compartilhar ↗</button></div>
-            <DesafioPista totais={totaisVis} members={ov.members} meta={rules.meta} fase={status.fase} />
+            <DesafioPista totais={totaisVis} members={ov.members} meta={rules.modo === "km" ? null : rules.meta} fase={status.fase} km={rules.modo === "km"} />
             {muitos && <button type="button" className="gt-dsf-link big" onClick={() => setVerTodos(!verTodos)}>{verTodos ? "Mostrar só o top 5 e você ▴" : `Ver todos os ${st.totais.length} ▾`}</button>}
-            {status.fase === "rolando" && <div className="gt-dsf-hint" style={{ marginTop: 8 }}>Pontos da semana em andamento aparecem só se forem positivos. Os negativos só valem quando a semana fecha ({DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
+            {status.fase === "rolando" && rules.modo !== "km" && <div className="gt-dsf-hint" style={{ marginTop: 8 }}>Pontos da semana em andamento aparecem só se forem positivos. Os negativos só valem quando a semana fecha ({DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
           </div>
         )}
 
         {status.fase !== "antes" && serie.labels.length >= 3 && (
           <div className="gt-card">
-            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>CORRIDA DOS PONTOS</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoEvolucao())}>Compartilhar ↗</button></div>
+            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>{rules.modo === "km" ? "KM ACUMULADOS" : "CORRIDA DOS PONTOS"}</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoEvolucao())}>Compartilhar ↗</button></div>
             <DesafioEvolucao serie={serieVis} />
-            {serie.temAoVivo && <div className="gt-dsf-hint" style={{ margin: "4px 0 0" }}>* semana em andamento (só pontos positivos)</div>}
+            {serie.temAoVivo && <div className="gt-dsf-hint" style={{ margin: "4px 0 0" }}>{rules.modo === "km" ? "* semana em andamento" : "* semana em andamento (só pontos positivos)"}</div>}
           </div>
         )}
 
         {status.fase !== "antes" && <DesafioLinhaDoTempo itens={timeline} meId={meId} members={ov.members} hoje={hoje} rules={rules} podeReagir={podeReagir} onReagir={reagir} />}
 
-        {status.fase !== "antes" && (
+        {status.fase !== "antes" && rules.modo !== "km" && (
           <div className="gt-card">
             <div className="gt-field-label">TREINEI COM ALGUÉM</div>
             <p className="gt-dsf-hint" style={{ marginTop: 0 }}>Treinou junto com alguém do desafio? Avisa — vale +{rules.bonusJuntos || 0} pt pra cada um quando a pessoa confirmar{rules.bonusJuntos === 0 ? " (este desafio não tem bônus)" : ""}.</p>
@@ -11090,8 +11173,8 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
                 </div>
                 {w.winners.length === 0 ? <div className="gt-dsf-hint" style={{ margin: 0 }}>Empate — ninguém ganha nem paga.</div> : (
                   <div className="gt-dsf-sem-lines">
-                    <div><Ei e="🏆" /> {w.winners.map(nomeDe).join(" e ")} <span className="gt-dsf-hint" style={{ margin: 0 }}>({desafioFmtPts(w.rows.find((r) => r.user_id === w.winners[0]).pts)})</span></div>
-                    <div><Ei e="☕" /> {w.losers.map(nomeDe).join(" e ")}{stakes.semana ? ` · ${stakes.semana}` : ""} <span className="gt-dsf-hint" style={{ margin: 0 }}>({desafioFmtPts(w.rows.find((r) => r.user_id === w.losers[0]).pts)})</span></div>
+                    <div><Ei e="🏆" /> {w.winners.map(nomeDe).join(" e ")} <span className="gt-dsf-hint" style={{ margin: 0 }}>({rules.modo === "km" ? desafioFmtKm(w.rows.find((r) => r.user_id === w.winners[0]).pts) : desafioFmtPts(w.rows.find((r) => r.user_id === w.winners[0]).pts)})</span></div>
+                    <div><Ei e="☕" /> {w.losers.map(nomeDe).join(" e ")}{stakes.semana ? ` · ${stakes.semana}` : ""} <span className="gt-dsf-hint" style={{ margin: 0 }}>({rules.modo === "km" ? desafioFmtKm(w.rows.find((r) => r.user_id === w.losers[0]).pts) : desafioFmtPts(w.rows.find((r) => r.user_id === w.losers[0]).pts)})</span></div>
                   </div>
                 )}
               </div>
@@ -11234,8 +11317,9 @@ function DesafiosPanel({ friends, session, desafios, desafiosOk, reload, session
     if (status.fase === "rolando") {
       const wr = desafioWeekRange(ch, status.semanaIdx);
       const rules = desafioNormalizeRules(ch.rules);
-      const n = desafioContarLista(desafioCheckinsFromSessions(sessions, atividadeById, rules, wr.start, hoje), rules);
-      prog = `${n}/${rules.meta} esta semana`;
+      const cks = desafioCheckinsFromSessions(sessions, atividadeById, rules, wr.start, hoje);
+      if (rules.modo === "km") prog = `${desafioFmtKm(cks.reduce((t, c) => t + (c.km || 0), 0))} esta semana`;
+      else prog = `${desafioContarLista(cks, rules)}/${rules.meta} esta semana`;
     }
     return { linha, prog, fase: status.fase };
   }
@@ -14006,7 +14090,7 @@ function CoachTurmas({ lista, coachUid, onMontarTurma, showToast }) {
     } catch (e) {}
   }, []);
   useEffect(() => { carregar(); }, [carregar]);
-  const elegiveis = coachOrdenarAlunos(lista.filter((a) => a.status === "ativo" || a.status === "pendente"), todayISO());
+  const elegiveis = lista.filter((a) => a.status === "ativo" || a.status === "pendente").slice().sort((x, y) => x.nome.localeCompare(y.nome, "pt-BR"));
   if (elegiveis.length < 2 && turmas.length === 0) return null;
   async function salvar() {
     const nome = (edit.nome || "").trim();
