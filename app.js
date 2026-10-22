@@ -4001,6 +4001,13 @@ const APP_CSS = `
   .gt-push-links .gt-co-link { padding-left:0; padding-right:0; }
   .gt-med-body, .gt-anam-body { display:flex; flex-direction:column; gap:6px; padding:4px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
   .gt-med-cmp .gt-focus-body { padding:4px 16px 24px; }
+  .gt-rit-lista { display:flex; flex-direction:column; gap:8px; margin:10px 0; }
+  .gt-rit-zona { display:flex; align-items:center; gap:12px; background:var(--surface); border-radius:14px; padding:12px 14px; }
+  .gt-rit-zona .tx { flex:1; min-width:0; }
+  .gt-rit-zona .t { font-weight:600; font-size:15px; }
+  .gt-rit-zona .d { color:var(--text-muted); font-size:13px; margin-top:2px; }
+  .gt-rit-zona .v { font-family:'Roboto Mono',monospace; font-size:16px; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .gt-rit-zona .v small { font-size:12px; color:var(--text-muted); font-weight:400; margin-left:2px; }
   .gt-med-resumo { display:grid; grid-template-columns:repeat(auto-fit, minmax(96px, 1fr)); gap:8px; margin-bottom:10px; }
   .gt-med-stat { background:var(--surface); border-radius:14px; padding:12px; }
   .gt-med-stat .t { font-size:12px; color:var(--text-muted); }
@@ -5212,7 +5219,7 @@ function ImportarHistoricoModal({ treinos, sessions, schedule, atividades, hojeI
 // o que está pendente pra nuvem, com nova tentativa (ao reconectar, ao voltar pro app e a cada 30 s).
 // Só sai da fila quando a nuvem confirma. Ao puxar da nuvem, o que está pendente nunca é sobrescrito.
 // Sessões (treinos feitos) são mescladas dia a dia: cada dia alterado leva um carimbo `_t`.
-const SYNC_CHAVES = ["treinos", "atividades", "schedule", "sessions", "planos", "display_name"];
+const SYNC_CHAVES = ["treinos", "atividades", "schedule", "sessions", "planos", "display_name", "ritmos"];
 const SYNC_PENDENTE = "treino-app:syncPending";
 const SYNC_ACK = "treino-app:syncAck";
 const SYNC_BACKOFF = [4000, 15000, 60000, 300000];
@@ -6386,7 +6393,7 @@ function PlanoCorridaModal({ prova: provaProp, hojeISO, schedule, sessions, ativ
   const replanSemStrava = !!(sit && sitIA && (sit.feitasTotal !== sitIA.feitasTotal || sit.feitasRec !== sitIA.feitasRec));
   const [distKm, setDistKm] = useState(F.distKm != null ? F.distKm : prova.kmEscolhido > 0 ? String(prova.kmEscolhido).replace(".", ",") : distancias.length ? String(distancias[0]).replace(".", ",") : "");
   const [confortavel, setConfortavel] = useState(F.confortavel != null ? F.confortavel : hist ? String(hist.confortavelKm).replace(".", ",") : "");
-  const [paceTxt, setPaceTxt] = useState(F.paceTxt != null ? F.paceTxt : hist && hist.paceMin ? planoFmtPace(hist.paceMin) : "");
+  const [paceTxt, setPaceTxt] = useState(F.paceTxt != null ? F.paceTxt : ritmosPaceLeve(ritmosLer()) ? planoFmtPace(ritmosPaceLeve(ritmosLer())) : hist && hist.paceMin ? planoFmtPace(hist.paceMin) : "");
   const [objetivo, setObjetivo] = useState(F.objetivo || "completar");
   const [tempoAlvo, setTempoAlvo] = useState(F.tempoAlvo || "");
   const [lesoes, setLesoes] = useState(F.lesoes || "");
@@ -7818,7 +7825,7 @@ function planoMontarPrompt(p) {
     linhas.push('    { "data": "AAAA-MM-DD", "fase": "Construção", "modelo": "tiros400", "distanciaKm": 6, "duracaoMin": 42, "esforco": "tiros fortes, recuperação leve", "pace": null, "nota": "boa postura nos tiros" }');
     linhas.push("  ]");
     linhas.push("}");
-    linhas.push('"modelo" deve ser exatamente um destes (distância mínima em km): ' + Object.keys(TREINOS_CORRIDA).map((k) => `${k} (${TREINOS_CORRIDA[k].min})`).join(", ") + ". Significados: rodagem = corrida leve contínua; regenerativo = bem leve e curto; longao = mais longo da semana em ritmo constante; longao_prog = longão que termina mais forte; tempo = bloco contínuo em ritmo de limiar; progressivo = cada trecho mais rápido; fartlek = alterna forte e leve por tempo; tiros200/400/800/1000 = tiros (distância de cada tiro em metros) com pausa. \"nota\" tem no máximo 1 frase curta. \"data\" sempre no formato AAAA-MM-DD. Ordene as sessões por data. Responda só com o JSON, sem texto extra.");
+    linhas.push('"modelo" deve ser exatamente um destes (distância mínima em km): ' + Object.keys(TREINOS_CORRIDA).filter((k) => k.indexOf("teste") !== 0).map((k) => `${k} (${TREINOS_CORRIDA[k].min})`).join(", ") + ". Significados: rodagem = corrida leve contínua; regenerativo = bem leve e curto; longao = mais longo da semana em ritmo constante; longao_prog = longão que termina mais forte; tempo = bloco contínuo em ritmo de limiar; progressivo = cada trecho mais rápido; fartlek = alterna forte e leve por tempo; tiros200/400/800/1000 = tiros (distância de cada tiro em metros) com pausa. \"nota\" tem no máximo 1 frase curta. \"data\" sempre no formato AAAA-MM-DD. Ordene as sessões por data. Responda só com o JSON, sem texto extra.");
     return linhas.join("\n");
   }
   linhas.push("{");
@@ -8532,7 +8539,77 @@ const TREINOS_CORRIDA = {
   tiros400: { nome: "Tiros de 400 m", emoji: "⚡", desc: "Clássico para velocidade: 400 m forte, pausa em trote.", min: 5 },
   tiros800: { nome: "Yasso 800", emoji: "⚡", desc: "800 m fortes com pausa de trote, para ritmo de prova.", min: 6 },
   tiros1000: { nome: "Tiros de 1000 m", emoji: "⚡", desc: "Tiros longos, ótimos para ritmo de 5 a 10 km.", min: 7 },
+  teste3: { nome: "Teste de 3 km", emoji: "⏱️", desc: "3 km no máximo sustentável. O tempo vai em Meus ritmos e ajusta os paces.", min: 5 },
+  teste5: { nome: "Teste de 5 km", emoji: "⏱️", desc: "5 km no máximo sustentável. O tempo vai em Meus ritmos e ajusta os paces.", min: 7 },
 };
+// --- Meus ritmos (fase 5): teste de 3 km, 5 km ou 12 min (Cooper) vira VDOT (fórmulas de Jack Daniels) e as zonas de pace.
+// O pace "leve" alimenta os treinos gerados (planoGerarTreinoCorrida) e reescala os treinos do treinador (corridaNoMeuRitmo).
+const RITMOS_TESTES = { t3: { nome: "3 km", m: 3000 }, t5: { nome: "5 km", m: 5000 }, cooper: { nome: "12 minutos", seg: 720 } };
+const RITMOS_ZONAS = [
+  ["leve", "Leve", "Rodagem, regenerativo, longão e aquecimento"],
+  ["maratona", "Maratona", "Ritmo de prova longa e fim de longão"],
+  ["limiar", "Limiar", "Treino de ritmo e blocos de 20 a 40 min"],
+  ["intervalado", "Intervalado", "Tiros de 800 m a 1 km"],
+  ["tiros", "Tiros curtos", "Tiros de 200 e 400 m"],
+];
+function ritmosVo2(v) { return -4.6 + 0.182258 * v + 0.000104 * v * v; } // v em m/min
+function ritmosVdot(distM, seg) {
+  const t = seg / 60; if (!(distM > 0) || !(t > 0)) return 0;
+  const pct = 0.8 + 0.1894393 * Math.exp(-0.012778 * t) + 0.2989558 * Math.exp(-0.1932605 * t);
+  return ritmosVo2(distM / t) / pct;
+}
+function ritmosPaceDe(vdot, frac) { // pace (min/km) em que o VO2 é frac × VDOT
+  const alvo = vdot * frac; const a = 0.000104, b = 0.182258, c = -4.6 - alvo;
+  const v = (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a);
+  return v > 0 ? 1000 / v : 0;
+}
+// teste: { tipo: "t3"|"t5"|"cooper", seg (t3/t5) ou m (cooper), data }. Devolve null se o resultado não faz sentido.
+function ritmosCalcular(teste) {
+  const cfg = teste && RITMOS_TESTES[teste.tipo]; if (!cfg) return null;
+  const distM = cfg.m || +teste.m || 0, seg = cfg.seg || +teste.seg || 0;
+  const vdot = ritmosVdot(distM, seg);
+  if (!(vdot >= 20 && vdot <= 85)) return null;
+  const r = (x) => Math.round(x * 100) / 100;
+  return {
+    teste: { tipo: teste.tipo, m: distM, seg, data: teste.data || "" }, vdot: Math.round(vdot * 10) / 10,
+    leve: [r(ritmosPaceDe(vdot, 0.74)), r(ritmosPaceDe(vdot, 0.62))], maratona: [r(ritmosPaceDe(vdot, 0.82)), r(ritmosPaceDe(vdot, 0.78))],
+    limiar: [r(ritmosPaceDe(vdot, 0.88)), r(ritmosPaceDe(vdot, 0.86))], intervalado: [r(ritmosPaceDe(vdot, 0.98)), r(ritmosPaceDe(vdot, 0.96))],
+    tiros: [r(ritmosPaceDe(vdot, 1.08)), r(ritmosPaceDe(vdot, 1.04))],
+  };
+}
+function ritmosNorm(r) {
+  if (!r || typeof r !== "object" || !r.teste) return null;
+  const n = ritmosCalcular(r.teste); return n;
+}
+function ritmosLer() { try { return ritmosNorm(JSON.parse(localStorage.getItem("treino-app:ritmos") || "null")); } catch (e) { return null; } }
+// Pace leve de referência (min/km) para os geradores: o meio da faixa leve.
+function ritmosPaceLeve(r) { return r && r.leve ? Math.round((r.leve[0] + r.leve[1]) / 2 * 100) / 100 : 0; }
+function ritmosFaixaTxt(f) { return f && f[0] > 0 ? `${planoFmtPace(f[0])}-${planoFmtPace(f[1])}` : ""; }
+function ritmosTesteTxt(t) {
+  if (!t) return "";
+  const cfg = RITMOS_TESTES[t.tipo] || {};
+  return t.tipo === "cooper" ? `${String(Math.round(t.m)).replace(/\B(?=(\d{3})+(?!\d))/g, ".")} m em 12 min` : `${cfg.nome} em ${segParaTempo(t.seg)}`;
+}
+function segParaTempo(seg) { seg = Math.round(seg || 0); const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60; return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`; }
+function tempoParaSeg(txt) {
+  const p = String(txt || "").trim().split(/[:'.h]/).filter((x) => x !== "").map((x) => parseInt(x, 10));
+  if (!p.length || p.some((x) => isNaN(x) || x < 0)) return 0;
+  if (p.length === 1) return p[0] * 60;
+  if (p.length === 2) return p[1] < 60 ? p[0] * 60 + p[1] : 0;
+  if (p.length === 3) return p[1] < 60 && p[2] < 60 ? p[0] * 3600 + p[1] * 60 + p[2] : 0;
+  return 0;
+}
+// Treino do treinador no ritmo do aluno: se o treino guarda o pace leve usado (refLeve) e o aluno tem ritmos,
+// reescala os paces das etapas pela razão entre os dois. Sem um dos dois, devolve igual.
+function corridaNoMeuRitmo(corrida, ritmos) {
+  const meu = ritmosPaceLeve(ritmos);
+  if (!corrida || !(corrida.refLeve > 0) || !(meu > 0) || Math.abs(meu - corrida.refLeve) < 0.05) return corrida;
+  const f = meu / corrida.refLeve;
+  const esc = (txt) => String(txt || "").replace(/(\d{1,2}):(\d{2})/g, (_, m, s2) => planoFmtPace((parseInt(m, 10) + parseInt(s2, 10) / 60) * f));
+  const passo = (p) => (p && p.pace ? { ...p, pace: esc(p.pace) } : p);
+  const etapas = (corrida.etapas || []).map((e) => (e && e.passos ? { ...e, passos: e.passos.map(passo) } : passo(e)));
+  return { ...corrida, pace: corrida.pace ? esc(corrida.pace) : corrida.pace, etapas, noMeuRitmo: true };
+}
 const TREINOS_CORRIDA_NIVEIS = { iniciante: "Iniciante", intermediario: "Intermediário", avancado: "Avançado" };
 function planoPaceStr(p, ate) { if (!(p > 0)) return ""; return ate > p ? `${planoFmtPace(p)}-${planoFmtPace(ate)}` : planoFmtPace(p); }
 // Gera as etapas de um treino de corrida. paceMin = pace leve de referência (min/km, 0 se não informado).
@@ -8596,6 +8673,14 @@ function planoGerarTreinoCorrida(tipo, km, nivel, paceMin) {
     etapas = [passo("aquecimento", aq, "trote leve", pc(1.1, 1.08), "aquecimento"), passo("moderado", principal, "forte e controlado (RPE 7)", pc(0.88), "em ritmo de limiar"), passo("desaquecimento", de, "trote bem leve", pc(1.12), "desaquecimento")];
     tp = "tempo"; esforco = "forte e controlado (RPE 7)"; paceTxt = pc(0.88);
     detalhes = "O bloco do meio é um ritmo que você sustenta, mas sem folga para conversar mais do que poucas palavras.";
+  } else if (tipo === "teste3" || tipo === "teste5") {
+    const t = tipo === "teste3" ? 3000 : 5000;
+    const aq0 = 1500, de0 = 1000;
+    if (total < t + aq0 + de0) return { ok: false, erro: `Para esse teste, use pelo menos ${String((t + aq0 + de0) / 1000).replace(".", ",")} km (aquecimento, teste e volta à calma).` };
+    const aq = aq0 + Math.round((total - t - aq0 - de0) * 0.6 / 100) * 100; const de = total - t - aq;
+    etapas = [passo("aquecimento", aq, "trote leve", pc(1.1, 1.08), "aquecimento"), passo("forte", t, "o mais forte que você sustenta até o fim", "", "teste: anote o tempo"), passo("desaquecimento", de, "trote bem leve", pc(1.12), "desaquecimento")];
+    tp = "intervalado"; esforco = "teste no máximo sustentável"; paceTxt = "";
+    detalhes = `Corra os ${t / 1000} km do meio no ritmo mais forte que você sustenta até o fim. Depois, salve o tempo em Menu › Meus ritmos de corrida.`;
   } else if (tipo === "fartlek") {
     const [fs, ls] = [[60, 120], [120, 120], [180, 120]][idx];
     const pf = P ? P * 0.84 : 5.5; const pl = P ? P * 1.05 : 6.9;
@@ -11396,6 +11481,7 @@ function coachCorridaNorm(c) {
     esforco: String(c.esforco || "").trim().slice(0, 80),
     detalhes: String(c.detalhes || "").trim().slice(0, 300),
     etapas,
+    refLeve: +c.refLeve >= 3 && +c.refLeve <= 12 ? Math.round(+c.refLeve * 100) / 100 : 0,
   };
 }
 // Soma das distâncias das etapas (km); 0 se alguma etapa for por tempo.
@@ -12871,6 +12957,68 @@ function CoachNotaHoje({ notas, linkId, nomeCoach, onEnviar }) {
   );
 }
 
+// ---------- Fase 5: Meus ritmos (teste de corrida → zonas de pace) ----------
+function RitmosTela({ ritmos, hojeISO, onSalvar, onClose, logEvent }) {
+  const [editando, setEditando] = useState(!ritmos);
+  const [tipo, setTipo] = useState(ritmos ? ritmos.teste.tipo : "t5");
+  const [valor, setValor] = useState("");
+  const [erro, setErro] = useState("");
+  const cooper = tipo === "cooper";
+  const lido = cooper ? { tipo, m: parseInt(String(valor).replace(/\D/g, ""), 10) || 0 } : { tipo, seg: tempoParaSeg(valor) };
+  const previa = valor.trim() ? ritmosCalcular({ ...lido, data: hojeISO }) : null;
+  function salvar() {
+    if (!previa) { setErro(cooper ? "Informe quantos metros você correu em 12 minutos, por exemplo 2400." : `Informe o tempo dos ${RITMOS_TESTES[tipo].nome} no formato 24:30.`); return; }
+    onSalvar(previa); logEvent && logEvent("ritmos_teste", { tipo, vdot: previa.vdot, primeiro: !ritmos });
+    setEditando(false); setValor(""); setErro("");
+  }
+  const zonas = (r) => (
+    <div className="gt-rit-lista">
+      {RITMOS_ZONAS.map(([k, t, uso]) => (
+        <div className="gt-rit-zona" key={k}>
+          <div className="tx"><div className="t">{t}</div><div className="d">{uso}</div></div>
+          <div className="v">{ritmosFaixaTxt(r[k])}<small>/km</small></div>
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div className="gt-focus gt-med" role="dialog" aria-modal="true" aria-label="Meus ritmos">
+      <div className="gt-focus-header">
+        <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={onClose}><IconVoltar /></button>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title">Meus ritmos</div></div>
+      </div>
+      <div className="gt-focus-body gt-med-body">
+        {!editando && ritmos && (
+          <>
+            <div className="gt-plano-dica" style={{ marginTop: 0 }}>Do teste de {ritmosTesteTxt(ritmos.teste)}{ritmos.teste.data ? `, em ${coachDataCurta(ritmos.teste.data)}` : ""}.</div>
+            {zonas(ritmos)}
+            <div className="gt-plano-dica">Os treinos de corrida que você monta e os que seu treinador manda passam a usar esses ritmos. Refaça o teste a cada 6 a 8 semanas.</div>
+            <div className="gt-modal-actions"><button type="button" className="gt-btn secondary" onClick={() => setEditando(true)}>Fazer novo teste</button></div>
+          </>
+        )}
+        {editando && (
+          <>
+            {!ritmos && <div className="gt-med-vazio"><div className="t">Treine no seu ritmo, não no de outra pessoa</div><div className="d">Um teste curto define seus ritmos de rodagem, limiar e tiros. Os treinos de corrida do Movo se ajustam a eles.</div></div>}
+            <div className="gt-co-sec gt-med-sec">QUAL TESTE VOCÊ FEZ?</div>
+            <div className="gt-co-chipsrow" role="group" aria-label="Teste">
+              {Object.keys(RITMOS_TESTES).map((k) => <button key={k} type="button" aria-pressed={tipo === k} className={`gt-co-chip ${tipo === k ? "on" : ""}`} onClick={() => { setTipo(k); setValor(""); setErro(""); }}>{RITMOS_TESTES[k].nome}</button>)}
+            </div>
+            <label><span className="gt-field-label" style={{ display: "block" }}>{cooper ? "Quantos metros você correu" : "Seu tempo (min:seg)"}</span>
+              <input className="gt-input" inputMode={cooper ? "numeric" : "text"} placeholder={cooper ? "Ex.: 2400" : tipo === "t3" ? "Ex.: 14:20" : "Ex.: 24:30"} value={valor} onChange={(e) => { setValor(e.target.value); setErro(""); }} /></label>
+            <div className="gt-plano-dica">{cooper ? "Aqueça 10 minutos e corra 12 minutos o mais longe que conseguir, em pista ou percurso plano." : `Aqueça 10 minutos e corra os ${RITMOS_TESTES[tipo].nome} no ritmo mais forte que você sustenta até o fim. Um resultado de prova recente também vale.`}</div>
+            {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+            {previa && <><div className="gt-co-sec gt-med-sec">SEUS RITMOS</div>{zonas(previa)}</>}
+            <div className="gt-modal-actions">
+              <button type="button" className="gt-btn" onClick={salvar}>Salvar meus ritmos</button>
+              {ritmos && <button type="button" className="gt-btn secondary" onClick={() => { setEditando(false); setValor(""); setErro(""); }}>Cancelar</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Fase 4: Minhas medidas, avaliação do treinador e anamnese ----------
 // Medidas e fotos são do aluno (tabela user_medidas, bucket privado "medidas"). O treinador só vê com a
 // permissão "ver_medidas". Avaliações são do treinador (coach_avaliacoes) e aparecem para o aluno junto.
@@ -14325,8 +14473,10 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     if (ehModelo || aluno.status !== "ativo") return;
     let vivo = true;
     coachCall("coach_anamnese", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok && r.data) setAnamSim(anamneseSimIdx(r.data.respostas)); });
+    coachCall("coach_aluno_ritmos", { p_link: aluno.link_id }).then((r) => { if (vivo && r.ok && r.data) setRitmosAluno(ritmosNorm(r.data)); });
     return () => { vivo = false; };
   }, [aluno.link_id]);
+  const [ritmosAluno, setRitmosAluno] = useState(null); // Meus ritmos do aluno (fase 5; só com ver_corrida)
   const chaveRasc = `treino-app:coachRascunho:${aluno.link_id}`;
   const [sem, setSem] = useState(coachSemanaVazia);
   const [msg, setMsg] = useState("");
@@ -14609,7 +14759,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
       )}
       {corridaModal && (
         <CoachCorridaModal
-          coachUid={aluno.coach_uid} showToast={showToast}
+          coachUid={aluno.coach_uid} showToast={showToast} ritmosAluno={ritmosAluno} alunoNome={String(aluno.nome || "").trim().split(" ")[0]}
           inicial={corridaModal.idx != null ? coachCorridaNorm(((sem.dias[corridaModal.dow] || [])[corridaModal.idx] || {}).corrida) : null}
           onClose={() => setCorridaModal(null)}
           onSalvar={(c) => {
@@ -14975,12 +15125,12 @@ function CoachEtapasEditor({ itens, onChange }) {
   );
 }
 // Modal do treinador: escolhe um modelo (ou parte de um treino existente) e ajusta etapa por etapa.
-function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) {
+function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose, ritmosAluno, alunoNome }) {
   const [fase, setFase] = useState(inicial ? "editar" : "montar");
   const [tipo, setTipo] = useState("tiros400");
   const [kmTxt, setKmTxt] = useState("");
   const [nivel, setNivel] = useState("intermediario");
-  const [paceTxt, setPaceTxt] = useState(inicial ? inicial.pace || "" : "");
+  const [paceTxt, setPaceTxt] = useState(inicial ? (inicial.refLeve > 0 ? planoFmtPace(inicial.refLeve) : inicial.pace || "") : ritmosPaceLeve(ritmosAluno) ? planoFmtPace(ritmosPaceLeve(ritmosAluno)) : "");
   const [erro, setErro] = useState("");
   const [titulo, setTitulo] = useState(inicial ? inicial.titulo : "");
   const [detalhes, setDetalhes] = useState(inicial ? inicial.detalhes : "");
@@ -15015,7 +15165,7 @@ function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) 
     if (!conv.ok) { setErro(conv.erro); return null; }
     const paceBase = planoParsePace(paceTxt);
     const total = planoEtapasSegmentos(conv.etapas, paceBase > 0 ? paceBase : 0).reduce((t, x) => t + x.min, 0);
-    const c = coachCorridaNorm({ modelo, titulo: titulo.trim() || (TREINOS_CORRIDA[modelo] || {}).nome || "Treino de corrida", distanciaKm: coachEtapasKm(conv.etapas), duracaoMin: Math.round(total), pace: "", esforco, detalhes, etapas: conv.etapas });
+    const c = coachCorridaNorm({ modelo, titulo: titulo.trim() || (TREINOS_CORRIDA[modelo] || {}).nome || "Treino de corrida", distanciaKm: coachEtapasKm(conv.etapas), duracaoMin: Math.round(total), pace: "", esforco, detalhes, etapas: conv.etapas, refLeve: paceBase });
     if (!c) { setErro("Confira as etapas."); return null; }
     return c;
   }
@@ -15071,6 +15221,7 @@ function CoachCorridaModal({ inicial, coachUid, showToast, onSalvar, onClose }) 
             </div>
             <label className="gt-plano-lbl">Pace de um treino leve do aluno (opcional)</label>
             <input className="gt-input" placeholder="Ex.: 6:30. Com isso, cada etapa já sai com pace alvo." value={paceTxt} onChange={(e) => { setPaceTxt(e.target.value); setErro(""); }} />
+            <div className="gt-plano-dica">{ritmosAluno ? `Dos ritmos de ${alunoNome || "seu aluno"} (teste de ${ritmosTesteTxt(ritmosAluno.teste)}).` : "Quem tem Meus ritmos no app recebe os paces ajustados ao próprio ritmo."}</div>
             {erro && <div className="gt-plano-erro">{erro}</div>}
             <div className="gt-modal-actions" style={{ marginTop: 10 }}>
               <button type="button" className="gt-btn" onClick={montar}>Montar e editar</button>
@@ -16532,6 +16683,15 @@ function App() {
   });
   const planosRef = useRef(planos);
   planosRef.current = planos;
+  const [ritmos, setRitmos] = useState(() => ritmosLer()); // Meus ritmos (fase 5)
+  const ritmosRef = useRef(ritmos);
+  ritmosRef.current = ritmos;
+  const [ritmosOpen, setRitmosOpen] = useState(false);
+  function salvarRitmos(r) {
+    ritmosRef.current = r; setRitmos(r);
+    try { localStorage.setItem("treino-app:ritmos", JSON.stringify(r)); } catch (e) {}
+    syncMarcarMudanca("ritmos");
+  }
   const [planoProva, setPlanoProva] = useState(null); // prova cujo plano de corrida está aberto
   const [planoRetomar, setPlanoRetomar] = useState(null); // { ctx, texto } ao abrir um plano que ficou pronto em segundo plano
   // Geração com IA em segundo plano: { id, kind, label, ctx, startedAt, status: rodando|pronto|erro, result }
@@ -16848,7 +17008,7 @@ function App() {
       try { e = await syncEnviar(uid, k); } catch (x) { e = x; }
       if (e) {
         const msg = (e && e.message) || String(e);
-        if (k === "planos" && /planos|column|schema cache/i.test(msg)) { syncLimpar(uid, k, pend[k], localStorage); continue; } // coluna ainda não existe: só no aparelho
+        if ((k === "planos" || k === "ritmos") && /planos|ritmos|column|schema cache/i.test(msg)) { syncLimpar(uid, k, pend[k], localStorage); continue; } // coluna ainda não existe: só no aparelho
         erro = erro || e;
         continue;
       }
@@ -16910,8 +17070,9 @@ function App() {
       sessions: data.sessions || {},
       display_name: data.display_name || "",
       planos: Array.isArray(data.planos) ? data.planos : undefined,
+      ritmos: data.ritmos && typeof data.ritmos === "object" ? data.ritmos : undefined,
     };
-    const local = { treinos: cur.treinos, atividades: cur.atividades, schedule: cur.schedule, sessions: cur.sessions, planos: planosRef.current, display_name: displayNameRef.current };
+    const local = { treinos: cur.treinos, atividades: cur.atividades, schedule: cur.schedule, sessions: cur.sessions, planos: planosRef.current, display_name: displayNameRef.current, ritmos: ritmosRef.current };
     const efetivo = { ...local };
     SYNC_CHAVES.forEach((k) => {
       // mudança ainda no debounce (não gravada): é a versão mais nova, não toca
@@ -16926,6 +17087,7 @@ function App() {
       else if (k === "sessions") setSessions(dec.valor);
       else if (k === "planos") { planosRef.current = dec.valor; setPlanos(dec.valor); }
       else if (k === "display_name") setDisplayName(dec.valor);
+      else if (k === "ritmos") { ritmosRef.current = ritmosNorm(dec.valor); setRitmos(ritmosRef.current); }
       try { localStorage.setItem(STORAGE_PREFIX + k, JSON.stringify(dec.valor)); } catch (e) {}
     });
     return { ok: true, efetivo };
@@ -17518,7 +17680,7 @@ function App() {
       if (!error && data) pacote = data;
       else if (error) logClientError("export_my_data", error.message);
     } catch (e) {}
-    const local = { treinos: dataRef.current.treinos, atividades: dataRef.current.atividades, agenda: dataRef.current.schedule, sessoes: dataRef.current.sessions, planos_de_corrida: planosRef.current };
+    const local = { treinos: dataRef.current.treinos, atividades: dataRef.current.atividades, agenda: dataRef.current.schedule, sessoes: dataRef.current.sessions, planos_de_corrida: planosRef.current, ritmos_de_corrida: ritmosRef.current };
     if (!pacote) pacote = { aviso: "Cópia feita só com os dados deste aparelho (sem conexão com a nuvem).", exportado_em: new Date().toISOString(), conta: { email: session ? session.user.email : null } };
     pacote.neste_aparelho = local;
     baixarJson(pacote, `movo-meus-dados-${todayISO()}.json`);
@@ -20066,7 +20228,10 @@ function App() {
                         {item.corrida && (
                           <div className="gt-cc-aluno">
                             {item.corrida.detalhes && <div className="gt-plano-dica">{item.corrida.detalhes}</div>}
-                            <PlanoEtapas etapas={item.corrida.etapas} paceBase={0} />
+                            {(() => { const cr = corridaNoMeuRitmo(item.corrida, ritmos); return (<>
+                              <PlanoEtapas etapas={cr.etapas} paceBase={0} />
+                              {cr.noMeuRitmo && <div className="gt-plano-dica">Paces ajustados aos seus ritmos.</div>}
+                            </>); })()}
                           </div>
                         )}
                         {!item.corrida && item.nota && <div className="gt-plano-dica">{item.nota}</div>}
@@ -20710,6 +20875,7 @@ function App() {
               {item("raio", "Treinos de corrida", () => setTreinoCorrida({ data: todayISO() }))}
               <div className="gt-menu-sec">Dados</div>
               {item("ruler", "Minhas medidas", () => setMedidasOpen(true))}
+              {item("timer", "Meus ritmos de corrida", () => setRitmosOpen(true))}
               {item("importar", "Importar histórico", () => setHistOpen(true))}
               {stravaConnected === false && <button type="button" className="gt-menu-item" onClick={ir(() => setSettingsOpen(true))}><span className="ic"><StravaIcon size={20} /></span><span className="tx">Conectar com o Strava</span></button>}
               <div className="gt-menu-sec">Social</div>
@@ -20748,6 +20914,10 @@ function App() {
       )}
       {meuTreinadorOpen && (
         <CoachMeuTreinadorModal anamnese={anamneses.find((x) => coachLinks[0] && x.link_id === coachLinks[0].link_id) || null} onAbrirAnamnese={(x) => { setMeuTreinadorOpen(false); setAnamAberta(x); }} links={coachLinks} flags={coachFlagsAtuais} dados={{ treinos, sessions }} reload={carregarCoachAluno} showToast={showToast} onClose={() => setMeuTreinadorOpen(false)} onAbrirConvite={(c) => { setMeuTreinadorOpen(false); setCoachConvite(c); }} />
+      )}
+      {ritmosOpen && (
+        <RitmosTela ritmos={ritmos} hojeISO={todayISO()} logEvent={logEvent} onClose={() => setRitmosOpen(false)}
+          onSalvar={(r) => { salvarRitmos(r); showToast("Ritmos salvos"); }} />
       )}
       {medidasOpen && session && (
         <MinhasMedidasTela uid={session.user.id} showToast={showToast} logEvent={logEvent} onClose={() => setMedidasOpen(false)}
@@ -21074,7 +21244,7 @@ function App() {
         <TreinoCorridaModal
           biblioteca={(planoAvulso && planoAvulso.biblioteca) || []}
           dataInicial={treinoCorrida.data}
-          paceBase={(planoHistoricoCorrida(sessions, atividadeById, todayISO(), 8) || {}).paceMin || 0}
+          paceBase={ritmosPaceLeve(ritmos) || (planoHistoricoCorrida(sessions, atividadeById, todayISO(), 8) || {}).paceMin || 0}
           onSalvar={salvarTreinoCorrida}
           onAgendar={agendarTreinoCorrida}
           onExcluir={excluirTreinoCorrida}
@@ -22564,7 +22734,7 @@ function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, las
           {p.tipo === "corrida" && (
             <>
               <div className="gt-guiado-ex">{bloco.nome}</div>
-              <PlanoEtapas etapas={bloco.corrida.etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
+              <PlanoEtapas etapas={corridaNoMeuRitmo(bloco.corrida, ritmosLer()).etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
               <button type="button" className={`gt-btn gt-guiado-ok ${feito ? "secondary" : ""}`} onClick={() => { onBlocoResultado(bid, feito ? null : { formato: "corrida", concluido: true, em: Date.now() }, []); if (!feito) avancar(); }}>{feito ? "Desfazer" : "✓ Corrida feita"}</button>
             </>
           )}
@@ -23073,7 +23243,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
               {bloco.notas && <div className="gt-ex-desc">{bloco.notas}</div>}
               {tipo === "corrida" && bloco.corrida && (
                 <div className="gt-bloco-corrida">
-                  <PlanoEtapas etapas={bloco.corrida.etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
+                  <PlanoEtapas etapas={corridaNoMeuRitmo(bloco.corrida, ritmosLer()).etapas} paceBase={planoParsePace(bloco.corrida.pace || "") || 0} />
                   <button type="button" className={`gt-bloco-feito ${res && res.concluido ? "on" : ""}`} aria-pressed={!!(res && res.concluido)}
                     onClick={() => onBlocoResultado && onBlocoResultado(bid, res && res.concluido ? null : { formato: "corrida", concluido: true, em: Date.now() }, [])}>
                     {res && res.concluido ? "✓ Corrida feita" : "Marcar corrida como feita"}
