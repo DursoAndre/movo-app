@@ -62,7 +62,7 @@ Regras:
 11. Treinos de corrida (planilha de assessoria, rodagem, intervalado, tiros, longão, fartlek, regenerativo) vão em corridas, nunca em fichas. n = nome curto do treino; dia como na regra 2; obs = orientação geral só se existir.
 12. et = etapas em ordem. Etapa simples: t (tipo) e UMA medida: m (metros), km, min ou seg. Tipos: "aquecimento", "leve" (trote/rodagem leve), "constante" (ritmo confortável contínuo), "moderado" (ritmo de prova/limiar), "forte" (tiro/intervalo), "recuperacao" (trote ou pausa entre tiros), "caminhada", "desaquecimento". pace = "m:ss" ou faixa "m:ss-m:ss" por km só se aparecer; d = descrição curta só se ajudar (ex.: "Z2", "subida"). Repetições ("6x800 m com 1'30 de pausa") viram {"rep":6,"p":[...]} com os passos de uma volta. Corrida sem estrutura vira uma etapa só ("rodagem 8 km" → [{"t":"leve","km":8}]). Nunca invente distâncias, tempos ou paces.
 13. Planilhas de várias semanas de corrida: extraia só a primeira semana e avise.
-14. avisos = ambiguidades relevantes (unidade convertida, trechos ilegíveis ou cortados, semanas ignoradas), no máximo 5, curtas.`;
+14. avisos = ambiguidades relevantes (unidade convertida, trechos ilegíveis ou cortados, semanas ignoradas), no máximo 5, curtas, em terceira pessoa e sem falar de si (ex.: "A planilha tem 4 semanas. Importamos só a 1ª.").`;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });

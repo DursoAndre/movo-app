@@ -2935,6 +2935,7 @@ const APP_CSS = `
   .gt-item-extra-x { background:none; border:none; color:var(--warn); font-size:16px; cursor:pointer; padding:0 2px; flex-shrink:0; }
   .gt-text-muted { color:var(--text-muted); }
   .gt-item-carga-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 14px 10px; border-top:1px solid var(--border); font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); }
+  .gt-item-carga-acoes { display:flex; gap:14px; }
   .gt-sessao-nota { flex-basis:100%; font-family:'Inter',system-ui,sans-serif; font-size:13px; line-height:1.4; color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere; border-left:2px solid var(--border); padding-left:8px; }
   .gt-rpe-modal .gt-rpe-nota { min-height:88px; height:88px; font-family:'Inter',system-ui,sans-serif; font-size:16px; resize:none; }
   .gt-rpe-modal .gt-modal-actions { position:sticky; bottom:-18px; background:var(--surface); padding:12px 0 calc(12px + env(safe-area-inset-bottom)); margin-bottom:-18px; z-index:1; }
@@ -3251,6 +3252,7 @@ const APP_CSS = `
   .gt-descanso-badge { display:inline-block; margin-left:7px; padding:2px 7px; border-radius:14px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
   .gt-empty { text-align:center; color:var(--text-muted); font-size:14px; padding:30px 10px; }
   .gt-toast { position:fixed; bottom:calc(88px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:max-content; max-width:calc(100vw - 32px); box-sizing:border-box; text-align:center; background:var(--surface-2); border:1px solid var(--accent-dim); color:var(--accent); font-size:12px; line-height:1.4; padding:8px 14px; border-radius:20px; z-index:60; font-family:'Roboto Mono',monospace; pointer-events:none; box-shadow:0 4px 16px rgba(0,0,0,.25); }
+  body:has(.gt-focus-footer) .gt-toast { bottom:auto; top:calc(12px + env(safe-area-inset-top)); } /* telas cheias com rodapé: o aviso não cobre o campo de mensagem */
   .gt-chart-tooltip { background:var(--surface-2); border:1px solid var(--border); padding:8px 10px; border-radius:4px; font-size:12px; }
   .gt-hist-item { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:12px; }
   .gt-hist-item:last-child { border-bottom:none; }
@@ -3524,7 +3526,7 @@ const APP_CSS = `
   .gt-dsf-modelo span { font-size:12px; color:var(--text-muted); }
   .gt-dsf-modelo.on { border-color:var(--accent); background:var(--surface-2); }
   .gt-dsf-regra { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
-  .gt-dsf-dias { display: flex; gap: 6px; }
+  .gt-dsf-dias { display: flex; gap: 6px; align-self: stretch; }
 .gt-dsf-dia { flex: 1; min-width: 0; padding: 9px 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-size: 12px; text-transform: capitalize; cursor: pointer; }
 .gt-dsf-dia-txt { flex: 0 0 auto; padding: 8px 12px; }
 .gt-dsf-dia.on { background: var(--accent); color: #14161A; border-color: var(--accent); font-weight: 600; }
@@ -3868,7 +3870,7 @@ const APP_CSS = `
   .gt-co-avatar.big { width:72px; height:72px; font-size:26px; margin:0 auto 8px; }
   .gt-co-sec, .gt-agd-sec { font-family:'Roboto Mono',monospace; font-size:12px; color:var(--text-muted); letter-spacing:.05em; margin:12px 0 6px; }
   .gt-co-sec.warn { color:var(--amber); margin-top:0; }
-  .gt-co-turmas { margin:4px 0 10px; }
+  .gt-co-turmas { margin:20px 0 10px; }
   .gt-co-turmas-head { display:flex; align-items:center; justify-content:space-between; }
   .gt-co-turmas-vazio { font-size:13px; color:var(--text-muted); margin:0 0 6px; }
   .gt-co-turma { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:6px; }
@@ -3876,7 +3878,7 @@ const APP_CSS = `
   .gt-co-turma .t { font-weight:600; }
   .gt-co-turma .d { font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .gt-co-turma-alunos { max-height:40vh; overflow:auto; display:flex; flex-direction:column; gap:2px; }
-  .gt-co-turma-apagar { font-size:13px; margin-top:8px; }
+  .gt-co-turma-apagar { font-size:14px; line-height:1.45; margin-top:12px; }
   .gt-co-link.danger { color:var(--warn); }
   .gt-co-top, .gt-agd-top { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
   .gt-co-top .gt-co-sec, .gt-agd-top .gt-agd-sec { margin:0; }
@@ -4238,7 +4240,7 @@ const APP_CSS = `
   .gt-co-imp-ficha { border:1px solid var(--border); border-radius:12px; padding:10px; margin:8px 0; background:var(--surface); }
   .gt-co-imp-topo { display:flex; align-items:center; gap:8px; } .gt-co-imp-topo .gt-input { flex:1; min-width:0; }
   .gt-co-imp-cor { font-weight:600; flex:1; min-width:0; }
-  .gt-co-imp-dia { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font-size:12px; color:var(--text-muted); } .gt-co-imp-dia .gt-input { width:auto; flex:1; } .gt-co-imp-dia .n { white-space:nowrap; }
+  .gt-co-imp-dia { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font-size:12px; color:var(--text-muted); } .gt-co-imp-dia .gt-input { width:150px; flex:0 0 150px; } .gt-co-imp-dia .n { white-space:nowrap; margin-left:auto; overflow:hidden; text-overflow:ellipsis; }
   .gt-co-imp-ex { display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-top:1px solid var(--border); } .gt-co-imp-ex .l { flex:1; min-width:0; }
   .gt-co-imp-ex .nm { font-size:14px; } .gt-co-imp-ex .dt { font-size:12px; color:var(--text-muted); } .gt-co-imp-ex .og { font-size:11px; color:var(--text-muted); font-style:italic; word-break:break-word; }
   .gt-co-imp-ex .tag { font:600 9px 'Roboto Mono',monospace; letter-spacing:.05em; padding:1px 5px; border-radius:6px; background:var(--surface-2); margin-left:4px; vertical-align:middle; text-transform:uppercase; } .gt-co-imp-ex .tag.ok { color:var(--success); } .gt-co-imp-ex .tag.novo { color:var(--amber); }
@@ -4500,6 +4502,8 @@ const APP_CSS = `
   .gt-guiado-desc-tempo { font-family:'Oswald',sans-serif; font-size:56px; line-height:1; font-variant-numeric:tabular-nums; }
   .gt-guiado-desc-prox { font-size:13px; color:var(--text-muted); }
   .gt-guiado-fim { align-items:stretch; text-align:center; }
+  .gt-bt-parciais li.cab { background:transparent; border:none; padding:0 12px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
+  .gt-bt-parciais li.cab b { font-family:inherit; }
   .gt-bt-parciais li.rox { background:transparent; border-style:dashed; color:var(--text-muted); }
   .gt-bt-parciais li em { font-style:normal; margin-left:6px; }
   .gt-bt-parciais li em.melhor, .gt-bt-comp.melhor { color:var(--success); }
@@ -7581,6 +7585,7 @@ function desafioKmDe(carga, log) {
   });
   return Math.round(soma * 10) / 10;
 }
+function desafioDiasTxt(dias) { return planoListaE([1, 2, 3, 4, 5, 6, 0].filter((d) => (dias || []).indexOf(d) >= 0).map((d) => DESAFIO_SEMANA_NOMES[d])); }
 function desafioFmtKm(n) { return `${String(Math.round(n * 10) / 10).replace(".", ",")} km`; }
 
 function desafioNomeNorm(t) { return String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim(); }
@@ -8821,7 +8826,10 @@ function desafioFmtPlacar(v, rules) {
 }
 function desafioRegrasResumo(rules) {
   const r = desafioNormalizeRules(rules);
-  if (r.modo === "km") return `Soma os km de corrida${r.atividades.minKm > 0 ? ` (corridas de ${desafioFmtKm(r.atividades.minKm)} ou mais)` : ""}. Quem correr mais vence a semana`;
+  if (r.modo === "km") {
+    const dias = (r.dias || []).length >= 7 ? "de segunda a domingo" : `só ${desafioDiasTxt(r.dias)}`;
+    return `Soma os km de corrida ${dias}, ${r.atividades.minKm > 0 ? `corridas de ${desafioFmtKm(r.atividades.minKm)} ou mais` : "qualquer distância"}. Quem correr mais vence a semana`;
+  }
   const partes = [];
   for (let n = r.meta; n >= 0; n--) {
     partes.push(`${n}${n === r.meta && r.meta > 0 ? "+" : ""} = ${desafioFmtPts(r.pontos[n])}`);
@@ -9478,7 +9486,8 @@ function desafioTimeline(ch, ov, st, meId, hoje) {
 function desafioTimelineTexto(it, nomeDe, rules) {
   if (it.kind === "checkin") {
     const quem = nomeDe(it.user_id);
-    let t = `${quem} ${it.label === "Academia" ? "treinou na academia" : `registrou ${it.label}`}`;
+    const kmCk = rules && rules.modo === "km" ? desafioCheckinKm(it) : 0;
+    let t = kmCk > 0 ? `${quem} correu ${desafioFmtKm(kmCk)}` : `${quem} ${it.label === "Academia" ? "treinou na academia" : `registrou ${it.label}`}`;
     if (it.pts > 0) t += ` e ganhou ${desafioFmtPts(it.pts)} pt${it.pts === 1 ? "" : "s"}`;
     if (it.bateu) t += ". Bateu a meta da semana 🔥";
     else if (it.faltam) {
@@ -10122,6 +10131,11 @@ async function cartaoResultadoRender(d) {
   [[36, 126, 74], [98, 86, 114], [160, 46, 154]].forEach(([bx, by, bh]) => { rr(70 + bx * 0.42, 56 + by * 0.42, 44 * 0.42, bh * 0.42, 14 * 0.42); g.fill(); });
   g.beginPath(); g.arc(70 + 182 * 0.42, 56 + 25 * 0.42, 13 * 0.42, 0, Math.PI * 2); g.fill();
   g.font = `600 40px ${OSW}`; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText("movo", 176, 124);
+  // Conteúdo curto (prova: 2 linhas) fica centralizado na altura livre, sem metade de baixo vazia.
+  const nEx = Math.min(10, (d.extras || []).length);
+  const altura = 690 + (d.comp ? 50 : 0) + (nEx ? nEx * (nEx > 6 ? 50 : 66) + 40 : 0) - 180;
+  const dy = Math.max(0, Math.round((H - 120 - 180 - altura) / 2) - 40);
+  g.save(); g.translate(0, dy);
   g.fillStyle = "#F2F3F1";
   let tam = 78; g.font = `600 ${tam}px ${OSW}`;
   const titulo = String(d.titulo || "").toUpperCase();
@@ -10144,6 +10158,7 @@ async function cartaoResultadoRender(d) {
       y += lh;
     });
   }
+  g.restore();
   g.textAlign = "center"; g.fillStyle = "#6F757C"; g.font = `500 26px ${INT}`;
   g.fillText(d.rodape || "movo · todos os seus treinos numa só evolução", W / 2, H - 56);
   return await new Promise((res) => cv.toBlob((b) => res(b), "image/png"));
@@ -10434,8 +10449,8 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
 
         {step === 3 && (
           <div>
-            <p className="gt-dsf-hint" style={{ marginTop: 0 }}>Opcional, mas é o que dá graça. Escreve o que está valendo.</p>
-            <div className="gt-field-label">QUEM PERDE A SEMANA…</div>
+            <p className="gt-dsf-hint" style={{ marginTop: 0, marginBottom: 16 }}>Opcional, mas é o que dá graça. Escreva o que está valendo.</p>
+            <div className="gt-field-label">{rules.modo === "km" ? "QUEM CORRER MENOS NA SEMANA…" : "QUEM PERDE A SEMANA…"}</div>
             <input className="gt-input" placeholder="Ex: paga um café pra quem ganhou" value={stakes.semana} maxLength={80} onChange={(e) => setStakes({ ...stakes, semana: e.target.value })} />
             <div className="gt-field-label" style={{ marginTop: 16 }}>PRÊMIO FINAL</div>
             <input className="gt-input" placeholder="Ex: vale-presente dos perdedores" value={stakes.final} maxLength={80} onChange={(e) => setStakes({ ...stakes, final: e.target.value })} />
@@ -10443,8 +10458,8 @@ function DesafioCriarModal({ friends, onClose, onCreated, showToast, logEvent })
             <div className="gt-card" style={{ marginTop: 18 }}>
               <div className="gt-field-label">RESUMO</div>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18 }}>{nome.trim()}</div>
-              <div className="gt-dsf-hint">{dd(inicio)} → {dd(fim)} · {semanas} semana{semanas === 1 ? "" : "s"} · {rules.modo === "km" ? "quem corre mais km" : `meta ${rules.meta}/semana`}</div>
-              <div className="gt-dsf-hint">{desafioRegrasResumo(rules)}</div>
+              <div className="gt-dsf-hint">{dd(inicio)} → {dd(fim)} · {semanas} semana{semanas === 1 ? "" : "s"} · {rules.modo === "km" ? "placar em km" : `meta ${rules.meta}/semana`}</div>
+              <div className="gt-dsf-hint">{desafioRegrasResumo(rules)}.</div>
               <div className="gt-dsf-hint">As regras ficam travadas quando o desafio começa. Nome e apostas dá pra editar depois.</div>
             </div>
           </div>
@@ -11089,7 +11104,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="gt-field-label" style={{ marginBottom: 2 }}>MINHA SEMANA</div>
                 <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17 }}>{desafioFmtKm(minha ? minha.pts : 0)} em {me.semanaCount} corrida{me.semanaCount === 1 ? "" : "s"}</div>
-                <div className="gt-dsf-hint" style={{ marginTop: 2 }}>{frente ? `${desafioFmtKm(Math.round((frente.pts - (minha ? minha.pts : 0)) * 10) / 10)} atrás de ${String(frente.nome).split(" ")[0]}` : atualW && atualW.rows.length > 1 ? "Você lidera a semana" : "Cada km conta"}</div>
+                <div className="gt-dsf-hint" style={{ marginTop: 2 }}>{frente ? `${desafioFmtKm(Math.round((frente.pts - (minha ? minha.pts : 0)) * 10) / 10)} atrás de ${String(frente.nome).split(" ")[0]} nesta semana` : atualW && atualW.rows.length > 1 ? "Você lidera a semana" : "Cada km conta"}</div>
                 {meusCheckinsSemana.length > 0 && (
                   <div className="gt-dsf-chips">
                     {meusCheckinsSemana.map((c) => <span key={`${c.date}${c.tipo}`} className="gt-dsf-chip">{diaSemanaCurto(c.date)} · {c.label || "Corrida"}</span>)}
@@ -11187,7 +11202,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
 
         {status.fase !== "antes" && (
           <div className="gt-card">
-            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>PISTA</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoGeral())}>Compartilhar ↗</button></div>
+            <div className="gt-dsf-sec-head"><div className="gt-field-label" style={{ marginBottom: 0 }}>{rules.modo === "km" ? "TOTAL DO DESAFIO" : "PISTA"}</div><button className="gt-dsf-link" onClick={() => setCartao(dadosCartaoGeral())}>Compartilhar ↗</button></div>
             <DesafioPista totais={totaisVis} members={ov.members} meta={rules.modo === "km" ? null : rules.meta} fase={status.fase} km={rules.modo === "km"} />
             {muitos && <button type="button" className="gt-dsf-link big" onClick={() => setVerTodos(!verTodos)}>{verTodos ? "Mostrar só o top 5 e você ▴" : `Ver todos os ${st.totais.length} ▾`}</button>}
             {status.fase === "rolando" && rules.modo !== "km" && <div className="gt-dsf-hint" style={{ marginTop: 8 }}>Pontos da semana em andamento aparecem só se forem positivos. Os negativos só valem quando a semana fecha ({DESAFIO_SEMANA_NOMES[(ch.week_start + 6) % 7]}).</div>}
@@ -11990,13 +12005,17 @@ function coachFichaConteudo(sem, aluno, coachNome, rodape) {
 // Modelos do treinador (coach_templates): semana = {dias,fichas}; treino de corrida = {tipo:"corrida",corrida}.
 function coachModeloCorrida(m) { return !!(m && m.payload && m.payload.tipo === "corrida" && m.payload.corrida); }
 function coachSemanaResumo(sem) {
-  let dias = 0, ex = 0;
+  let dias = 0, ex = 0, corridas = 0, outras = 0;
   COACH_ORDEM_DIAS.forEach((d) => {
     const itens = (sem.dias && sem.dias[d]) || [];
     if (itens.length) dias++;
-    itens.forEach((it) => { if (it.tipo === "treino" && sem.fichas[it.ref]) ex += coachContaExercicios(sem.fichas[it.ref]); });
+    itens.forEach((it) => {
+      if (it.tipo === "treino") { if (sem.fichas[it.ref]) ex += coachContaExercicios(sem.fichas[it.ref]); }
+      else if (it.id === "corrida") corridas++;
+      else outras++;
+    });
   });
-  return { dias, ex };
+  return { dias, ex, corridas, outras };
 }
 function coachSemanaIgual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
@@ -13158,7 +13177,7 @@ function RitmosTela({ ritmos, hojeISO, onSalvar, onClose, logEvent }) {
           <>
             <div className="gt-plano-dica" style={{ marginTop: 0 }}>Do teste de {ritmosTesteTxt(ritmos.teste)}{ritmos.teste.data ? `, em ${coachDataCurta(ritmos.teste.data)}` : ""}.</div>
             {zonas(ritmos)}
-            <div className="gt-plano-dica">Os treinos de corrida que você monta e os que seu treinador manda passam a usar esses ritmos. Refaça o teste a cada 6 a 8 semanas.</div>
+            <div className="gt-plano-dica">Os treinos de corrida que você monta e os que seu treinador manda passam a usar esses ritmos. Se quiser, refaça o teste em 6 a 8 semanas.</div>
             <div className="gt-modal-actions"><button type="button" className="gt-btn secondary" onClick={() => setEditando(true)}>Fazer novo teste</button></div>
           </>
         )}
@@ -14148,11 +14167,14 @@ function coachTurmaMembros(turma, lista) {
   const ids = new Set(turma.links || []);
   return lista.filter((a) => ids.has(a.link_id) && (a.status === "ativo" || a.status === "pendente"));
 }
+function coachTurmaEnviosLer() { try { return JSON.parse(localStorage.getItem("treino-app:coachTurmaEnvios") || "{}") || {}; } catch (e) { return {}; } }
+function coachTurmaEnvioMarcar(id) { try { localStorage.setItem("treino-app:coachTurmaEnvios", JSON.stringify({ ...coachTurmaEnviosLer(), [id]: todayISO() })); } catch (e) {} }
 function CoachTurmas({ lista, coachUid, onMontarTurma, showToast }) {
   const [turmas, setTurmas] = useState(() => { try { return JSON.parse(localStorage.getItem("treino-app:coachTurmas") || "[]") || []; } catch (e) { return []; } });
   const [edit, setEdit] = useState(null); // { id?, nome, links: [] }
   const [apagarQ, setApagarQ] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const envios = coachTurmaEnviosLer(); // { turmaId: "AAAA-MM-DD" } do último envio feito neste aparelho
   const carregar = useCallback(async () => {
     try {
       const { data, error } = await supabaseClient.from("coach_turmas").select("id,nome,links").order("nome");
@@ -14198,7 +14220,7 @@ function CoachTurmas({ lista, coachUid, onMontarTurma, showToast }) {
           <div key={t.id} className="gt-co-turma">
             <button type="button" className="tx" onClick={() => setEdit({ id: t.id, nome: t.nome, links: (t.links || []).filter((id) => lista.some((a) => a.link_id === id)) })} aria-label={`Editar turma ${t.nome}`}>
               <div className="t">{t.nome}</div>
-              <div className="d">{membros.length ? membros.map((a) => a.nome.split(" ")[0]).join(", ") : "Sem alunos ativos"}</div>
+              <div className="d">{membros.length ? (envios[t.id] ? `Enviada em ${coachDataCurta(envios[t.id])} · ` : "") + membros.map((a) => a.nome.split(" ")[0]).join(", ") : "Sem alunos ativos"}</div>
             </button>
             <button type="button" className="gt-btn small" disabled={!membros.length} onClick={() => onMontarTurma({ ...t, membros })}>Montar semana</button>
           </div>
@@ -14208,19 +14230,28 @@ function CoachTurmas({ lista, coachUid, onMontarTurma, showToast }) {
         <div className="gt-modal-backdrop" onClick={() => !salvando && setEdit(null)}>
           <div className="gt-modal" role="dialog" aria-modal="true" aria-label={edit.id ? "Editar turma" : "Nova turma"} onClick={(e) => e.stopPropagation()}>
             <h3>{edit.id ? "Editar turma" : "Nova turma"}</h3>
-            <input className="gt-input" aria-label="Nome da turma" placeholder="Ex.: Corrida de terça" maxLength={60} value={edit.nome} onChange={(e) => setEdit({ ...edit, nome: e.target.value })} autoFocus={!edit.id} />
+            <label className="gt-field-label" htmlFor="gt-turma-nome" style={{ display: "block" }}>Nome da turma</label>
+            <input id="gt-turma-nome" className="gt-input" placeholder="Ex.: Corrida de terça" maxLength={60} value={edit.nome} onChange={(e) => setEdit({ ...edit, nome: e.target.value })} autoFocus={!edit.id} />
             <div className="gt-co-sec">ALUNOS ({edit.links.length})</div>
             <div className="gt-co-turma-alunos">
               {elegiveis.map((a) => (
                 <label key={a.link_id} className="gt-plano-chk"><input type="checkbox" checked={edit.links.indexOf(a.link_id) >= 0} onChange={() => alternar(a.link_id)} /> <span>{a.nome}{a.status === "pendente" ? <small> (convite pendente)</small> : null}</span></label>
               ))}
             </div>
-            <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+            {!apagarQ && <div className="gt-modal-actions" style={{ marginTop: 12 }}>
               <button type="button" className="gt-btn" disabled={salvando || !edit.nome.trim() || !edit.links.length} onClick={salvar}>{salvando ? "Salvando…" : "Salvar turma"}</button>
               <button type="button" className="gt-btn secondary" disabled={salvando} onClick={() => setEdit(null)}>Cancelar</button>
-            </div>
+            </div>}
             {edit.id && !apagarQ && <button type="button" className="gt-co-link danger" style={{ marginTop: 8 }} onClick={() => setApagarQ(true)}>Apagar turma</button>}
-            {edit.id && apagarQ && <div className="gt-co-turma-apagar" role="alert">Apagar a turma {edit.nome}? Os alunos e os treinos já enviados não mudam. <button type="button" className="gt-co-link danger" disabled={salvando} onClick={apagar}>Apagar</button> <button type="button" className="gt-co-link" onClick={() => setApagarQ(false)}>Manter</button></div>}
+            {edit.id && apagarQ && (
+              <div className="gt-co-turma-apagar" role="alert">
+                <div>Apagar a turma {edit.nome}? Os alunos e os treinos já enviados não mudam.</div>
+                <div className="gt-modal-actions" style={{ marginTop: 12 }}>
+                  <button type="button" className="gt-btn gt-btn-danger" disabled={salvando} onClick={apagar}>{salvando ? "Apagando…" : "Apagar turma"}</button>
+                  <button type="button" className="gt-btn secondary" disabled={salvando} onClick={() => setApagarQ(false)}>Manter</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -14318,7 +14349,6 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
           {!filaTodos && filaHoje.length > 5 && <button type="button" className="gt-co-link gt-co-hoje-mais" onClick={() => setFilaTodos(true)}>Ver mais ({filaHoje.length - 5})</button>}
         </section>
       )}
-      {onMontarTurma && <CoachTurmas lista={lista} coachUid={coachUid} onMontarTurma={onMontarTurma} showToast={showToast} />}
       <input className="gt-input gt-co-busca" type="search" aria-label="Buscar aluno" placeholder="Buscar aluno" value={busca} onChange={(e) => setBusca(e.target.value)} />
       <div className="gt-co-chipsrow" role="group" aria-label="Filtros">
         {CHIPS.map(([k, t]) => (cont[k] > 0 || k === "todos") && (
@@ -14351,6 +14381,7 @@ function CoachAlunosLista({ lista, carregando, offline, atualizadoEm, onAbrir, o
           );
         })}
       </div>
+      {onMontarTurma && <CoachTurmas lista={lista} coachUid={coachUid} onMontarTurma={onMontarTurma} showToast={showToast} />}
     </>
   );
 }
@@ -14882,6 +14913,7 @@ function CoachComposer({ aluno: alunoProp, turma, modelo, treinosProprios, ativi
     setEnviando(false);
     if (ok + fila === 0) { showToast("Não consegui enviar agora. Tente de novo"); return; }
     try { localStorage.removeItem(chaveRasc); } catch (e) {}
+    coachTurmaEnvioMarcar(turma.id);
     logEvent(plano ? "coach_plano_turma" : "coach_semana_turma");
     const oque = plano ? "Plano enviado" : "Semana enviada";
     showToast(fila ? `${oque} para ${ok} de ${membros.length}. ${fila} na fila: sai quando você reconectar` : falhou ? `${oque} para ${ok} de ${membros.length}. Abra quem faltou e envie de novo` : `${oque} para ${ok} ${ok > 1 ? "alunos" : "aluno"} de ${turma.nome}`);
@@ -14954,7 +14986,7 @@ function CoachComposer({ aluno: alunoProp, turma, modelo, treinosProprios, ativi
       {anamSim.length > 0 && <div className="gt-co-aviso aviso" role="note">{primeiroNome} respondeu "sim" na anamnese em: {anamneseSimTexto(anamSim)}. Peça liberação médica antes de treinos intensos.</div>}
       <div className="gt-focus-header">
         <button type="button" className="gt-focus-close" aria-label="Voltar" onClick={tentarSair}><IconVoltar /></button>
-        <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : ehTurma ? `TURMA ${aluno.nome.toUpperCase()}` : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
+        <div className="gt-focus-title-wrap"><div className="gt-focus-title-hint">{ehModelo ? "MODELO" : ehTurma ? `TURMA · ${(turma.membros || []).length} ${(turma.membros || []).length === 1 ? "ALUNO" : "ALUNOS"}` : `PARA ${aluno.nome.toUpperCase()}`}</div><div className="gt-focus-title">{ehModelo ? modelo.nome : "Semana"}</div></div>
         <button type="button" className="gt-co-menu-btn labeled" aria-label="Mais opções" aria-expanded={menu} onClick={() => setMenu(!menu)}>Mais ⋯</button>
       </div>
       {menu && (
@@ -15023,7 +15055,7 @@ function CoachComposer({ aluno: alunoProp, turma, modelo, treinosProprios, ativi
       {podeAjustar && <CoachAjustarAluno aluno={aluno} remover={remover} setRemover={setRemover} />}
       </div>
       <div className="gt-focus-footer gt-co-footer">
-        <div className="gt-co-resumo" aria-live="polite">{resumo.dias} dia{resumo.dias === 1 ? "" : "s"} · {resumo.ex} exercício{resumo.ex === 1 ? "" : "s"}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
+        <div className="gt-co-resumo" aria-live="polite">{[`${resumo.dias} dia${resumo.dias === 1 ? "" : "s"}`, (resumo.ex || (!resumo.corridas && !resumo.outras)) && coachTxtEx(resumo.ex), resumo.corridas && `${resumo.corridas} corrida${resumo.corridas === 1 ? "" : "s"}`, resumo.outras && `${resumo.outras} atividade${resumo.outras === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}{igualUltimo ? " · igual à última versão" : ultimo ? " · com mudanças" : ""}</div>
         {!ehModelo && <textarea className="gt-input" aria-label={ehTurma ? "Mensagem para a turma (opcional)" : `Mensagem para ${primeiroNome} (opcional)`} placeholder={ehTurma ? "Mensagem para a turma (opcional)" : `Mensagem para ${primeiroNome} (opcional)`} rows={2} maxLength={500} value={msg} onChange={(e) => setMsg(e.target.value)} />}
         {alunoAuto && !ehModelo && <div className="gt-co-auto-aviso" role="note">{primeiroNome} aplica automaticamente: {comoPlano && planoLiberado ? "o plano entra" : "a semana entra"} assim que você enviar{podeAjustar && remover.length ? ` e ${remover.length} ${remover.length > 1 ? "itens saem" : "item sai"} da semana` : ""}. Dá para desfazer pelo app.</div>}
         {motivoDesab && <div className="gt-co-motivo" role="status">{motivoDesab}</div>}
@@ -15303,7 +15335,7 @@ function CoachImportarFichaModal({ dowInicial, onAdicionar, onClose, showToast, 
 
         {etapa === "revisao" && (
           <div className="gt-plano-form">
-            <div className="gt-plano-aviso info"><b>Confira antes de adicionar.</b> Nada foi enviado ao aluno. Você ainda pode editar cada exercício depois.</div>
+            <div className="gt-plano-aviso info"><b>Confira antes de adicionar.</b> Nada foi enviado ao aluno. Você ainda pode editar cada {corridas.length && !fichas.length ? "treino" : "exercício"} depois.</div>
             {avisos.map((a, i) => <div key={i} className="gt-plano-aviso aviso">{a}</div>)}
             {fichas.map((f) => (
               <div key={f.id} className="gt-co-imp-ficha">
@@ -15582,7 +15614,7 @@ function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha,
         <div className="gt-sheet-head"><h3>Adicionar em {COACH_DIAS[dow].toLowerCase()}</h3><button type="button" className="gt-ag-more" aria-label="Fechar" onClick={onClose}>✕</button></div>
         {ativ ? (
           <>
-            <input className="gt-input" aria-label="Atividade" placeholder="Atividade (ex.: Corrida)" maxLength={40} value={ativ.nome} onChange={(e) => setAtiv({ ...ativ, nome: e.target.value })} />
+            <input className="gt-input" aria-label="Atividade" placeholder="Atividade (ex.: Bike)" maxLength={40} value={ativ.nome} onChange={(e) => setAtiv({ ...ativ, nome: e.target.value })} />
             <input className="gt-input" style={{ marginTop: 8 }} aria-label="Detalhe" placeholder="Detalhe (ex.: 6 km, ritmo confortável)" maxLength={80} value={ativ.detalhe} onChange={(e) => setAtiv({ ...ativ, detalhe: e.target.value })} />
             <div className="gt-modal-actions" style={{ marginTop: 12 }}>
               <button type="button" className="gt-btn" disabled={!ativ.nome.trim()} onClick={() => { const nome = ativ.nome.trim(); const ex = (atividadesProprias || []).find((a) => normalizeSearch(a.nome) === normalizeSearch(nome)); onAtividade({ tipo: "atividade", id: ex ? ex.id : (normalizeSearch(nome) === "corrida" ? "corrida" : coachSlug(nome)), nome, ...(ativ.detalhe.trim() ? { detalhe: ativ.detalhe.trim() } : {}) }); }}>Adicionar</button>
@@ -15594,7 +15626,7 @@ function CoachDiaSheet({ dow, sem, salvas, atividadesProprias, onClose, onFicha,
             <button type="button" className="gt-sheet-item" onClick={onNova}><div className="tx"><div className="t">Criar ficha nova</div><div className="d">Monte exercício por exercício</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={onImportar}><div className="tx"><div className="t">Importar ficha ou planilha</div><div className="d">Musculação ou corrida: foto, PDF, planilha ou texto</div></div></button>
             <button type="button" className="gt-sheet-item" onClick={onCorrida}><div className="tx"><div className="t">Treino de corrida</div><div className="d">Tiros, ritmo, longão… com etapas e pace</div></div></button>
-            <button type="button" className="gt-sheet-item" onClick={() => setAtiv({ nome: "Corrida", detalhe: "" })}><div className="tx"><div className="t">Corrida ou outra atividade</div><div className="d">Com detalhe: distância, ritmo…</div></div></button>
+            <button type="button" className="gt-sheet-item" onClick={() => setAtiv({ nome: "", detalhe: "" })}><div className="tx"><div className="t">Outra atividade</div><div className="d">Bike, natação, caminhada, corrida livre…</div></div></button>
             {naSemana.length > 0 && <div className="gt-co-sec" style={{ marginTop: 10 }}>JÁ NESTA SEMANA</div>}
             {naSemana.map((ref) => <button key={ref} type="button" className="gt-sheet-item" onClick={() => onReusar(ref)}><div className="tx"><div className="t">{sem.fichas[ref].nome}</div><div className="d">{coachTxtEx(coachContaExercicios(sem.fichas[ref]))}</div></div></button>)}
             {(salvas || []).length > 0 && <div className="gt-co-sec" style={{ marginTop: 10 }}>SUAS FICHAS SALVAS</div>}
@@ -19534,6 +19566,9 @@ function App() {
     } else if (rpeModal.prova && tempoParaSeg(rpeModal.tempoProva) > 0) {
       const seg = tempoParaSeg(rpeModal.tempoProva);
       saveCarga(rpeModal.date, rpeModal.item, Math.round(seg / 60), rpe, rpeModal.dor, km, rpeModal.nota, rpeModal.video, { tempoSeg: seg });
+      const pl = planos.find((p) => p.id === rpeModal.prova.planoId);
+      const ss = pl && pl.sessoes[rpeModal.prova.idx];
+      if (ss && ss.status !== "feito") { setSessaoPlanoStatus(pl.id, rpeModal.prova.idx, "feito"); logTreino("corrida", "plano"); } // só marca; nunca desmarca
       logEvent("prova_resultado");
       const extras = [km > 0 && { label: "Distância", valor: `${String(Math.round(km * 100) / 100).replace(".", ",")} km` }, km > 0 && { label: "Pace médio", valor: `${planoFmtPace(seg / 60 / km)} /km`, destaque: true }].filter(Boolean);
       setCartaoProva({ titulo: rpeModal.label, subtitulo: formatDateLabel(rpeModal.date), tempo: segParaTempo(seg), tempoRotulo: "tempo da prova", extras });
@@ -20416,7 +20451,7 @@ function App() {
                 <div className="gt-plano-hoje" key={`${plano.id}-${idx}`}>
                   <div className="gt-plano-row" onClick={() => setExpandedItem(aberto ? null : chave)}>
                     <div className="gt-plano-main">
-                      <div className="hd"><Ei e="🏃" /> {plano.tipo === "avulso" ? "Treino de corrida" : planoEhSemanas(plano) ? `${plano.nome} · Semana ${planoSemanaNumero(plano, sessao.data)} de ${plano.semanas}` : `Plano · ${plano.provaNome}`}{sessao.fase && !planoEhSemanas(plano) ? ` · ${sessao.fase}` : ""}{sessao.ajuste ? " · ↻ ajustado" : ""}</div>
+                      <div className="hd"><Ei e="🏃" /> {plano.tipo === "avulso" ? "Treino de corrida" : planoEhSemanas(plano) ? `${plano.nome} · Semana ${planoSemanaNumero(plano, sessao.data)} de ${plano.semanas}` : sessao.tipo === "prova" ? "Dia da prova" : `Plano · ${plano.provaNome}`}{sessao.fase && !planoEhSemanas(plano) ? ` · ${sessao.fase}` : ""}{sessao.ajuste ? " · ↻ ajustado" : ""}</div>
                       <div className="ti"><Ei e={t.emoji} /> {sessao.titulo}</div>
                       {meta && <div className="mt">{meta}</div>}
                     </div>
@@ -20446,8 +20481,8 @@ function App() {
                     return (
                       <div className="gt-item-carga-row" style={{ marginTop: 8 }}>
                         <span><b>{segParaTempo(cg.tempoSeg)}</b>{km ? ` · ${String(km).replace(".", ",")} km · pace ${planoFmtPace(cg.tempoSeg / 60 / km)}` : ""}</span>
-                        <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>editar ✎</button>
-                        <button type="button" className="gt-item-carga-edit" onClick={() => setCartaoProva({ titulo: sessao.titulo, subtitulo: formatDateLabel(sessao.data), tempo: segParaTempo(cg.tempoSeg), tempoRotulo: "tempo da prova", extras: km ? [{ label: "Distância", valor: `${String(km).replace(".", ",")} km` }, { label: "Pace médio", valor: `${planoFmtPace(cg.tempoSeg / 60 / km)} /km`, destaque: true }] : [] })}>compartilhar ↗</button>
+                        <span className="gt-item-carga-acoes"><button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>editar ✎</button>
+                        <button type="button" className="gt-item-carga-edit" onClick={() => setCartaoProva({ titulo: sessao.titulo, subtitulo: formatDateLabel(sessao.data), tempo: segParaTempo(cg.tempoSeg), tempoRotulo: "tempo da prova", extras: km ? [{ label: "Distância", valor: `${String(km).replace(".", ",")} km` }, { label: "Pace médio", valor: `${planoFmtPace(cg.tempoSeg / 60 / km)} /km`, destaque: true }] : [] })}>compartilhar ↗</button></span>
                       </div>
                     );
                   })()}
@@ -23189,11 +23224,13 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
     return a && a.label === e.label ? a.seg : null;
   };
   const roxTotal = rot.modo === "up" ? st.parciais.reduce((t, s, i) => t + (rot.estacoes[i] && rot.estacoes[i].roxzone ? trecho(i) : 0), 0) : 0;
+  const fmtT = (seg) => (seg >= 3600 ? segParaTempo(seg) : formatRestTime(seg)); // acima de 1 h vira h:mm:ss
   const listaParciais = () => (
     <ol className="gt-bt-parciais">
+      {antTrechos && <li className="cab" aria-hidden="true"><span>Trecho</span><b>tempo · vs. última</b></li>}
       {st.parciais.map((s, i) => {
         const a = antTrecho(i);
-        return <li key={i} className={rot.estacoes[i].roxzone ? "rox" : ""}><span>{rot.estacoes[i].label}</span><b>{formatRestTime(trecho(i))}{a != null && <em className={trecho(i) <= a ? "melhor" : "pior"}> {blocoDelta(trecho(i) - a)}</em>}</b></li>;
+        return <li key={i} className={rot.estacoes[i].roxzone ? "rox" : ""}><span>{rot.estacoes[i].label}</span><b>{fmtT(trecho(i))}{a != null && <em className={trecho(i) <= a ? "melhor" : "pior"}> {blocoDelta(trecho(i) - a)}</em>}</b></li>;
       })}
     </ol>
   );
@@ -23207,14 +23244,14 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
     st.parciais.forEach((_, i) => {
       const e = rot.estacoes[i];
       if (!e || e.roxzone) return;
-      if (/^corrida/i.test(e.label)) { corridas += trecho(i); nCorr++; } else est.push({ label: e.label, valor: formatRestTime(trecho(i)) });
+      if (/^corrida/i.test(e.label)) { corridas += trecho(i); nCorr++; } else est.push({ label: e.label, valor: fmtT(trecho(i)) });
     });
     const extras = [];
-    if (nCorr > 1) extras.push({ label: `Corridas (${nCorr})`, valor: formatRestTime(corridas) });
+    if (nCorr > 1) extras.push({ label: `Corridas (${nCorr})`, valor: fmtT(corridas) });
     est.slice(0, nCorr > 1 ? 8 : 9).forEach((x) => extras.push(x));
-    if (st.roxzone && roxTotal > 0) extras.push({ label: "Roxzone", valor: formatRestTime(roxTotal) });
-    const comp = ant && ant.tempoSeg ? (tempoFinal < ant.tempoSeg ? `${formatRestTime(ant.tempoSeg - tempoFinal)} mais rápido que a última` : tempoFinal === ant.tempoSeg ? "Igual à última" : null) : null;
-    setCartao({ titulo: bloco.nome, subtitulo: formatDateLabel(todayISO()), tempo: segParaTempo(tempoFinal), tempoRotulo: "tempo total", extras, comp });
+    if (st.roxzone && roxTotal > 0) extras.push({ label: "Roxzone", valor: fmtT(roxTotal) });
+    const comp = ant && ant.tempoSeg ? (tempoFinal < ant.tempoSeg ? `${fmtT(ant.tempoSeg - tempoFinal)} mais rápido que a última` : tempoFinal === ant.tempoSeg ? "Igual à última" : null) : null;
+    setCartao({ titulo: bloco.nome, subtitulo: formatDateLabel(todayISO()), tempo: fmtT(tempoFinal), tempoRotulo: "tempo total", extras, comp });
   }
   const grande = rot.modo === "up" ? decorrido : resta;
   const estacao = rot.modo === "up" ? rot.estacoes[st.parciais.length] : null;
@@ -23261,15 +23298,16 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
         )}
         {st.fim && (
           <div className="gt-bt-fim">
-            <div className="gt-bt-fase">Bloco concluído</div>
-            <div className="gt-bt-tempo">{formatRestTime(tempoFinal)}</div>
+            <div className="gt-bt-fase">Concluído</div>
+            <div className="gt-bt-tempo">{fmtT(tempoFinal)}</div>
             {formato === "fortime" && ant && st.parciais.length >= rot.estacoes.length && (
               <div className={`gt-bt-comp ${tempoFinal <= ant.tempoSeg ? "melhor" : "pior"}`}>
-                {tempoFinal === ant.tempoSeg ? "Igual à" : tempoFinal < ant.tempoSeg ? `${formatRestTime(ant.tempoSeg - tempoFinal)} mais rápido que a` : `${formatRestTime(tempoFinal - ant.tempoSeg)} mais lento que a`} última ({antData}: {formatRestTime(ant.tempoSeg)})
+                {tempoFinal === ant.tempoSeg ? "Igual à" : tempoFinal < ant.tempoSeg ? `${fmtT(ant.tempoSeg - tempoFinal)} mais rápido que a` : `${fmtT(tempoFinal - ant.tempoSeg)} mais lento que a`} última ({antData}: {fmtT(ant.tempoSeg)})
               </div>
             )}
             {formato === "amrap" && ant && <div className="gt-bt-sub">Sua última ({antData}): {blocoFmtResultado(ant)}</div>}
-            {st.roxzone && roxTotal > 0 && <div className="gt-bt-sub">Roxzone: {formatRestTime(roxTotal)}{ant && ant.roxzoneSeg ? ` (última: ${formatRestTime(ant.roxzoneSeg)})` : ""}</div>}
+            {st.roxzone && roxTotal > 0 && <div className="gt-bt-sub">Roxzone: {fmtT(roxTotal)}{ant && ant.roxzoneSeg ? ` (última: ${fmtT(ant.roxzoneSeg)})` : ""}</div>}
+            {completo && <button type="button" className="gt-dsf-link" style={{ marginTop: 12 }} onClick={abrirCartao}>Compartilhar resultado ↗</button>}
             {formato === "amrap" && (
               <div className="gt-bt-res">
                 <label>Rodadas<input className="gt-input" inputMode="numeric" value={rodadas} onChange={(e) => setRodadas(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
@@ -23278,7 +23316,6 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
             )}
             {formato === "fortime" && st.parciais.length < rot.estacoes.length && <div className="gt-bt-sub">{st.parciais.length} de {rot.estacoes.length} {st.roxzone ? "trechos" : "estações"}</div>}
             {rot.modo === "up" && st.parciais.length > 0 && listaParciais()}
-            {completo && <button type="button" className="gt-dsf-link" style={{ marginTop: 12 }} onClick={abrirCartao}>Compartilhar resultado ↗</button>}
           </div>
         )}
         {cartao && <DesafioCartaoModal dados={cartao} render={cartaoResultadoRender} arquivo="movo-resultado.png" onClose={() => setCartao(null)} />}
@@ -24032,7 +24069,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
           </div>
         )}
         <h3>{rpeModal.manual ? "Registrar corrida" : rpeModal.celeb ? "Como foi? (opcional)" : `Como foi "${rpeModal.label}"?`}</h3>
-        <p>{rpeModal.manual ? "Registre a corrida que você já fez, no dia escolhido. Ela entra na sua evolução e no controle de carga." : coachVeNota ? `Ajuda ${coachVeNota} a ajustar seus próximos treinos. Leva 10 segundos.` : "Ajuda a acompanhar seu cansaço. Leva 10 segundos."}</p>
+        <p>{rpeModal.manual ? "Registre a corrida que você já fez, no dia escolhido. Ela entra na sua evolução e no controle de carga." : rpeModal.prova ? "Guarde seu tempo de prova. O resto é opcional." : coachVeNota ? `Ajuda ${coachVeNota} a ajustar seus próximos treinos. Leva 10 segundos.` : "Ajuda a acompanhar seu cansaço. Leva 10 segundos."}</p>
         {rpeModal.manual && (
           <>
             <div className="gt-field-label">TIPO</div>
@@ -24089,7 +24126,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
           ))}
         </div>
         <div className="gt-rpe-hint">1 = muito leve · 5 = moderado · 10 = esforço máximo</div>
-        <div className="gt-field-label">DOR PÓS-SESSÃO (0-10) · OPCIONAL</div>
+        <div className="gt-field-label">{rpeModal.prova ? "DOR DEPOIS DA PROVA" : "DOR PÓS-SESSÃO"} (0-10) · OPCIONAL</div>
         <div className="gt-rpe-scale">
           {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
             <button
