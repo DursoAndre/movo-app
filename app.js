@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v220";
+const APP_BUILD = "v221";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -9928,7 +9928,21 @@ async function desafioRenderCartao(d) {
   if (d.serie) {
     // Gráfico de linhas: pontos acumulados semana a semana
     const sr = d.serie;
-    const cx0 = 130, cx1 = W - 150, cy0 = 400, cy1 = 890;
+    const fimDe = (x) => x.vals[x.vals.length - 1];
+    const posRank = (x) => { const i = (d.ranking || []).findIndex((p) => p.uid === x.user_id); return i < 0 ? 999 : i; };
+    // Quem termina no mesmo valor divide a ponta: avatares lado a lado (até 3; com mais, 2 + "+N"), não empilhados.
+    const grupos = [];
+    sr.series.slice().sort((p, q) => fimDe(q) - fimDe(p) || posRank(p) - posRank(q)).forEach((x) => {
+      const gr = grupos.find((k) => k.v === fimDe(x));
+      if (gr) gr.pessoas.push(x); else grupos.push({ v: fimDe(x), pessoas: [x] });
+    });
+    const cy0 = 400, cy1 = 850;
+    const yMin = cy0 - 40, yMax = cy1 + 20;
+    const ar = Math.max(24, Math.min(40, Math.floor(((yMax - yMin) / grupos.length - 8) / 2)));
+    const passo = Math.round(ar * 1.7);
+    const vagas = (gr) => Math.min(gr.pessoas.length, 3);
+    const larg = Math.max.apply(null, grupos.map((gr) => 2 * ar + passo * (vagas(gr) - 1)));
+    const cx0 = 130, cx1 = Math.min(W - 150, W - 50 - 22 - larg);
     const todos = sr.series.reduce((acc, x) => acc.concat(x.vals), [0]);
     let lo = Math.min.apply(null, todos), hi = Math.max.apply(null, todos);
     if (hi - lo < 4) { hi += 2; lo -= 2; }
@@ -9941,7 +9955,8 @@ async function desafioRenderCartao(d) {
     g.beginPath(); g.moveTo(cx0 - 30, Y(0)); g.lineTo(cx1 + 30, Y(0)); g.stroke(); g.setLineDash([]);
     g.fillStyle = "#6B7077"; g.font = `500 26px ${INT}`; g.textAlign = "center";
     sr.labels.forEach((l, i) => g.fillText(l, X(i), cy1 + 56));
-    const ord = sr.series.slice().sort((p, q) => p.vals[p.vals.length - 1] - q.vals[q.vals.length - 1]);
+    // De baixo pra cima; no empate, o primeiro do grupo é desenhado por último (a linha visível é a do 1º avatar).
+    const ord = grupos.slice().reverse().reduce((acc, gr) => acc.concat(gr.pessoas.slice().reverse()), []);
     ord.forEach((x) => {
       g.strokeStyle = x.cor; g.lineWidth = 9; g.lineJoin = "round"; g.lineCap = "round";
       g.beginPath();
@@ -9949,33 +9964,57 @@ async function desafioRenderCartao(d) {
       g.stroke();
       x.vals.forEach((v, i) => { g.beginPath(); g.arc(X(i), Y(v), 9, 0, Math.PI * 2); g.fillStyle = "#14161A"; g.fill(); g.lineWidth = 5; g.strokeStyle = x.cor; g.stroke(); });
     });
-    // Avatares nas pontas (desvia quando duas pontas ficam coladas)
-    const pontas = ord.map((x) => ({ x, y: Y(x.vals[x.vals.length - 1]) })).sort((p, q) => p.y - q.y);
-    for (let i = 1; i < pontas.length; i++) if (pontas[i].y - pontas[i - 1].y < 86) pontas[i].y = pontas[i - 1].y + 86;
-    pontas.forEach(({ x, y }) => {
-      const ax = X(x.vals.length - 1) + 54;
-      g.beginPath(); g.arc(ax, y, 40, 0, Math.PI * 2); g.fillStyle = x.cor; g.fill();
-      if (fotos[x.user_id]) avatarCanvas(g, fotos[x.user_id], ax, y, 37);
-      g.lineWidth = 6; g.strokeStyle = "#14161A"; g.beginPath(); g.arc(ax, y, 40, 0, Math.PI * 2); g.stroke();
-      if (!fotos[x.user_id]) {
-        g.fillStyle = "#14161A"; g.font = `600 32px ${OSW}`; g.textBaseline = "middle"; g.textAlign = "center";
-        g.fillText(desafioIniciais(x.nome), ax, y + 2);
-        g.textBaseline = "alphabetic";
+    // Avatares nas pontas: cada grupo na altura do seu valor; se dois grupos ficam colados, afasta sem sair da área do gráfico.
+    const gap = 2 * ar + 8;
+    grupos.forEach((gr) => { gr.y = Y(gr.v); });
+    for (let i = 1; i < grupos.length; i++) grupos[i].y = Math.max(grupos[i].y, grupos[i - 1].y + gap);
+    if (grupos.length && grupos[grupos.length - 1].y > yMax) {
+      grupos[grupos.length - 1].y = yMax;
+      for (let i = grupos.length - 2; i >= 0; i--) grupos[i].y = Math.min(grupos[i].y, grupos[i + 1].y - gap);
+    }
+    if (grupos.length && grupos[0].y < yMin) grupos.forEach((gr, i) => { gr.y = yMin + (grupos.length > 1 ? (i * (yMax - yMin)) / (grupos.length - 1) : 0); });
+    const ex = X(sr.labels.length - 1);
+    grupos.forEach((gr) => {
+      const y0 = Y(gr.v);
+      if (Math.abs(gr.y - y0) > 3) {
+        g.strokeStyle = gr.pessoas[0].cor; g.lineWidth = 3; g.globalAlpha = 0.7;
+        g.beginPath(); g.moveTo(ex + 10, y0); g.lineTo(ex + 22 + ar * 0.3, gr.y); g.stroke(); g.globalAlpha = 1;
+      }
+      const n = vagas(gr);
+      const resto = gr.pessoas.length > 3 ? gr.pessoas.length - 2 : 0;
+      for (let k = n - 1; k >= 0; k--) {
+        const ax = ex + 22 + ar + k * passo;
+        const x = resto && k === n - 1 ? null : gr.pessoas[k];
+        g.beginPath(); g.arc(ax, gr.y, ar, 0, Math.PI * 2); g.fillStyle = x ? x.cor : "#2A2E35"; g.fill();
+        if (x && fotos[x.user_id]) avatarCanvas(g, fotos[x.user_id], ax, gr.y, ar - 3);
+        g.lineWidth = 6; g.strokeStyle = "#14161A"; g.beginPath(); g.arc(ax, gr.y, ar, 0, Math.PI * 2); g.stroke();
+        if (!x || !fotos[x.user_id]) {
+          g.fillStyle = x ? "#14161A" : "#F2F3F1"; g.font = `600 ${Math.round(ar * 0.8)}px ${OSW}`; g.textBaseline = "middle"; g.textAlign = "center";
+          g.fillText(x ? desafioIniciais(x.nome) : `+${resto}`, ax, gr.y + 2);
+          g.textBaseline = "alphabetic";
+        }
       }
     });
-    // Legenda: nome + pontos
-    const lider = sr.series.find((x) => x.user_id === sr.liderId) || ord[ord.length - 1];
+    // Legenda: nome + pontos, até 6 (com mais gente, a 6ª vaga vira "+N pessoas")
+    const lider = sr.series.find((x) => x.user_id === sr.liderId) || grupos[0].pessoas[0];
+    const leg = grupos.reduce((acc, gr) => acc.concat(gr.pessoas), []);
+    const mostra = leg.length > 6 ? leg.slice(0, 5) : leg;
+    const linhasLeg = Math.ceil(Math.min(leg.length, 6) / 2);
+    const ly0 = linhasLeg >= 3 ? 972 : 1000;
     g.textAlign = "left";
-    let lx = 70;
-    sr.series.slice().sort((p, q) => q.vals[q.vals.length - 1] - p.vals[p.vals.length - 1]).slice(0, 4).forEach((x, i) => {
-      const lyy = 1026 + Math.floor(i / 2) * 56;
+    mostra.forEach((x, i) => {
+      const lyy = ly0 + Math.floor(i / 2) * 50;
       const lxx = i % 2 === 0 ? 70 : 560;
-      g.beginPath(); g.arc(lxx + 14, lyy - 10, 14, 0, Math.PI * 2); g.fillStyle = x.cor; g.fill();
-      g.fillStyle = "#F2F3F1"; g.font = `500 32px ${INT}`;
-      g.fillText(fit(x.nome, 300) + (x === lider ? " 👑" : ""), lxx + 40, lyy);
-      g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 34px ${OSW}`;
-      g.fillText(num(x.vals[x.vals.length - 1]), lxx + 440, lyy); g.textAlign = "left";
+      g.beginPath(); g.arc(lxx + 13, lyy - 10, 13, 0, Math.PI * 2); g.fillStyle = x.cor; g.fill();
+      g.fillStyle = "#F2F3F1"; g.font = `500 30px ${INT}`;
+      g.fillText(fit(x.nome, 300) + (x === lider ? " 👑" : ""), lxx + 38, lyy);
+      g.textAlign = "right"; g.fillStyle = "#C6F135"; g.font = `600 32px ${OSW}`;
+      g.fillText(num(fimDe(x)), lxx + 440, lyy); g.textAlign = "left";
     });
+    if (leg.length > 6) {
+      g.fillStyle = "#9AA0A6"; g.font = `500 30px ${INT}`;
+      g.fillText(`+${leg.length - 5} pessoas`, 560 + 38, ly0 + 100);
+    }
   } else {
   // Pódio
   const top = d.ranking.slice(0, 3);
