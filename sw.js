@@ -1,4 +1,4 @@
-const CACHE = "treino-app-v221";
+const CACHE = "treino-app-v222";
 const SHELL = [
   "./",
   "./index.html",
@@ -64,7 +64,12 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
       const existing = clientsArr.find((c) => "focus" in c);
-      if (existing) return existing.focus();
+      if (existing) {
+        // App já aberto: pede para abrir a tela do aviso (ex.: ?abrir=medidas) e traz para a frente.
+        const m = /[?&]abrir=([a-z]+)/.exec(url);
+        if (m) existing.postMessage({ tipo: "abrir", alvo: m[1] });
+        return existing.focus();
+      }
       return self.clients.openWindow(url);
     })
   );
