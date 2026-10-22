@@ -1578,6 +1578,13 @@ function featureLigada(nome) {
   try { const v = JSON.parse(localStorage.getItem("treino-app:features") || "null"); return Array.isArray(v) && v.includes(nome); } catch (e) { return false; }
 }
 
+// Fotos e vídeos ligados pelo painel (midia_flags; o App grava no aparelho). Sem resposta ainda: tudo ligado, menos a foto no check-in.
+const MIDIA_PADRAO = { fotos_medidas: true, video_aluno: true, video_treinador: true, foto_checkin: false };
+function midiaLigada(recurso) {
+  try { const v = JSON.parse(localStorage.getItem("treino-app:midia") || "null"); if (v && typeof v[recurso] === "boolean") return v[recurso]; } catch (e) {}
+  return !!MIDIA_PADRAO[recurso];
+}
+
 // --- Importar histórico de treinos (arquivo interpretado por IA) ---
 // A IA devolve JSON compacto por parte do arquivo; aqui validamos, juntamos, casamos os exercícios
 // com os que a pessoa já tem / o catálogo, planejamos o que será criado (para a tela de revisão),
@@ -13040,7 +13047,7 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
             </div>
           </>
         )}
-        <div className="gt-co-sec gt-med-sec">FOTOS</div>
+        {(midiaLigada("fotos_medidas") || MED_POSES.some(([k]) => novas[k] || fotos[k])) && <div className="gt-co-sec gt-med-sec">FOTOS</div>}
         <div className="gt-med-fotos">
           {MED_POSES.map(([k, t]) => {
             const src = novas[k] ? novas[k].url : fotos[k] ? urls[fotos[k]] : null;
@@ -13051,6 +13058,7 @@ function MedidaForm({ inicial, uid, onClose, onSalvo, showToast, quemVe }) {
                 <button type="button" aria-label={`Tirar foto de ${t.toLowerCase()}`} onClick={() => tirarFoto(k)}>✕</button>
               </div>
             );
+            if (!midiaLigada("fotos_medidas")) return null;
             return (
               <label className="gt-med-foto gt-med-foto-add" key={k}><span>+ {t}</span>
                 <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => addFoto(k, e)} /></label>
@@ -15262,10 +15270,12 @@ function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPen
         <div className="tx"><div className="t">{nomeVis}</div>{cref.trim() && <div className="d">CREF {cref.trim().replace(/^cref\s*/i, "")}</div>}{bio.trim() && <div className="b">{bio.trim()}</div>}</div>
       </div>
       <div className="gt-settings-hint">Só quem recebe ou aceita um convite seu vê esse perfil.</div>
+      {midiaLigada("video_treinador") && <>
       <div className="gt-co-lista-menu" style={{ marginTop: 16 }}>
         <button type="button" className="gt-co-linha" onClick={onVideos}><Icon name="video-camera" weight="duotone" size={22} /><span>Meus vídeos</span><i aria-hidden="true">›</i></button>
       </div>
       <div className="gt-settings-hint">Até {VIDEO_BIBLIOTECA_MAX} vídeos de até {VIDEO_MAX_SEG.biblioteca} s. Quem treina com você vê o seu vídeo no exercício.</div>
+      </>}
       <div className="gt-co-sec" style={{ marginTop: 16 }}>CONTA</div>
       <div className="gt-co-lista-menu">
         <button type="button" className="gt-co-linha" onClick={onTrocar}><Icon name="hoje" weight="duotone" size={22} /><span>Trocar para “Meu treino”</span><i aria-hidden="true">›</i></button>
@@ -17092,6 +17102,21 @@ function App() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [session, cloudSynced, stravaConnected]);
+  // Fotos e vídeos: o painel liga e desliga cada recurso; re-renderiza quando muda.
+  const [, setMidiaVer] = useState(0);
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    supabaseClient.rpc("midia_flags").then(({ data, error }) => {
+      if (cancelled || error || !data || typeof data !== "object") return;
+      let antes = null; try { antes = localStorage.getItem("treino-app:midia"); } catch (e) {}
+      const novo = JSON.stringify(data);
+      if (antes === novo) return;
+      try { localStorage.setItem("treino-app:midia", novo); } catch (e) {}
+      setMidiaVer((n) => n + 1);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [session]);
   const ajusteLiberado = !!(features && features.includes("ajuste_semana")) && cloudSynced && (stravaConnected === false || !!(session && session.user.email === ADMIN_EMAIL)); // só depois de saber do Strava e sincronizar, senão o card pisca; o Andre usa mesmo com Strava (exceção, 21/10)
   const blocosLiberado = !!(features && features.includes("blocos")); // editor de sessão em blocos (fase 1)
   const planoLiberado = !!(features && features.includes("plano")); // plano de semanas (fase 2)
@@ -23555,7 +23580,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
               onChange={(e) => setRpeModal({ ...rpeModal, nota: e.target.value })}
             />
             {coachVeNota && <div className="gt-rpe-hint">{coachVeNota} vê este comentário.</div>}
-            {coachVeNota && uid && !rpeModal.manual && (
+            {coachVeNota && uid && !rpeModal.manual && (rpeModal.video || midiaLigada("video_aluno")) && (
               <div className="gt-rpe-video">
                 {rpeModal.video ? (
                   <>
