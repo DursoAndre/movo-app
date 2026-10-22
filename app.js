@@ -10039,14 +10039,14 @@ async function desafioRenderCartao(d) {
   return blob;
 }
 
-function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
+function DesafioCartaoModal({ dados, onClose, showToast, onShared, render, arquivo }) {
   const [url, setUrl] = useState(null);
   const [blob, setBlob] = useState(null);
   const [erro, setErro] = useState(false);
   useEffect(() => {
     let revoke = null;
     let vivo = true;
-    desafioRenderCartao(dados).then((b) => {
+    (render || desafioRenderCartao)(dados).then((b) => {
       if (!vivo) return;
       if (!b) { setErro(true); return; }
       setBlob(b);
@@ -10058,7 +10058,7 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
   }, []);
   async function compartilhar() {
     if (!blob) return;
-    const file = new File([blob], "movo-desafio.png", { type: "image/png" });
+    const file = new File([blob], arquivo || "movo-desafio.png", { type: "image/png" });
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], text: `${dados.titulo} · ${dados.subtitulo}` });
@@ -10074,7 +10074,7 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
     if (!url) return;
     const a = document.createElement("a");
     a.href = url;
-    a.download = "movo-desafio.png";
+    a.download = arquivo || "movo-desafio.png";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -10087,7 +10087,7 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
         <h3>Cartão pra compartilhar</h3>
         {erro && <p>Não consegui gerar a imagem agora. Tenta de novo em instantes.</p>}
         {!erro && !url && <p>Gerando…</p>}
-        {url && <img className="gt-dsf-cartao-img" src={url} alt="Cartão do desafio" />}
+        {url && <img className="gt-dsf-cartao-img" src={url} alt={render ? `Cartão: ${dados.titulo}` : "Cartão do desafio"} />}
         <div className="gt-modal-actions">
           <button className="gt-btn" onClick={compartilhar} disabled={!blob}>Compartilhar</button>
           <button className="gt-btn secondary" onClick={baixar} disabled={!blob}>Baixar</button>
@@ -10098,6 +10098,55 @@ function DesafioCartaoModal({ dados, onClose, showToast, onShared }) {
       </div>
     </div>
   );
+}
+
+// Cartão de resultado (fase 5): prova de corrida ou simulado de HYROX. Mesmo visual do cartão do desafio.
+// d = { titulo, subtitulo, tempo, tempoRotulo, extras: [{ label, valor, destaque }], comp, rodape }
+async function cartaoResultadoRender(d) {
+  const W = 1080, H = 1350;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  try { await Promise.all([document.fonts.load("600 64px Oswald"), document.fonts.load("500 30px Inter")]); } catch (e) {}
+  const OSW = "Oswald, 'Arial Narrow', sans-serif";
+  const INT = "Inter, Arial, sans-serif";
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1D2024"); bg.addColorStop(1, "#0D0F12");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(W * 0.5, H * 0.36, 10, W * 0.5, H * 0.36, 620);
+  glow.addColorStop(0, "rgba(198,241,53,0.26)"); glow.addColorStop(1, "rgba(198,241,53,0)");
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const fit = (txt, maxW) => { let t = String(txt); while (t.length > 1 && g.measureText(t).width > maxW) t = t.slice(0, -1); return t === String(txt) ? t : t.trimEnd() + "…"; };
+  g.fillStyle = "#C6F135";
+  [[36, 126, 74], [98, 86, 114], [160, 46, 154]].forEach(([bx, by, bh]) => { rr(70 + bx * 0.42, 56 + by * 0.42, 44 * 0.42, bh * 0.42, 14 * 0.42); g.fill(); });
+  g.beginPath(); g.arc(70 + 182 * 0.42, 56 + 25 * 0.42, 13 * 0.42, 0, Math.PI * 2); g.fill();
+  g.font = `600 40px ${OSW}`; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText("movo", 176, 124);
+  g.fillStyle = "#F2F3F1";
+  let tam = 78; g.font = `600 ${tam}px ${OSW}`;
+  const titulo = String(d.titulo || "").toUpperCase();
+  while (tam > 50 && g.measureText(titulo).width > W - 140) { tam -= 2; g.font = `600 ${tam}px ${OSW}`; }
+  g.fillText(fit(titulo, W - 140), 70, 250);
+  g.fillStyle = "#9AA0A6"; g.font = `500 32px ${INT}`; g.fillText(fit(d.subtitulo || "", W - 140), 70, 304);
+  g.textAlign = "center";
+  g.fillStyle = "#C6F135"; g.font = `600 220px ${OSW}`; g.fillText(d.tempo || "", W / 2, 560);
+  g.fillStyle = "#9AA0A6"; g.font = `500 32px ${INT}`; g.fillText(d.tempoRotulo || "tempo total", W / 2, 614);
+  let y = 690;
+  if (d.comp) { g.fillStyle = "#F2F3F1"; g.font = `600 36px ${OSW}`; g.fillText(fit(d.comp, W - 160), W / 2, y); y += 50; }
+  const extras = (d.extras || []).slice(0, 10);
+  if (extras.length) {
+    const lh = extras.length > 6 ? 50 : 66;
+    rr(70, y, W - 140, extras.length * lh + 40, 28); g.fillStyle = "rgba(242,243,241,0.06)"; g.fill();
+    y += 20 + lh * 0.68;
+    extras.forEach((x) => {
+      g.textAlign = "left"; g.fillStyle = "#C9CDD2"; g.font = `500 ${lh > 60 ? 34 : 29}px ${INT}`; g.fillText(fit(x.label, W - 520), 110, y);
+      g.textAlign = "right"; g.fillStyle = x.destaque ? "#C6F135" : "#F2F3F1"; g.font = `600 ${lh > 60 ? 40 : 34}px ${OSW}`; g.fillText(x.valor, W - 110, y);
+      y += lh;
+    });
+  }
+  g.textAlign = "center"; g.fillStyle = "#6F757C"; g.font = `500 26px ${INT}`;
+  g.fillText(d.rodape || "movo · todos os seus treinos numa só evolução", W / 2, H - 56);
+  return await new Promise((res) => cv.toBlob((b) => res(b), "image/png"));
 }
 
 // Criar desafio: 3 passos (nome e datas, regras com modelos, aposta) + tela de convite.
@@ -17029,6 +17078,7 @@ function App() {
   const [novaAtividadeAberta, setNovaAtividadeAberta] = useState(false);
   const [extraId, setExtraId] = useState("");
   const [rpeModal, setRpeModal] = useState(null); // { item, date, label, duracaoMin, rpe }
+  const [cartaoProva, setCartaoProva] = useState(null); // cartão do resultado da prova (fase 5)
   const [freqPeriod, setFreqPeriod] = useState("30d"); // "7d" | "30d" | "12m" | "all"
   const [freqAvgUnit, setFreqAvgUnit] = useState("semana"); // "semana" | "mes"
   const [freqSelectedType, setFreqSelectedType] = useState("");
@@ -18319,6 +18369,8 @@ function App() {
       duracaoMin: ex && ex.duracaoMin != null ? String(ex.duracaoMin) : sessao.duracaoMin ? String(sessao.duracaoMin) : "",
       km: ex && ex.distanciaKm ? String(ex.distanciaKm).replace(".", ",") : sessao.distanciaKm ? String(sessao.distanciaKm).replace(".", ",") : "",
       rpe: ex && ex.rpe != null ? String(ex.rpe) : "", dor: ex && ex.dor != null ? ex.dor : null, nota: ex && ex.nota ? ex.nota : "",
+      // Dia da prova: pede o tempo oficial e oferece o cartão para compartilhar (fase 5).
+      ...(sessao.tipo === "prova" ? { prova: { planoId: plano.id, idx }, tempoProva: ex && ex.tempoSeg ? segParaTempo(ex.tempoSeg) : "" } : {}),
     });
   }
   // Registrar uma corrida que já aconteceu, sem montar treino: tipo, distância, tempo, esforço.
@@ -19228,7 +19280,7 @@ function App() {
     return { log: {}, extras: [], removed: [], cargas: {}, ...s };
   }
 
-  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota, video) {
+  function saveCarga(dateIso, item, duracaoMin, rpe, dor, distanciaKm, nota, video, extra) {
     const key = itemKey(item);
     const session = sessionShapeFor(dateIso);
     const entry = { duracaoMin: duracaoMin > 0 ? duracaoMin : null, rpe: rpe > 0 ? rpe : null, updatedAt: Date.now() };
@@ -19240,6 +19292,7 @@ function App() {
     const anterior = (session.cargas || {})[key];
     if (distanciaKm > 0) entry.distanciaKm = distanciaKm; // corrida digitada na hora (treino do plano / registro manual)
     else if (anterior && anterior.distanciaKm) entry.distanciaKm = anterior.distanciaKm; // vem do Strava; não perder ao editar duração/esforço
+    if (extra) Object.assign(entry, extra); // ex.: tempoSeg do dia da prova (fase 5)
     const nextCargas = { ...session.cargas, [key]: entry };
     updateSessions({ ...sessions, [dateIso]: { ...session, cargas: nextCargas } });
   }
@@ -19478,6 +19531,13 @@ function App() {
       logEvent("corrida_registrada_manual");
       logTreino("corrida", "manual");
       showToast("Corrida registrada");
+    } else if (rpeModal.prova && tempoParaSeg(rpeModal.tempoProva) > 0) {
+      const seg = tempoParaSeg(rpeModal.tempoProva);
+      saveCarga(rpeModal.date, rpeModal.item, Math.round(seg / 60), rpe, rpeModal.dor, km, rpeModal.nota, rpeModal.video, { tempoSeg: seg });
+      logEvent("prova_resultado");
+      const extras = [km > 0 && { label: "Distância", valor: `${String(Math.round(km * 100) / 100).replace(".", ",")} km` }, km > 0 && { label: "Pace médio", valor: `${planoFmtPace(seg / 60 / km)} /km`, destaque: true }].filter(Boolean);
+      setCartaoProva({ titulo: rpeModal.label, subtitulo: formatDateLabel(rpeModal.date), tempo: segParaTempo(seg), tempoRotulo: "tempo da prova", extras });
+      showToast("Prova registrada");
     } else if (dur > 0 || rpe > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || String(rpeModal.nota || "").trim() || rpeModal.video) {
       saveCarga(rpeModal.date, rpeModal.item, dur, rpe, rpeModal.dor, rpeModal.corrida ? km : 0, rpeModal.nota, rpeModal.video);
       if (String(rpeModal.nota || "").trim()) logEvent("sessao_comentario");
@@ -20378,6 +20438,19 @@ function App() {
                       </div>
                     );
                   })()}
+                  {sessao.tipo === "prova" && sessao.data <= todayISO() && (() => {
+                    // Dia da prova (fase 5): registrar o tempo oficial e compartilhar o cartão.
+                    const cg = (sessions[sessao.data]?.cargas || {})[corridaChave(plano, sessao, idx)];
+                    const km = (cg && cg.distanciaKm) || sessao.distanciaKm || 0;
+                    if (!cg || !cg.tempoSeg) return <div className="ac"><button type="button" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>Registrar meu tempo</button></div>;
+                    return (
+                      <div className="gt-item-carga-row" style={{ marginTop: 8 }}>
+                        <span><b>{segParaTempo(cg.tempoSeg)}</b>{km ? ` · ${String(km).replace(".", ",")} km · pace ${planoFmtPace(cg.tempoSeg / 60 / km)}` : ""}</span>
+                        <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>editar ✎</button>
+                        <button type="button" className="gt-item-carga-edit" onClick={() => setCartaoProva({ titulo: sessao.titulo, subtitulo: formatDateLabel(sessao.data), tempo: segParaTempo(cg.tempoSeg), tempoRotulo: "tempo da prova", extras: km ? [{ label: "Distância", valor: `${String(km).replace(".", ",")} km` }, { label: "Pace médio", valor: `${planoFmtPace(cg.tempoSeg / 60 / km)} /km`, destaque: true }] : [] })}>compartilhar ↗</button>
+                      </div>
+                    );
+                  })()}
                   {sessao.tipo !== "prova" && (
                     <div className="ac">
                       <button type="button" className={sessao.status === "feito" ? "on" : ""} onClick={() => marcarFizCorrida(plano, sessao, idx)}>{sessao.status === "feito" ? "✓ Fiz" : "Fiz"}</button>
@@ -21222,6 +21295,7 @@ function App() {
 
       {toast && <div className="gt-toast" role="status" aria-live="polite">{toast}</div>}
 
+      {cartaoProva && <DesafioCartaoModal dados={cartaoProva} render={cartaoResultadoRender} arquivo="movo-prova.png" showToast={showToast} onShared={() => logEvent("prova_cartao_compartilhado")} onClose={() => setCartaoProva(null)} />}
       {rpeModal && (
         <RpeModal
           rpeModal={rpeModal}
@@ -23022,6 +23096,7 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
   const [agora, setAgora] = useState(Date.now());
   const [rodadas, setRodadas] = useState("");
   const [reps, setReps] = useState("");
+  const [cartao, setCartao] = useState(null); // cartão para compartilhar o resultado (fase 5)
   const audio = useRef(null);
   const ultFase = useRef(-1);
   const ultSeg = useRef(-1);
@@ -23124,6 +23199,23 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
   );
   const tempoFinal = Math.round(formato === "fortime" && st.parciais.length >= rot.estacoes.length ? st.parciais[st.parciais.length - 1] : decorrido);
   const antData = anterior ? formatDateLabel(anterior.data) : "";
+  const completo = formato === "fortime" && rot.modo === "up" && st.parciais.length >= rot.estacoes.length && rot.estacoes.length > 0;
+  function abrirCartao() {
+    // Corridas somadas numa linha; estações uma a uma; Roxzone no fim.
+    let corridas = 0, nCorr = 0;
+    const est = [];
+    st.parciais.forEach((_, i) => {
+      const e = rot.estacoes[i];
+      if (!e || e.roxzone) return;
+      if (/^corrida/i.test(e.label)) { corridas += trecho(i); nCorr++; } else est.push({ label: e.label, valor: formatRestTime(trecho(i)) });
+    });
+    const extras = [];
+    if (nCorr > 1) extras.push({ label: `Corridas (${nCorr})`, valor: formatRestTime(corridas) });
+    est.slice(0, nCorr > 1 ? 8 : 9).forEach((x) => extras.push(x));
+    if (st.roxzone && roxTotal > 0) extras.push({ label: "Roxzone", valor: formatRestTime(roxTotal) });
+    const comp = ant && ant.tempoSeg ? (tempoFinal < ant.tempoSeg ? `${formatRestTime(ant.tempoSeg - tempoFinal)} mais rápido que a última` : tempoFinal === ant.tempoSeg ? "Igual à última" : null) : null;
+    setCartao({ titulo: bloco.nome, subtitulo: formatDateLabel(todayISO()), tempo: segParaTempo(tempoFinal), tempoRotulo: "tempo total", extras, comp });
+  }
   const grande = rot.modo === "up" ? decorrido : resta;
   const estacao = rot.modo === "up" ? rot.estacoes[st.parciais.length] : null;
   const prox = rot.modo === "seq" && fase ? rot.fases[fase.i + 1] : rot.modo === "up" ? rot.estacoes[st.parciais.length + 1] : null;
@@ -23186,12 +23278,14 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
             )}
             {formato === "fortime" && st.parciais.length < rot.estacoes.length && <div className="gt-bt-sub">{st.parciais.length} de {rot.estacoes.length} {st.roxzone ? "trechos" : "estações"}</div>}
             {rot.modo === "up" && st.parciais.length > 0 && listaParciais()}
+            {completo && <button type="button" className="gt-dsf-link" style={{ marginTop: 12 }} onClick={abrirCartao}>Compartilhar resultado ↗</button>}
           </div>
         )}
+        {cartao && <DesafioCartaoModal dados={cartao} render={cartaoResultadoRender} arquivo="movo-resultado.png" onClose={() => setCartao(null)} />}
       </div>
       <div className="gt-focus-footer gt-bt-acoes">
         {!st.ini && <button type="button" className="gt-btn" onClick={iniciar}>▶ Começar</button>}
-        {st.ini && !st.fim && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : rot.estacoes[st.parciais.length + 1].roxzone ? "Saí da corrida" : estacao && estacao.roxzone ? "Comecei a estação" : "Próxima estação"}</button>}
+        {st.ini && !st.fim && !acabou && rot.modo === "up" && !st.pausaEm && <button type="button" className="gt-btn" onClick={parcial}>{st.parciais.length === rot.estacoes.length - 1 ? "Terminei" : rot.estacoes[st.parciais.length + 1].roxzone ? "Saí da corrida" : estacao && estacao.roxzone ? "Comecei a estação" : "Próxima estação"}</button>}
         {st.ini && !st.fim && (st.pausaEm ? <button type="button" className="gt-btn" onClick={retomar}>▶ Continuar</button> : <button type="button" className="gt-btn secondary" onClick={pausar}>Pausar</button>)}
         {st.ini && !st.fim && <button type="button" className="gt-btn secondary" onClick={encerrar}>Encerrar</button>}
         {st.fim && <button type="button" className="gt-btn" onClick={salvar}>Salvar resultado</button>}
@@ -23911,7 +24005,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
   const kmNum = parseFloat(String(rpeModal.km || "").replace(",", ".")) || 0;
   const durNum = Number(rpeModal.duracaoMin) || 0;
   const temNota = !!String(rpeModal.nota || "").trim();
-  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota || !!rpeModal.video);
+  const canSave = rpeModal.manual ? (kmNum > 0 || durNum > 0) : rpeModal.prova && tempoParaSeg(rpeModal.tempoProva) > 0 ? true : (durNum > 0 || Number(rpeModal.rpe) > 0 || (rpeModal.dor != null && rpeModal.dor !== "") || temNota || !!rpeModal.video);
   // Atividades (vôlei, natação…) já têm o "Comentário do dia" no card; aqui o comentário é de treino e corrida.
   const comNota = !rpeModal.item || rpeModal.item.tipo !== "atividade";
   return (
@@ -23962,6 +24056,14 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
             />
           </>
         )}
+        {rpeModal.prova && (
+          <>
+            <div className="gt-field-label">TEMPO DA PROVA</div>
+            <input type="text" inputMode="numeric" placeholder="ex: 52:34 ou 1:58:10" className="gt-rpe-duracao" aria-label="Tempo da prova" value={rpeModal.tempoProva || ""} onChange={(e) => setRpeModal({ ...rpeModal, tempoProva: e.target.value.replace(/[^0-9:]/g, "").slice(0, 8) })} />
+            {tempoParaSeg(rpeModal.tempoProva) > 0 && kmNum > 0 && <div className="gt-rpe-hint" style={{ marginTop: 6 }}>Pace médio: {planoFmtPace(tempoParaSeg(rpeModal.tempoProva) / 60 / kmNum)} /km</div>}
+          </>
+        )}
+        {!rpeModal.prova && <>
         <div className="gt-field-label">DURAÇÃO (MIN) · OPCIONAL</div>
         <input
           type="number"
@@ -23972,6 +24074,7 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
           onChange={(e) => setRpeModal({ ...rpeModal, duracaoMin: e.target.value })}
         />
         {rpeModal.corrida && kmNum > 0 && durNum > 0 && <div className="gt-rpe-hint" style={{ marginTop: 6 }}>Pace médio: {planoFmtPace(durNum / kmNum)} /km</div>}
+        </>}
         <div className="gt-field-label">QUÃO PESADO FOI? (1 A 10) · OPCIONAL</div>
         <div className="gt-rpe-scale">
           {rpeOptions.map((n) => (
