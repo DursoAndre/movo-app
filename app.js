@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v222";
+const APP_BUILD = "v223";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -1183,9 +1183,10 @@ function parseRx(texto) {
   tirar(/(?:^|\s)@?\s*(\d{1,3}(?:\.\d)?)\s*%(?:\s*1rm)?(?=\s|$)/i, (m) => { campos.pct1rm = Number(m[1]); });
   tirar(/(?:^|\s)(\d{1,3}(?:\.\d{1,2})?)\s*km(?=\s|$)/i, (m) => { campos.distanciaM = Math.round(Number(m[1]) * 1000); });
   tirar(/(?:^|\s)(\d{1,5})\s*m(?=\s|$)/i, (m) => { campos.distanciaM = Number(m[1]); });
+  tirar(/(?:^|\s)(\d{1,3})\s*[-–a]\s*(\d{1,3})\s*(min|s|seg)(?=\s|$)/i, (m) => { campos.repeticoes = `${m[1]}-${m[2]}${/^m/i.test(m[3]) ? " min" : "s"}`; }); // "20-30s": faixa de tempo
   tirar(/(?:^|\s)(\d{1,3}(?:\.\d+)?)\s*(min|s|seg|")(?=\s|$)/i, (m) => { campos.tempoSeg = segundos(m[1], m[2]); });
   tirar(/(?:^|\s)(\d{1,4})\s*cal(?:orias)?(?=\s|$)/i, (m) => { campos.calorias = Number(m[1]); });
-  if (!tirar(/(?:^|\s)(\d{1,3}\s*[-–a]\s*\d{1,3})(?=\s|$)/i, (m) => { campos.repeticoes = m[1].replace(/\s+/g, "").replace(/[–a]/, "-"); })) {
+  if (campos.repeticoes == null && !tirar(/(?:^|\s)(\d{1,3}\s*[-–a]\s*\d{1,3})(?=\s|$)/i, (m) => { campos.repeticoes = m[1].replace(/\s+/g, "").replace(/[–a]/, "-"); })) {
     if (!tirar(/(?:^|\s)(\d{1,3})\s*(?:reps?|repeti[cç][õo]es)?(?=\s|$)/i, (m) => { campos.repeticoes = m[1]; }) && campos.series != null) {
       tirar(/(?:^|\s)(m[aá]x(?:imo)?|falha)(?=\s|$)/i, () => { campos.repeticoes = "max"; });
     }
@@ -1194,6 +1195,20 @@ function parseRx(texto) {
   return { campos, resto };
 }
 function rxNum(n) { return String(n).replace(".", ","); }
+// Exercício por tempo (prancha "20–30s", wall sit "30s", "2 min", "isometria"): meta em segundos
+// { min, max }, ou { livre: true } quando não diz quanto tempo. null = exercício por repetições.
+function exTempoAlvo(ex) {
+  if (!ex) return null;
+  const r = String(ex.repeticoes || "").trim();
+  const m = /^(\d{1,3})(?:\s*[-–a]\s*(\d{1,3}))?\s*(s|seg|segs|segundos?|"|min|minutos?)(?:\s+(?:cada|por)\s+\S+)?$/i.exec(r);
+  if (m) {
+    const k = /^m/i.test(m[3]) ? 60 : 1, a = Number(m[1]) * k, b = Number(m[2] || m[1]) * k;
+    return a > 0 ? { min: Math.min(a, b), max: Math.max(a, b) } : null;
+  }
+  if (ex.tempoSeg && !parseFirstNumber(r)) return { min: ex.tempoSeg, max: ex.tempoSeg };
+  if (/isom|sustenta/i.test(r)) return { livre: true };
+  return null;
+}
 function rxTempo(seg) { return seg >= 60 && seg % 60 === 0 ? `${seg / 60}min` : `${seg}s`; }
 // Texto curto da prescrição, no mesmo formato que a entrada rápida entende.
 function rxTexto(ex) {
@@ -3382,6 +3397,9 @@ const APP_CSS = `
   .gt-builder-ex-input { width:44px; background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:4px; padding:4px 6px; font-family:'Roboto Mono',monospace; font-size:12px; text-align:center; }
   .gt-builder-ex-input.wide { width:64px; }
   .gt-builder-ex-x { color:var(--text-muted); font-size:12px; }
+  .gt-reps-tempo { display:inline-flex; align-items:center; gap:4px; }
+  .gt-reps-tempo-un { background:none; border:1px solid var(--border); color:var(--text-muted); border-radius:12px; font-size:11px; padding:5px 8px; cursor:pointer; font-family:'Roboto Mono',monospace; min-height:28px; }
+  .gt-reps-tempo-un.seg { border-color:var(--accent-dim); color:var(--accent); }
   .gt-builder-ex-actions { display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
   .gt-builder-ex-actions button { background:var(--surface-2); border:1px solid var(--border); color:var(--text-muted); width:26px; height:22px; border-radius:4px; font-size:12px; cursor:pointer; }
   .gt-builder-ex-actions button:disabled { opacity:0.35; }
@@ -4504,6 +4522,27 @@ const APP_CSS = `
   .gt-guiado-alvo { font-size:14px; color:var(--text-muted); }
   .gt-guiado-campos { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .gt-guiado-campos.rir { grid-template-columns:1fr 1fr .7fr; }
+  .gt-guiado-campos.um { grid-template-columns:1fr; }
+  .gt-serie-tempo { background:var(--surface-2); border:2px solid transparent; border-radius:var(--radius); padding:24px 16px 16px; display:flex; flex-direction:column; align-items:stretch; gap:8px; text-align:center; }
+  .gt-serie-tempo.rodando { border-color:var(--bl-cor); background:linear-gradient(rgba(198,241,53,.07),rgba(198,241,53,.07)), var(--surface-2); }
+  .gt-serie-tempo-lbl { font-family:'Roboto Mono',monospace; font-size:16px; letter-spacing:.1em; text-transform:uppercase; color:var(--bl-cor); }
+  .gt-serie-tempo-num { font-family:'Oswald',sans-serif; font-size:72px; line-height:1; font-variant-numeric:tabular-nums; margin-bottom:8px; }
+  .gt-serie-tempo.rodando .gt-serie-tempo-num { font-size:120px; }
+  .gt-serie-tempo.prep .gt-serie-tempo-num, .gt-serie-tempo.final .gt-serie-tempo-num { color:var(--bl-cor); }
+  .gt-serie-tempo-barra { position:relative; height:10px; background:#2E333A; border-radius:5px; margin-bottom:12px; }
+  .gt-serie-tempo-barra i { display:block; height:100%; background:var(--bl-cor); border-radius:5px; transition:width .2s linear; }
+  .gt-serie-tempo-barra b { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--text); opacity:.6; }
+  .gt-serie-tempo-ajuste { display:flex; align-items:center; justify-content:center; gap:14px; }
+  .gt-serie-tempo-ajuste button { width:52px; height:52px; border-radius:50%; border:none; background:#2E333A; color:var(--text); font-family:'Roboto Mono',monospace; font-size:16px; cursor:pointer; flex:none; }
+  .gt-serie-tempo-ajuste button:disabled { opacity:.35; }
+  .gt-serie-tempo-ajuste .gt-serie-tempo-num { margin-bottom:0; min-width:0; }
+  .gt-serie-tempo-ref { font-size:14px; color:var(--text-muted); margin-bottom:4px; }
+  .gt-guiado-tempo-ed { display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px; color:var(--text-muted); }
+  .gt-guiado-tempo-ed input { width:90px; background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); font-size:20px; text-align:center; padding:8px; font-family:'Roboto Mono',monospace; }
+  .gt-guiado input[type=number]::-webkit-inner-spin-button, .gt-guiado input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .gt-guiado input[type=number] { -moz-appearance:textfield; }
+  .gt-guiado-desc-feito { font-size:14px; color:var(--text); }
+  .gt-guiado-desc-feito button { background:none; border:none; color:var(--accent); text-decoration:underline; font-size:14px; padding:4px; cursor:pointer; }
   .gt-guiado-campos label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
   .gt-guiado-campos input { width:100%; box-sizing:border-box; background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius); font-size:24px; text-align:center; padding:10px 6px; font-family:'Roboto Mono',monospace; }
   .gt-guiado-ok { min-height:52px; font-size:16px; }
@@ -15069,7 +15108,7 @@ function CoachFichaEditor({ ficha, ultimas, onSalvar, onClose }) {
                 <label>Séries
                   <span className="stepper"><button type="button" aria-label="Menos uma série" onClick={() => mexer(bi, ei, "series", Math.max(1, Number(ex.series || 1) - 1))}>−</button><input inputMode="numeric" aria-label="Séries" value={ex.series} onChange={(e) => mexer(bi, ei, "series", e.target.value.replace(/\D/g, "").slice(0, 2))} /><button type="button" aria-label="Mais uma série" onClick={() => mexer(bi, ei, "series", Math.min(20, Number(ex.series || 0) + 1))}>+</button></span>
                 </label>
-                <label>Reps<input className="txt" inputMode="text" aria-label="Repetições" value={ex.repeticoes} maxLength={12} onChange={(e) => mexer(bi, ei, "repeticoes", e.target.value)} /></label>
+                <label>{exTempoAlvo(ex) && !exTempoAlvo(ex).livre ? "Tempo" : "Reps"}<RepsOuTempo ex={ex} className="txt" onChange={(k, v) => mexer(bi, ei, k, v)} /></label>
                 <label>Carga (kg)<input className="txt" inputMode="decimal" aria-label="Carga em kg" placeholder="—" value={ex.cargaKg || ""} maxLength={6} onChange={(e) => mexer(bi, ei, "cargaKg", e.target.value.replace(",", ".").replace(/[^0-9.]/g, ""))} /></label>
               </div>
               <input className="gt-input" aria-label="Observação" placeholder="Observação (opcional)" maxLength={120} value={ex.observacoes || ""} onChange={(e) => mexer(bi, ei, "observacoes", e.target.value)} />
@@ -19826,7 +19865,7 @@ function App() {
 
   // Treino guiado: marca (ou desmarca) uma série como feita num patch só. idx = -1 pula o exercício.
   // Quando todas as séries estão feitas, o exercício passa a "feito".
-  function marcarSerieFeita(item, ex, idx, feita) {
+  function marcarSerieFeita(item, ex, idx, feita, extra) {
     const key = itemKey(item);
     const prev = (dayLog[key] || {})[ex.id] || { status: undefined, comentario: "", sets: [] };
     if (idx < 0) { patchItemLog(key, { [ex.id]: { ...prev, status: "pulei", sets: prev.sets || [] } }); return; }
@@ -19839,7 +19878,7 @@ function App() {
         reps: (lastSets && lastSets[i] ? lastSets[i].reps : "") || repDefault || "",
       }));
     }
-    sets = sets.map((st, i) => (i === idx ? { ...st, feita: !!feita } : st));
+    sets = sets.map((st, i) => (i === idx ? { ...st, ...(extra || {}), feita: !!feita } : st));
     let status = prev.status === "pulei" && feita ? undefined : prev.status;
     if (feita && sets.every((st) => st.feita)) status = "feito";
     if (!feita && status === "feito") status = undefined;
@@ -20532,7 +20571,7 @@ function App() {
             onBlocoResultado={(bid, res, exs) => saveBlocoResultado(focusTreino, bid, res, exs)}
             lastSetsFor={(ex) => lastLoggedSetsForExercise(sessions, ex.id, selectedDate)}
             resultadoAnterior={(bloco, bid) => blocoResultadoAnterior(sessions, bloco, bid, selectedDate)}
-            marcarSerieFeita={(ex, idx, feita) => marcarSerieFeita(focusTreino, ex, idx, feita)}
+            marcarSerieFeita={(ex, idx, feita, extra) => marcarSerieFeita(focusTreino, ex, idx, feita, extra)}
           />
           {rpeModal && (
             <RpeModal
@@ -21896,7 +21935,7 @@ function App() {
                           <div className="gt-builder-ex-fields">
                             <input type="number" inputMode="numeric" className="gt-builder-ex-input" value={ex.series} onChange={(e) => builderUpdateExField(blocoIdx, exIdx, "series", Number(e.target.value) || 0)} />
                             <span className="gt-builder-ex-x">x</span>
-                            <input type="text" className="gt-builder-ex-input wide" value={ex.repeticoes} onChange={(e) => builderUpdateExField(blocoIdx, exIdx, "repeticoes", e.target.value)} />
+                            <RepsOuTempo ex={ex} className="gt-builder-ex-input wide" onChange={(k, v) => builderUpdateExField(blocoIdx, exIdx, k, v)} />
                           </div>
                         </div>
                         <div className="gt-builder-ex-actions">
@@ -22917,7 +22956,7 @@ function OnboardingWizard({ onComplete, onCompleteWithStrava, onSkip, onCancel, 
                       <div className="gt-builder-ex-fields">
                         <input type="number" inputMode="numeric" className="gt-builder-ex-input" value={ex.series} onChange={(e) => onbUpdateExField(blocoIdx, exIdx, "series", Number(e.target.value) || 0)} />
                         <span className="gt-builder-ex-x">x</span>
-                        <input type="text" className="gt-builder-ex-input wide" value={ex.repeticoes} onChange={(e) => onbUpdateExField(blocoIdx, exIdx, "repeticoes", e.target.value)} />
+                        <RepsOuTempo ex={ex} className="gt-builder-ex-input wide" onChange={(k, v) => onbUpdateExField(blocoIdx, exIdx, k, v)} />
                       </div>
                     </div>
                     <div className="gt-builder-ex-actions">
@@ -22971,12 +23010,14 @@ function formatRestTime(totalSeconds) {
 // worker) é o único dos três avisos que aparece mesmo assim, então ela é o
 // aviso principal quando o descanso acaba; vibrate+toast continuam só como
 // reforço pra quando o app já está na tela.
+// Vibração de "acabou o tempo" (descanso e timers): longa o bastante para sentir no bolso ou na mão.
+const VIBRA_FIM = [500, 200, 500, 200, 500];
 function notifyRestDone(label) {
   try {
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
     const title = "Descanso acabou";
     const body = label ? `Hora de voltar — ${label}` : "Hora de voltar pro próximo exercício";
-    const opts = { body, icon: "./icon-192.png", badge: "./icon-192.png", vibrate: [200, 100, 200], tag: "movo-rest-timer", renotify: true };
+    const opts = { body, icon: "./icon-192.png", badge: "./badge-96.png", vibrate: VIBRA_FIM, tag: "movo-rest-timer", renotify: true };
     if (navigator.serviceWorker && navigator.serviceWorker.ready) {
       navigator.serviceWorker.ready.then((reg) => reg.showNotification(title, opts)).catch(() => { try { new Notification(title, { body }); } catch (e) {} });
     } else {
@@ -23046,6 +23087,34 @@ function EntradaRapida({ label, placeholder, onAdd, extra, semDica }) {
         {ex ? <>Vai entrar: <strong>{ex.nome}</strong>{detalhe ? ` · ${detalhe}` : ""}</> : "Escreva nome, séries x reps, carga e RIR, e toque em Adicionar."}
       </div>}
     </form>
+  );
+}
+
+// Campo de repetições com a unidade ao lado: "reps" ou "seg" (toque troca). Em "seg" o valor vira
+// "30s" / "20-30s", que o modo guiado entende como série por tempo. `onChange(campo, valor)`.
+function RepsOuTempo({ ex, onChange, className, aria }) {
+  const r = String(ex.repeticoes == null ? "" : ex.repeticoes);
+  const ehTempo = () => { const t = exTempoAlvo(ex); return !!t && !t.livre; };
+  const [seg, setSeg] = useState(ehTempo); // o modo só muda pelo botão, não no meio da digitação
+  const antes = useRef({}); // valor de cada modo antes da troca: voltar restaura (toque sem querer não perde "8-10")
+  const t = seg ? exTempoAlvo(ex) : null;
+  const mostra = !seg ? r : t && !t.livre ? (t.min === t.max ? String(t.max) : `${t.min}-${t.max}`) : r.replace(/\s*(s|seg|segundos?)\s*$/i, "");
+  const gravar = (v, emSeg) => {
+    if (ex.tempoSeg) onChange("tempoSeg", undefined);
+    const limpo = emSeg ? v.replace(/[^\d\-–]/g, "").replace("–", "-").slice(0, 7) : v;
+    onChange("repeticoes", emSeg ? (limpo ? `${limpo}s` : "") : limpo);
+  };
+  const trocar = () => {
+    antes.current[seg ? "seg" : "reps"] = mostra;
+    const volta = antes.current[seg ? "reps" : "seg"];
+    gravar(volta || (seg ? "10" : "30"), !seg); // números de reps não viram segundos (e vice-versa): começa do padrão
+    setSeg(!seg);
+  };
+  return (
+    <span className="gt-reps-tempo">
+      <input type="text" inputMode={seg ? "numeric" : "text"} className={className} aria-label={aria || (seg ? "Segundos" : "Repetições")} placeholder={seg ? "30" : ""} value={mostra} maxLength={12} onChange={(e) => gravar(e.target.value, seg)} />
+      <button type="button" className={`gt-reps-tempo-un ${seg ? "seg" : ""}`} aria-label={seg ? "Contando por tempo. Trocar para repetições" : "Contando por repetições. Trocar para tempo"} onClick={trocar}>{seg ? "seg" : "reps"} <span aria-hidden="true">⇄</span></button>
+    </span>
   );
 }
 
@@ -23307,6 +23376,9 @@ function BlocosEditor({ blocos, onChange, ultimas, simples, abrirSeletor, maisOp
               {j > 0 && <button type="button" onClick={() => { moverEx(i, j, -1); setMenuEx(null); }}>Subir</button>}
               {j < b.exercicios.length - 1 && <button type="button" onClick={() => { moverEx(i, j, 1); setMenuEx(null); }}>Descer</button>}
               {!bi && j < b.exercicios.length - 1 && <button type="button" aria-label="Bi-set com o próximo" onClick={() => juntarBiset(i, j)}>Bi-set</button>}
+              {(() => { const t = exTempoAlvo(ex); return t && !t.livre
+                ? <button type="button" onClick={() => { const nx = { ...ex, repeticoes: "10" }; delete nx.tempoSeg; setEx(i, j, nx); setMenuEx(null); }}>Contar por repetições</button>
+                : <button type="button" onClick={() => { setEx(i, j, { ...ex, repeticoes: "", tempoSeg: 30 }); setMenuEx(null); }}>Contar por tempo</button>; })()}
               <button type="button" className="perigo" onClick={() => removerEx(i, j)}>Remover</button>
             </div>
           )}
@@ -23392,10 +23464,21 @@ function blocoBipe(ctxRef, longo) {
 function blocoAviso(titulo, corpo) {
   try {
     if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible") return;
-    const opts = { body: corpo, icon: "./icon-192.png", badge: "./icon-192.png", vibrate: [300, 100, 300], tag: "movo-bloco-timer", renotify: true };
+    const opts = { body: corpo, icon: "./icon-192.png", badge: "./badge-96.png", vibrate: VIBRA_FIM, tag: "movo-bloco-timer", renotify: true };
     if (navigator.serviceWorker && navigator.serviceWorker.ready) navigator.serviceWorker.ready.then((reg) => reg.showNotification(titulo, opts)).catch(() => {});
     else new Notification(titulo, { body: corpo });
   } catch (e) {}
+}
+// Tela acesa enquanto `on` (o navegador solta a trava quando o app sai da tela; pega de novo na volta).
+function useTelaAcesa(on) {
+  useEffect(() => {
+    if (!on || !navigator.wakeLock) return;
+    let trava = null, ativo = true;
+    const pegar = () => { if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((t) => { if (ativo) trava = t; else t.release(); }).catch(() => {}); };
+    pegar();
+    document.addEventListener("visibilitychange", pegar);
+    return () => { ativo = false; document.removeEventListener("visibilitychange", pegar); if (trava) trava.release().catch(() => {}); };
+  }, [on]);
 }
 function blocoFmtResultado(r) {
   if (!r) return "";
@@ -23434,6 +23517,87 @@ function guiadoFeito(p, treino, log, blocosRes) {
   return !!(r && r.concluido);
 }
 
+// Treino guiado: série por tempo (prancha, isometria, wall sit). 5 s para entrar em posição e a
+// contagem regressiva da meta (topo da faixa; bipe no mínimo), ou tempo livre quando a ficha não diz
+// o tempo. Pelo horário de início, como o BlocoTimer; a tela fica acesa enquanto conta. Chegar ao fim
+// ou tocar em "Parar" fecha a série com o tempo feito (`onFim(seg)`). `onRodando` esconde o resto do card.
+// `onAjustar` mostra −5/+5 em volta da meta antes de começar.
+const SERIE_TEMPO_PREP = 5;
+function fmtMSS(seg) { const s = Math.max(0, Math.round(seg)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+function SerieTempo({ alvo, nome, ultSeg: ultimo, onFim, onRodando, onAjustar, ajustada }) {
+  const [st, setSt] = useState(null); // { fase: "prep" | "vai", ini }
+  const [agora, setAgora] = useState(Date.now());
+  const audio = useRef(null);
+  const ultBip = useRef(-1);
+  const marcou = useRef(false);
+  const meta = alvo.livre ? 0 : alvo.max;
+  const marco = alvo.livre ? (ultimo || 0) : alvo.min < alvo.max ? alvo.min : 0; // bipe no meio: mínimo da faixa ou a última vez
+  useTelaAcesa(!!st);
+  useEffect(() => { onRodando && onRodando(!!st); }, [!!st]);
+  useEffect(() => () => { onRodando && onRodando(false); }, []);
+  useEffect(() => {
+    if (!st) return;
+    const id = setInterval(() => setAgora(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [!!st]);
+  const vibrar = (v) => { try { navigator.vibrate && navigator.vibrate(v); } catch (e) {} };
+  const dec = st ? Math.max(0, (agora - st.ini) / 1000) : 0;
+  const resta = !st ? meta : st.fase === "prep" ? SERIE_TEMPO_PREP - dec : meta ? meta - dec : 0;
+  function fechar(seg) {
+    setSt(null);
+    blocoBipe(audio, true);
+    vibrar(VIBRA_FIM);
+    blocoAviso("Série concluída", nome ? `${nome}: ${seg}s` : `${seg}s`);
+    onFim(seg);
+  }
+  useEffect(() => {
+    if (!st) return;
+    if (st.fase === "prep" && resta <= 0) { comecar(st.ini + SERIE_TEMPO_PREP * 1000); return; }
+    if (st.fase === "vai" && meta && resta <= 0) { fechar(meta); return; }
+    if (st.fase === "vai" && marco && !marcou.current && dec >= marco) { marcou.current = true; blocoBipe(audio, false); vibrar(150); }
+    const s = Math.ceil(resta);
+    if ((st.fase === "prep" || meta) && s <= 3 && s > 0 && s !== ultBip.current) { ultBip.current = s; blocoBipe(audio, false); vibrar(80); }
+  });
+  function comecar(ini) {
+    ultBip.current = -1; marcou.current = false;
+    blocoBipe(audio, true); vibrar(300);
+    setAgora(Date.now());
+    setSt({ fase: "vai", ini });
+  }
+  function iniciar() {
+    blocoBipe(audio, false);
+    ultBip.current = -1;
+    if (typeof Notification !== "undefined" && Notification.permission === "default") { try { Notification.requestPermission(); } catch (e) {} }
+    setAgora(Date.now());
+    setSt({ fase: "prep", ini: Date.now() });
+  }
+  function parar() { const seg = Math.round(dec); if (seg > 0) fechar(seg); else setSt(null); }
+  const prep = st && st.fase === "prep";
+  const vai = st && st.fase === "vai";
+  const passouMarco = vai && marco > 0 && dec >= marco;
+  const numero = prep ? String(Math.max(1, Math.ceil(resta))) : vai && !meta ? fmtMSS(Math.floor(dec)) : fmtMSS(Math.ceil(resta));
+  const rotulo = prep ? "Em posição" : vai ? (passouMarco ? (alvo.livre ? "Passou da última ✓" : "Mínimo ✓") : alvo.livre ? "Tempo livre" : "Valendo") : alvo.livre ? "Tempo livre" : ajustada ? "Ajustada" : "";
+  const final = vai && meta && resta <= 5;
+  return (
+    <div className={`gt-serie-tempo ${st ? "rodando" : ""} ${prep ? "prep" : ""} ${final ? "final" : ""}`} role="timer" aria-live="off">
+      {rotulo && <div className="gt-serie-tempo-lbl">{rotulo}</div>}
+      {!st && !alvo.livre && onAjustar ? (
+        <div className="gt-serie-tempo-ajuste">
+          <button type="button" aria-label="Menos 5 segundos" disabled={meta <= 5} onClick={() => onAjustar(Math.max(5, meta - 5))}>−5</button>
+          <div className="gt-serie-tempo-num">{numero}</div>
+          <button type="button" aria-label="Mais 5 segundos" disabled={meta >= 3600} onClick={() => onAjustar(Math.min(3600, meta + 5))}>+5</button>
+        </div>
+      ) : <div className="gt-serie-tempo-num">{numero}</div>}
+      {vai && meta > 0 && <div className="gt-serie-tempo-barra"><i style={{ width: `${Math.min(100, (dec / meta) * 100)}%` }} />{marco > 0 && <b style={{ left: `${(marco / meta) * 100}%` }} />}</div>}
+      {!st && alvo.livre && ultimo > 0 && <div className="gt-serie-tempo-ref">Última vez: {ultimo}s</div>}
+      {!st && <button type="button" className="gt-btn gt-guiado-ok" onClick={iniciar}>▶ {alvo.livre ? "Iniciar" : `Iniciar ${rxTempo(meta)}`}</button>}
+      {prep && <button type="button" className="gt-btn gt-guiado-ok" onClick={() => comecar(Date.now())}>Começar já</button>}
+      {prep && <button type="button" className="gt-guiado-link" onClick={() => setSt(null)}>Cancelar</button>}
+      {vai && <button type="button" className="gt-btn gt-guiado-ok" onClick={parar}>■ Parar</button>}
+    </div>
+  );
+}
+
 function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, lastSetsFor, ensureSetsForExpand, updateSetField, marcarSerieFeita, onBlocoResultado, abrirTimer, startRest, stopRest, restTimer, restRemaining, onConcluir }) {
   const passos = guiadoPassos(treino, flat, treinoLog);
   const pendente = () => { const k = passos.findIndex((p) => !guiadoFeito(p, treino, treinoLog, blocosRes)); return k < 0 ? passos.length : k; };
@@ -23453,9 +23617,9 @@ function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, las
     return treino.blocos[q.bi].nome;
   };
   function avancar() { setI((k) => Math.min(k + 1, passos.length)); }
-  function serieFeita() {
+  function serieFeita(extra) {
     const ja = guiadoFeito(p, treino, treinoLog, blocosRes);
-    marcarSerieFeita(ex, p.serie, !ja);
+    marcarSerieFeita(ex, p.serie, !ja, extra);
     if (ja) return;
     const prox = passos[i + 1];
     const mesmaRodada = p.grupo && prox && prox.bi === p.bi && prox.serie === p.serie;
@@ -23468,13 +23632,48 @@ function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, las
   const ult = ex && lastSetsFor ? lastSetsFor(ex) : null;
   const ultSerie = ult && ult[p.serie] && ult[p.serie].peso !== "" && ult[p.serie].peso != null ? `${rxNum(ult[p.serie].peso)} kg × ${ult[p.serie].reps || 0}` : "";
   const feito = p ? guiadoFeito(p, treino, treinoLog, blocosRes) : false;
+  // Série por tempo: no lugar de Reps, o tempo feito (em `seg`); peso só se a ficha ou a última vez tem carga.
+  const tempo = ex ? exTempoAlvo(ex) : null;
+  const [comCarga, setComCarga] = useState(false);
+  const [editTempo, setEditTempo] = useState(false);
+  const [rodT, setRodT] = useState(false); // timer da série contando: o card mostra só o timer
+  const [gravada, setGravada] = useState(null); // última série por tempo fechada, para o "Desfazer" no descanso
+  useEffect(() => { setComCarga(false); setEditTempo(false); }, [ex && ex.id, p && p.serie]);
+  const pesoNum = (v) => Number(String(v == null ? "" : v).replace(",", ".")) > 0;
+  const mostraPeso = !tempo || comCarga || !!ex.cargaKg || (set && pesoNum(set.peso)) || (ult || []).some((x) => pesoNum(x.peso));
+  const ultSegN = tempo && ult && ult[p.serie] ? Number(ult[p.serie].seg) || 0 : 0;
+  const ultTempo = ultSegN > 0 && !tempo.livre ? `${ultSegN}s${pesoNum(ult[p.serie].peso) ? ` com ${rxNum(ult[p.serie].peso)} kg` : ""}` : "";
+  const segFeito = set && Number(set.seg) > 0 ? Number(set.seg) : 0;
+  // Meta ajustada no −5/+5 fica na série (`meta`) e vale para as próximas séries e para a próxima vez.
+  const metaGuardada = (() => {
+    if (!tempo || tempo.livre) return 0;
+    const hoje = (exLog && exLog.sets) || [];
+    for (let k = p.serie; k >= 0; k--) if (hoje[k] && Number(hoje[k].meta) > 0) return Number(hoje[k].meta);
+    const u = (ult || []).find((x, k) => k === p.serie && x && Number(x.meta) > 0) || (ult || []).find((x) => x && Number(x.meta) > 0);
+    return u ? Number(u.meta) : 0;
+  })();
+  const metaSerie = metaGuardada || (tempo && tempo.max) || 0;
+  const alvoSerie = tempo && !tempo.livre && metaSerie !== tempo.max ? { min: Math.min(tempo.min, metaSerie), max: metaSerie } : tempo;
+  const extraMeta = tempo && !tempo.livre && metaSerie !== tempo.max ? { meta: metaSerie } : {};
+  const pulado = !!(exLog && exLog.status === "pulei");
+  const esconde = tempo && rodT;
+  function fecharTempo(seg) {
+    setGravada({ i, exId: ex.id, serie: p.serie, seg });
+    serieFeita({ seg, ...extraMeta });
+  }
+  function desfazerGravada() {
+    const e = flat.find((x) => x.id === gravada.exId);
+    if (e) marcarSerieFeita(e, gravada.serie, false);
+    stopRest(); setI(gravada.i); setGravada(null);
+  }
 
   return (
     <div className="gt-focus-body gt-guiado">
       {restTimer && (
         <div className="gt-guiado-desc" role="timer" aria-live="off">
           <div className="gt-guiado-desc-lbl">Descanso</div>
-          <div className="gt-guiado-desc-tempo">{formatRestTime(restRemaining)}</div>
+          <div className="gt-guiado-desc-tempo">{fmtMSS(restRemaining)}</div>
+          {gravada && <div className="gt-guiado-desc-feito">✓ Série {gravada.serie + 1} gravada: {gravada.seg}s · <button type="button" onClick={desfazerGravada}>Desfazer</button></div>}
           {p && <div className="gt-guiado-desc-prox">A seguir: {descricao(p)}</div>}
           <button type="button" className="gt-btn secondary small" onClick={stopRest}>Pular descanso</button>
         </div>
@@ -23493,21 +23692,39 @@ function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, las
             <>
               <div className="gt-guiado-ex">{p.letra ? <span className="gt-guiado-letra">{p.letra}</span> : null}{ex.nome}</div>
               <div className="gt-guiado-serie">Série {p.serie + 1} de {p.n}</div>
-              <div className="gt-guiado-alvo">{alvoTexto(ex, exLog)}</div>
-              {set && (
+              {!esconde && <div className="gt-guiado-alvo">{alvoTexto(ex, exLog)}{extraMeta.meta ? ` · sua meta: ${rxTempo(extraMeta.meta)}` : ""}</div>}
+              {set && tempo && mostraPeso && !esconde && (
+                <div className="gt-guiado-campos um">
+                  <label>Peso (kg)<input type="number" inputMode="decimal" placeholder="0" value={set.peso} onChange={(e) => updateSetField(item, ex, p.serie, "peso", e.target.value)} /></label>
+                </div>
+              )}
+              {set && tempo && !feito && !pulado && (
+                <SerieTempo key={`${ex.id}:${p.serie}`} alvo={alvoSerie} nome={ex.nome} ultSeg={ultSegN} onFim={fecharTempo} onRodando={setRodT} ajustada={!!extraMeta.meta}
+                  onAjustar={(v) => updateSetField(item, ex, p.serie, "meta", v)} />
+              )}
+              {set && tempo && !esconde && (editTempo ? (
+                <label className="gt-guiado-tempo-ed">Tempo feito
+                  <input type="number" inputMode="numeric" autoFocus placeholder={tempo.livre ? "" : String(metaSerie)} value={set.seg == null ? "" : set.seg} onChange={(e) => updateSetField(item, ex, p.serie, "seg", e.target.value)} onBlur={() => setEditTempo(false)} /> s
+                </label>
+              ) : (
+                <button type="button" className="gt-guiado-link" onClick={() => setEditTempo(true)}>{segFeito ? `Feito: ${segFeito}s · editar` : "Sem timer? Digite o tempo"}</button>
+              ))}
+              {set && tempo && !mostraPeso && !esconde && <button type="button" className="gt-guiado-link" onClick={() => setComCarga(true)}>+ Adicionar carga</button>}
+              {ultTempo && !esconde && <div className="gt-ex-ultima">última vez nesta série: {ultTempo}</div>}
+              {set && !tempo && (
                 <div className={`gt-guiado-campos ${temRir ? "rir" : ""}`}>
                   <label>Peso (kg)<input type="number" inputMode="decimal" placeholder="0" value={set.peso} onChange={(e) => updateSetField(item, ex, p.serie, "peso", e.target.value)} /></label>
                   <label>Reps<input type="number" inputMode="numeric" placeholder="0" value={set.reps} onChange={(e) => updateSetField(item, ex, p.serie, "reps", e.target.value)} /></label>
                   {temRir && <label>RIR<input type="number" inputMode="numeric" placeholder={String(ex.rir)} value={set.rir == null ? "" : set.rir} onChange={(e) => updateSetField(item, ex, p.serie, "rir", e.target.value)} /></label>}
                 </div>
               )}
-              {ultSerie && <div className="gt-ex-ultima">última vez nesta série: {ultSerie}</div>}
-              {exLog && exLog.status === "pulei" ? (
+              {ultSerie && !tempo && <div className="gt-ex-ultima">última vez nesta série: {ultSerie}</div>}
+              {pulado ? (
                 <div className="gt-guiado-alvo">Exercício pulado.</div>
-              ) : (
-                <button type="button" className={`gt-btn gt-guiado-ok ${feito ? "secondary" : ""}`} onClick={serieFeita}>{feito ? "Desfazer série" : "✓ Série feita"}</button>
+              ) : !esconde && (
+                <button type="button" className={`gt-btn gt-guiado-ok ${feito || tempo ? "secondary" : ""}`} onClick={() => serieFeita(tempo && !feito && !tempo.livre ? { ...(segFeito ? {} : { seg: metaSerie }), ...extraMeta } : undefined)}>{feito ? "Desfazer série" : "✓ Série feita"}</button>
               )}
-              {!(exLog && exLog.status === "pulei") && <button type="button" className="gt-guiado-link" onClick={() => { marcarSerieFeita(ex, -1); avancar(); }}>Pular este exercício</button>}
+              {!pulado && !esconde && <button type="button" className="gt-guiado-link" onClick={() => { marcarSerieFeita(ex, -1); avancar(); }}>Pular este exercício</button>}
             </>
           )}
           {p.tipo === "timer" && (
@@ -23527,10 +23744,10 @@ function TreinoGuiado({ treino, flat, treinoLog, blocosRes, item, alvoTexto, las
               <button type="button" className={`gt-btn gt-guiado-ok ${feito ? "secondary" : ""}`} onClick={() => { onBlocoResultado(bid, feito ? null : { formato: "corrida", concluido: true, em: Date.now() }, []); if (!feito) avancar(); }}>{feito ? "Desfazer" : "✓ Corrida feita"}</button>
             </>
           )}
-          <div className="gt-guiado-nav">
+          {!esconde && <div className="gt-guiado-nav">
             <button type="button" className="gt-btn secondary small" disabled={i === 0} onClick={() => setI(i - 1)}>‹ Anterior</button>
             <button type="button" className="gt-btn secondary small" onClick={avancar}>Próximo ›</button>
-          </div>
+          </div>}
         </div>
       )}
       <div style={{ height: 76 }} />
@@ -23561,15 +23778,7 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
     return () => clearInterval(id);
   }, [rodando]);
 
-  // Tela acesa enquanto o bloco roda (o navegador solta a trava quando o app sai da tela; pega de novo na volta).
-  useEffect(() => {
-    if (!rodando || !navigator.wakeLock) return;
-    let trava = null, ativo = true;
-    const pegar = () => { if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((t) => { if (ativo) trava = t; else t.release(); }).catch(() => {}); };
-    pegar();
-    document.addEventListener("visibilitychange", pegar);
-    return () => { ativo = false; document.removeEventListener("visibilitychange", pegar); if (trava) trava.release().catch(() => {}); };
-  }, [rodando]);
+  useTelaAcesa(rodando);
 
   // Fim do bloco, troca de fase e contagem dos últimos 3 segundos.
   let fase = null, resta = 0, acabou = false;
@@ -23787,6 +23996,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
     });
   };
   const [restRemaining, setRestRemaining] = useState(0);
+  useTelaAcesa(!!restTimer); // tela acesa no descanso, para o fim (bipe/vibração) chegar na hora
 
   useEffect(() => {
     if (!restTimer) return;
@@ -23795,7 +24005,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
       setRestRemaining(rem);
       if (rem === 0) {
         setRestTimer(null);
-        try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
+        try { navigator.vibrate && navigator.vibrate(VIBRA_FIM); } catch (e) {}
         notifyRestDone(restTimer.exNome);
         if (showToast) showToast(restTimer.exNome ? `Descanso acabou — ${restTimer.exNome}` : "Descanso acabou");
       }
