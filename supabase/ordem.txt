@@ -73,3 +73,4 @@ recado_email.sql
 coach_plano.sql
 push_setup.sql
 fase4_medidas.sql
+fase4_videos.sql
