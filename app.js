@@ -1132,7 +1132,7 @@ function exercicioLimpo(ex) {
     videoUrl: ex.videoUrl || "",
   };
   // Vídeo próprio do treinador (bucket privado "videos", pasta biblioteca), anexado no envio.
-  if (ex.videoCoach && /^[0-9a-f-]{36}\/biblioteca\/[\w.-]{1,60}$/.test(String(ex.videoCoach.p || ""))) out.videoCoach = { p: ex.videoCoach.p, s: Number(ex.videoCoach.s) || null };
+  if (ex.videoCoach && /^[0-9a-f-]{36}\/biblioteca\/[\w.-]{1,60}$/.test(String(ex.videoCoach.p || ""))) out.videoCoach = { p: ex.videoCoach.p, s: Number(ex.videoCoach.s) || null, n: String(ex.videoCoach.n || "").slice(0, 40) };
   const kg = blocoNumero(ex.cargaKg, 0.1, 1000); if (kg != null) out.cargaKg = String(kg);
   const pct = blocoNumero(ex.pct1rm, 1, 120); if (pct != null) out.pct1rm = pct;
   const rir = blocoNumero(ex.rir, 0, 10); if (rir != null) out.rir = rir;
@@ -2463,7 +2463,8 @@ function logExercicioLivre(nome, origem) {
 // Seletor de exercícios em tela cheia. Com onConfirm, é em lote: tocar marca, tocar de novo
 // desmarca, o número é a ordem em que entram, e nada vai para a ficha até "Adicionar N".
 // Sem onConfirm (treino de hoje, treinador), cada toque adiciona na hora, como antes.
-function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, canRemove, onRemove, onClose, titulo }) {
+// unico: escolhe um exercício só (o toque já escolhe; sem "+" e sem "Concluir"). selo(ex): texto à direita da linha.
+function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, canRemove, onRemove, onClose, titulo, unico, selo }) {
   const lote = typeof onConfirm === "function";
   const [filtro, setFiltro] = useState("Todos");
   const [sel, setSel] = useState([]);
@@ -2528,7 +2529,8 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
           <span className="gt-xp-row-nome">{ex.nome}</span>
           {meta && <span className="gt-xp-row-meta">{meta}</span>}
         </span>
-        {added ? <span className={`gt-xp-tag ${removable ? "tirar" : ""}`}>{removable ? "Tirar" : canRemove ? "NO TREINO" : "NA FICHA"}</span>
+        {unico ? (selo && selo(ex) ? <span className="gt-xp-selo">{selo(ex)}</span> : null)
+          : added ? <span className={`gt-xp-tag ${removable ? "tirar" : ""}`}>{removable ? "Tirar" : canRemove ? "NO TREINO" : "NA FICHA"}</span>
           : <span className={`gt-xp-marca ${pos >= 0 ? "on" : ""}`} aria-hidden="true">{pos >= 0 ? pos + 1 : "+"}</span>}
       </button>
     );
@@ -2589,11 +2591,11 @@ function ExercisePickerModal({ search, setSearch, isAdded, onAdd, onConfirm, can
         {corpo}
         <div style={{ height: 24 }} />
       </div>
-      <div className="gt-focus-footer">
+      {!unico && <div className="gt-focus-footer">
         {lote
           ? <button className="gt-btn" disabled={!sel.length} onClick={() => onConfirm(sel)}>{!sel.length ? "Escolha os exercícios" : sel.length === 1 ? "Adicionar 1 exercício" : `Adicionar ${sel.length} exercícios`}</button>
           : <button className="gt-btn" onClick={onClose}>Concluir</button>}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -4083,6 +4085,12 @@ const APP_CSS = `
   .gt-hoje-importar { margin-top:8px; }
   .gt-video { display:flex; flex-direction:column; gap:6px; flex-basis:100%; margin-top:4px; }
   .gt-video .gt-ex-video-toggle { align-self:flex-start; }
+  .gt-ex-video-toggle { min-height:44px; padding:0 16px; font-size:13px; display:inline-flex; align-items:center; gap:6px; }
+  .gt-video { margin-bottom:8px; }
+  .gt-video-acoes { display:flex; gap:16px; }
+  .gt-video-acoes .gt-co-link { padding-left:0; }
+  .gt-video-apagar { color:var(--warn); }
+  .gt-xp-selo { font-size:13px; color:var(--info); white-space:nowrap; }
   .gt-video-player { width:100%; max-height:60vh; border-radius:10px; background:#000; }
   .gt-video-off { font-size:13px; color:var(--text-muted); }
   .gt-video-add { display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; border:1px dashed var(--border); border-radius:10px; font-size:14px; color:var(--text); cursor:pointer; padding:0 12px; }
@@ -4104,7 +4112,11 @@ const APP_CSS = `
     .gt-coach-mode .gt-co-lista { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
     .gt-coach-mode .gt-co-hoje-item { max-width:none; }
     .gt-coach-mode .gt-focus { left:calc(max(0px, (100vw - 1240px) / 2) + 220px); right:auto; width:calc(min(1240px, 100vw) - 220px); max-width:none; margin:0; border-left:1px solid var(--border); }
-    .gt-coach-mode .gt-focus .gt-focus-body > *, .gt-coach-mode .gt-focus .gt-focus-header { max-width:900px; }
+    .gt-coach-mode .gt-focus .gt-focus-body > *:not(.gt-modal-backdrop) { max-width:900px; }
+    .gt-coach-mode .gt-focus .gt-focus-header { box-sizing:border-box; max-width:956px; padding-left:28px; padding-right:28px; }
+    .gt-coach-mode .gt-focus .gt-focus-footer { padding-left:28px; padding-right:28px; }
+    .gt-coach-mode .gt-focus .gt-focus-footer > * { max-width:900px; }
+    .gt-coach-mode .gt-co-composer > .gt-co-aviso { margin:8px 28px 0; max-width:900px; }
     .gt-coach-mode .gt-focus .gt-focus-body { padding-left:28px; padding-right:28px; }
     .gt-coach-mode .gt-modal-backdrop { align-items:center; }
     .gt-coach-mode .gt-modal { max-width:560px; border-radius:14px; border:1px solid var(--border); max-height:86vh; }
@@ -13624,7 +13636,7 @@ function VideoPrivado({ video, rotulo }) {
   }
   return (
     <div className="gt-video" onClick={(e) => e.stopPropagation()}>
-      <button type="button" className="gt-ex-video-toggle" onClick={abrir}>▶ {url ? "Esconder vídeo" : rotulo || "Ver vídeo"}{video.s ? ` · ${video.s} s` : ""}</button>
+      <button type="button" className="gt-ex-video-toggle" onClick={abrir}>{url ? "✕ Fechar vídeo" : `▶ ${rotulo || "Ver vídeo"}${video.s ? ` · ${video.s} s` : ""}`}</button>
       {url === "" && <div className="gt-video-off">Carregando…</div>}
       {url === false && <div className="gt-video-off">Vídeo indisponível agora.</div>}
       {url && <video className="gt-video-player" src={url} controls playsInline autoPlay muted preload="metadata" />}
@@ -13667,7 +13679,8 @@ function coachVideosMapa(lista) {
   return m;
 }
 // Põe "videoCoach" nos exercícios do envio que têm vídeo na biblioteca (payload {dias, fichas} ou plano).
-function coachAnexarVideos(obj, mapa) {
+function coachAnexarVideos(obj, mapa, nomeCoach) {
+  const n = String(nomeCoach || "").trim().split(" ")[0].slice(0, 40);
   if (!mapa || !Object.keys(mapa).length) return obj;
   const visita = (x) => {
     if (Array.isArray(x)) return x.map(visita);
@@ -13676,7 +13689,7 @@ function coachAnexarVideos(obj, mapa) {
     Object.entries(x).forEach(([k, v]) => { o[k] = visita(v); });
     if (typeof o.nome === "string" && ("series" in o || "repeticoes" in o)) {
       const v = mapa[normalizeSearch(o.nome)];
-      if (v) o.videoCoach = { p: v.path, s: v.dur || null };
+      if (v) o.videoCoach = { p: v.path, s: v.dur || null, n };
       else delete o.videoCoach;
     }
     return o;
@@ -13696,7 +13709,7 @@ function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
   }
   useEffect(() => { carregar(); }, []);
   async function apagar(v) {
-    if (!window.confirm(`Apagar o vídeo de ${v.exercicio}? Os alunos deixam de ver nos próximos envios.`)) return;
+    if (!window.confirm(`Apagar o vídeo de ${v.exercicio}? Quem já recebeu esse exercício volta a ver só o vídeo do catálogo.`)) return;
     await supabaseClient.storage.from("videos").remove([v.path]).catch(() => {});
     await supabaseClient.from("coach_videos").delete().eq("id", v.id);
     logEvent("coach_video_apagado");
@@ -13719,7 +13732,7 @@ function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
         <div className="gt-focus-title-wrap"><div className="gt-focus-title">Meus vídeos</div><div className="gt-focus-title-hint">{lista ? `${n} de ${VIDEO_BIBLIOTECA_MAX}` : ""}</div></div>
       </div>
       <div className="gt-focus-body gt-med-body">
-        <div className="gt-plano-dica">Grave você mesmo a execução. Quando o exercício estiver no treino que você enviar, o aluno vê o seu vídeo no lugar do vídeo do catálogo.</div>
+        <div className="gt-plano-dica">Grave a execução de um exercício (até {VIDEO_MAX_SEG.biblioteca} s). Quando ele estiver num treino que você enviar, quem treina com você vê este vídeo junto do vídeo do catálogo.</div>
         {lista === undefined && <div className="gt-empty">Carregando…</div>}
         {lista === null && <div className="gt-co-erro" role="alert">Não consegui abrir agora. <button type="button" className="gt-co-link" onClick={carregar}>Tentar de novo</button></div>}
         {exAlvo ? (
@@ -13730,18 +13743,23 @@ function CoachVideosTela({ uid, coachNome, onClose, showToast, logEvent }) {
             <button type="button" className="gt-co-link" onClick={() => setExAlvo(null)}>Cancelar</button>
           </div>
         ) : (
-          lista && <button type="button" className="gt-btn" disabled={n >= VIDEO_BIBLIOTECA_MAX} onClick={() => { setErro(""); setPicker(true); }}>{n >= VIDEO_BIBLIOTECA_MAX ? `Limite de ${VIDEO_BIBLIOTECA_MAX} vídeos` : "Adicionar vídeo"}</button>
+          lista && <button type="button" className="gt-btn" disabled={n >= VIDEO_BIBLIOTECA_MAX} onClick={() => { setErro(""); setPicker(true); }}>{n >= VIDEO_BIBLIOTECA_MAX ? `Limite de ${VIDEO_BIBLIOTECA_MAX} vídeos` : `Adicionar vídeo (até ${VIDEO_MAX_SEG.biblioteca} s)`}</button>
         )}
         {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
         {(lista || []).map((v) => (
           <div key={v.id} className="gt-med-item">
             <div className="gt-med-item-top"><b>{v.exercicio}</b><span className="gt-med-nota">{coachDataCurta(v.created_at)}</span></div>
             <VideoPrivado video={{ p: v.path, s: v.dur }} rotulo="Ver vídeo" />
-            <button type="button" className="gt-co-link gt-med-apagar" style={{ alignSelf: "flex-start", marginTop: 0, paddingLeft: 0 }} onClick={() => apagar(v)}>Apagar</button>
+            <div className="gt-video-acoes">
+              <button type="button" className="gt-co-link" onClick={() => { setErro(""); setExAlvo({ nome: v.exercicio }); }}>Trocar</button>
+              <button type="button" className="gt-co-link gt-video-apagar" onClick={() => apagar(v)}>Apagar</button>
+            </div>
           </div>
         ))}
       </div>
-      {picker && <ExercisePickerModal titulo="Vídeo de qual exercício?" search={busca} setSearch={setBusca} grupo={grupo} setGrupo={setGrupo} isAdded={() => false} onAdd={(cat) => { setPicker(false); setExAlvo(cat); }} onClose={() => setPicker(false)} />}
+      {picker && <ExercisePickerModal titulo="Vídeo de qual exercício?" unico search={busca} setSearch={setBusca} isAdded={() => false}
+        selo={(ex) => ((lista || []).some((x) => normalizeSearch(x.exercicio) === normalizeSearch(ex.nome)) ? "tem vídeo · trocar" : "")}
+        onAdd={(cat) => { setPicker(false); setExAlvo(cat); }} onClose={() => setPicker(false)} />}
     </div>
   );
 }
@@ -14432,7 +14450,7 @@ function CoachComposer({ aluno, modelo, treinosProprios, atividadesProprias, onC
     setEnviando(true);
     const plano = comoPlano && planoLiberado;
     const rem = podeAjustar ? { ajuste: true, remover } : {};
-    const semV = coachAnexarVideos(sem, videosMapa);
+    const semV = coachAnexarVideos(sem, videosMapa, aluno.coach_nome);
     const payload = plano ? { semana: semV, semanas: plSemanas, inicio: plInicio, nome: `Plano de ${aluno.coach_nome || "treino"}`, progressao: plProgressao, ...rem } : { ...semV, ...rem };
     const item = { link_id: aluno.link_id, nome: aluno.nome, tipo: plano ? "plano" : "semana", payload, mensagem: msg.trim() || null, criado: Date.now() };
     const r = await coachCall("coach_send_assignment", { p_link: item.link_id, p_tipo: item.tipo, p_payload: item.payload, p_mensagem: item.mensagem });
@@ -15244,11 +15262,10 @@ function CoachPerfilTab({ coachInfo, session, nomePessoal, onNome, nAtivos, nPen
         <div className="tx"><div className="t">{nomeVis}</div>{cref.trim() && <div className="d">CREF {cref.trim().replace(/^cref\s*/i, "")}</div>}{bio.trim() && <div className="b">{bio.trim()}</div>}</div>
       </div>
       <div className="gt-settings-hint">Só quem recebe ou aceita um convite seu vê esse perfil.</div>
-      <div className="gt-co-sec" style={{ marginTop: 16 }}>MEUS VÍDEOS</div>
-      <div className="gt-co-lista-menu">
-        <button type="button" className="gt-co-linha" onClick={onVideos}><Icon name="video-camera" weight="duotone" size={22} /><span>Vídeos dos exercícios</span><i aria-hidden="true">›</i></button>
+      <div className="gt-co-lista-menu" style={{ marginTop: 16 }}>
+        <button type="button" className="gt-co-linha" onClick={onVideos}><Icon name="video-camera" weight="duotone" size={22} /><span>Meus vídeos</span><i aria-hidden="true">›</i></button>
       </div>
-      <div className="gt-settings-hint">Grave a execução do seu jeito. O aluno vê o seu vídeo no exercício.</div>
+      <div className="gt-settings-hint">Até {VIDEO_BIBLIOTECA_MAX} vídeos de até {VIDEO_MAX_SEG.biblioteca} s. Quem treina com você vê o seu vídeo no exercício.</div>
       <div className="gt-co-sec" style={{ marginTop: 16 }}>CONTA</div>
       <div className="gt-co-lista-menu">
         <button type="button" className="gt-co-linha" onClick={onTrocar}><Icon name="hoje" weight="duotone" size={22} /><span>Trocar para “Meu treino”</span><i aria-hidden="true">›</i></button>
@@ -19907,7 +19924,7 @@ function App() {
                           : <span className="gt-text-muted">Duração/esforço não registrados</span>}
                         <button type="button" className="gt-item-carga-edit" onClick={() => abrirEsforcoCorrida(plano, sessao, idx)}>{cg ? "editar ✎" : "registrar ✎"}</button>
                         {cg && cg.nota && <div className="gt-sessao-nota">{cg.nota}</div>}
-                        {cg && cg.video && <VideoPrivado video={cg.video} rotulo="Ver vídeo da execução" />}
+                        {cg && cg.video && <VideoPrivado video={cg.video} rotulo="Ver seu vídeo" />}
                       </div>
                     );
                   })()}
@@ -19986,7 +20003,7 @@ function App() {
                             : <span className="gt-text-muted">Duração/esforço não registrados</span>;
                         })()}
                         <button type="button" className="gt-item-carga-edit" onClick={() => openRpeModalFor(item, selectedDate, treino.nome)}>editar ✎</button>
-                        {(() => { const c = (sessions[selectedDate]?.cargas || {})[key] || {}; return <>{c.nota ? <div className="gt-sessao-nota">{c.nota}</div> : null}{c.video ? <VideoPrivado video={c.video} rotulo="Ver vídeo da execução" /> : null}</>; })()}
+                        {(() => { const c = (sessions[selectedDate]?.cargas || {})[key] || {}; return <>{c.nota ? <div className="gt-sessao-nota">{c.nota}</div> : null}{c.video ? <VideoPrivado video={c.video} rotulo="Ver seu vídeo" /> : null}</>; })()}
                       </div>
                     )}
                   </div>
@@ -22896,10 +22913,10 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
           <div className="gt-ex-detail">
             {ex.descricao && <div className="gt-ex-desc">{ex.descricao}</div>}
             {ex.observacoes && <div className="gt-ex-obs"><Ei e="⚠" /> {ex.observacoes}</div>}
-            {ex.videoCoach && <VideoPrivado video={ex.videoCoach} rotulo="Ver vídeo do seu treinador" />}
+            {ex.videoCoach && <VideoPrivado video={ex.videoCoach} rotulo={ex.videoCoach.n ? `Vídeo de ${ex.videoCoach.n}` : "Vídeo de quem montou seu treino"} />}
             {(() => {
               const ytId = extractYoutubeId(ex.videoUrl);
-              if (!ytId || ex.videoCoach) return null;
+              if (!ytId) return null;
               const videoShown = videoOpenId === ex.id;
               return (
                 <div className="gt-ex-video-wrap">
@@ -22908,7 +22925,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
                     className="gt-ex-video-toggle"
                     onClick={(e) => { e.stopPropagation(); setVideoOpenId(videoShown ? null : ex.id); }}
                   >
-                    ▶ {videoShown ? "Esconder vídeo" : "Ver vídeo do exercício"}
+                    {videoShown ? "✕ Fechar vídeo" : ex.videoCoach ? "▶ Vídeo do catálogo" : "▶ Ver vídeo do exercício"}
                   </button>
                   {videoShown && (
                     <div className="gt-ex-video-frame">
