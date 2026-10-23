@@ -241,6 +241,11 @@ Pedido do Andre (23/10, com prints). Avaliação de Produto, UX e Design (feita 
   - Item 4: avisos locais (`avisoLocal`) vão por `postMessage` ao service worker, que mostra com ícone/badge em endereço absoluto (igual ao push); SW antigo sem resposta em 1,5 s cai no caminho direto. SW serve os ícones do cache primeiro (com sinal ruim o network-first atrasava). Não testado em aparelho real.
   - Revisões de UX e design aplicadas: "Apagar vídeo" com confirmação (não "Tirar vídeo"), "Enviar" em vez de "Gravar" (galeria também), dica "Só <treinador> vê, por 90 dias", toast com o nome do exercício. Ficou para depois: reenvio automático quando a internet cai.
 
+6. **Timer do descanso na barra de notificações (backlog, 23/10, Andre: "Essa parte do timer é bem importante").**
+   - Hoje: o fim do descanso vibra (`VIBRA_FIM`) na página e na notificação. Com o app em segundo plano, quem vibra é a notificação do sistema (respeita modo silencioso/não perturbe do celular). O aviso sai de um timer da página; o Chrome segura timers de páginas em segundo plano (até 1 s nos primeiros minutos; depois de ~5 min escondida, alinha em 1 min), então o aviso pode atrasar em descanso longo ou celular em economia de bateria.
+   - Contagem regressiva ao vivo na barra: a Web não tem notificação com cronômetro (o "cronômetro na notificação" do Android é só de app nativo). Atualizar a notificação a cada segundo pelo service worker não é confiável (o navegador para o SW em segundo plano) e gasta bateria.
+   - Proposta sem custo: ao começar o descanso, notificação fixa e silenciosa "Descanso · volta às 14:32" (horário de fim, com ±15 s de ajuste refletido), substituída no fim pela que vibra (mesma `tag`). Contagem ao vivo de verdade fica para o app nativo (lojas).
+
 ### 6.4 Relatórios compartilhados
 - `report_shares`: aluno libera por **e-mail** com categorias (frequência, carga, peso e notas, treinos completos). Filtragem no banco (`get_shared_report`). Quem recebe vê em Configurações › "Ver relatórios". Aviso por e-mail só se a pessoa já tem conta (v188).
 
@@ -257,7 +262,7 @@ Pedido do Andre (23/10, com prints). Avaliação de Produto, UX e Design (feita 
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- **Ajustes do treino guiado e fim do treino (23/10: 2, 3 e 4 publicados na v224; falta o 5):** mobilidade no começo (IA e modelos), vídeo por exercício, ícone do timer de descanso, selfie "tá pago". Ver 6.3.7.
+- **Ajustes do treino guiado e fim do treino (23/10: 2, 3 e 4 publicados na v224; 5 em andamento; 6 no backlog):** mobilidade no começo (IA e modelos), vídeo por exercício, ícone do timer de descanso, selfie "tá pago". Ver 6.3.7.
 - Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Fase 1 fechada na v206 (modo guiado, Roxzone, comparação). Fase 2 na v207 (plano de semanas, flag `plano`): **liberada para todas as contas em 20/10** (`app_config.ff_plano_todos = true`; dá para desligar no painel via `admin_feature_todos_set('plano', false)`). Fase 2 fechada na v210 (IA híbrida na v209; "Trazer meu treinador" e plano do treinador virando "Meu plano" na v210). Fase 3 (Acompanhar) fechada na v214 (21/10). Push: conferir na segunda 26/10 se o cron `push-desafios-semanal` rodou (`push_envios` tipo desafios).
 - ~~Bug em produção (20/10): `feature_allowed` sem a cláusula `ff_ajuste_semana_todos`~~: corrigido em 20/10 junto com a v207 (aplicadas só `feature_allowed`, `my_features` e as funções de `feature_flags_todos.sql`). **Atenção:** não rodar `feature_flags.sql` inteiro em produção: a `reserve_ai_generation` dele é mais antiga que a de `billing_base.sql` e tiraria o limite por plano.
 - Exportar `race_favorites` no pedido de dados (LGPD).
