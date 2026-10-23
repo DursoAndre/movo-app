@@ -14473,8 +14473,11 @@ function VideoEnviar({ uid, pasta, rotulo, onPronto, onErro, disabled, className
 function ExVideoTreinador({ uid, coach, ex, video, onVideo, guiado }) {
   const [erro, setErro] = useState("");
   if (!coach || !uid || !(video || midiaLigada("video_aluno"))) return null;
+  // Sem o nome: todos os treinadores com vínculo ativo (e cargas liberadas) veem o vídeo.
+  const varios = coach > 1;
+  const quem = varios ? "seus treinadores" : "seu treinador";
   function apagar() {
-    if (!window.confirm(`Apagar o vídeo? ${coach} não vai mais conseguir ver.`)) return;
+    if (!window.confirm(`Apagar o vídeo? ${quem[0].toUpperCase() + quem.slice(1)} não ${varios ? "vão" : "vai"} mais conseguir ver.`)) return;
     onVideo(null);
   }
   return (
@@ -14483,7 +14486,7 @@ function ExVideoTreinador({ uid, coach, ex, video, onVideo, guiado }) {
       {video ? (
         <>
           <div className="gt-ex-video-linha">
-            <span className="gt-ex-video-ok">✓ Enviado para {coach}</span>
+            <span className="gt-ex-video-ok">✓ Enviado para {quem}</span>
             <button type="button" className="gt-ex-video-apagar" onClick={apagar}>Apagar vídeo</button>
           </div>
           <VideoPrivado video={video} rotulo="Ver vídeo" />
@@ -14491,9 +14494,9 @@ function ExVideoTreinador({ uid, coach, ex, video, onVideo, guiado }) {
       ) : (
         <>
           <VideoEnviar uid={uid} pasta="sessao" className="gt-video-add gt-video-sec"
-            rotulo={<><Ei e="🎥" /> Enviar vídeo para {coach}</>}
+            rotulo={<><Ei e="🎥" /> Enviar vídeo para {quem}</>}
             onPronto={(v) => { setErro(""); onVideo({ ...v, ex: String((ex && ex.nome) || "").slice(0, 80) }); }} onErro={setErro} />
-          <div className="gt-rpe-hint">Do exercício inteiro, até {VIDEO_MAX_SEG.sessao} s. O som é removido. Só {coach} vê, por {VIDEO_DIAS} dias.</div>
+          <div className="gt-rpe-hint">Do exercício inteiro, até {VIDEO_MAX_SEG.sessao} s. O som é removido. Só {quem} {varios ? "veem" : "vê"}, por {VIDEO_DIAS} dias.</div>
         </>
       )}
       {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
@@ -19964,7 +19967,7 @@ function App() {
     const next = { ...prevExLog };
     if (video) next.video = video; else delete next.video;
     patchItemLog(key, { [ex.id]: next });
-    if (video) { logEvent("exercicio_video", { s: video.s || null }); showToast(`Vídeo de ${ex.nome} enviado para ${coachVeNota || "seu treinador"}.`); }
+    if (video) { logEvent("exercicio_video", { s: video.s || null }); showToast(`Vídeo de ${ex.nome} enviado para ${coachVeQtd > 1 ? "seus treinadores" : "seu treinador"}.`); }
   }
 
   // --- Ajustes do treino de hoje (não mexem na ficha) ---
@@ -20075,6 +20078,8 @@ function App() {
     const l = (coachLinks || []).find((x) => x.status === "ativo" && (x.permissions || {}).ver_treinos !== false && (x.permissions || {}).ver_cargas !== false);
     return l ? (l.coach_nome || "Seu treinador") : "";
   })();
+  // Quantos treinadores veem os treinos e cargas (vídeo do exercício vai para todos eles).
+  const coachVeQtd = (coachLinks || []).filter((x) => x.status === "ativo" && (x.permissions || {}).ver_treinos !== false && (x.permissions || {}).ver_cargas !== false).length;
   function saveRpeModal() {
     if (!rpeModal) return;
     const dur = Number(rpeModal.duracaoMin);
@@ -20635,7 +20640,7 @@ function App() {
             updateSetField={updateSetField}
             updateExComentario={updateExComentario}
             updateExVideo={updateExVideo}
-            coachVeNota={coachVeNota}
+            coachQtd={coachVeQtd}
             uid={session ? session.user.id : null}
             cycleExercicioStatus={cycleExercicioStatus}
             addSetToExercise={addSetToExercise}
@@ -24047,7 +24052,7 @@ function BlocoTimer({ bloco, chave, onClose, onSalvar, anterior }) {
   );
 }
 
-function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, setExpandedEx, ensureSetsForExpand, updateSetField, updateExComentario, updateExVideo, coachVeNota, uid, cycleExercicioStatus, addSetToExercise, removeLastSet, addExerciseToday, removeAddedExercise, onClose, onFinish, showToast, blocosLog, onBlocoResultado, lastSetsFor, resultadoAnterior, marcarSerieFeita }) {
+function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, setExpandedEx, ensureSetsForExpand, updateSetField, updateExComentario, updateExVideo, coachQtd, uid, cycleExercicioStatus, addSetToExercise, removeLastSet, addExerciseToday, removeAddedExercise, onClose, onFinish, showToast, blocosLog, onBlocoResultado, lastSetsFor, resultadoAnterior, marcarSerieFeita }) {
   const flat = flattenExercicios(treino);
   const blocosRes = blocosLog || {};
   const corridas = treino.blocos.map((b, i) => ({ b, id: blocoId(b, i) })).filter((x) => blocoTipo(x.b) === "corrida" && !blocoVazio(x.b));
@@ -24267,7 +24272,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
             </div>
             <div className="gt-field-label">COMENTÁRIO</div>
             <textarea className="gt-comment" placeholder="Como foi? Alguma dor, ajuste de carga…" value={exLog?.comentario || ""} onChange={(e) => updateExComentario(item, ex, e.target.value)} />
-            {updateExVideo && <ExVideoTreinador uid={uid} coach={coachVeNota} ex={ex} video={exLog && exLog.video} onVideo={(v) => updateExVideo(item, ex, v)} />}
+            {updateExVideo && <ExVideoTreinador uid={uid} coach={coachQtd} ex={ex} video={exLog && exLog.video} onVideo={(v) => updateExVideo(item, ex, v)} />}
           </div>
         )}
       </div>
@@ -24334,7 +24339,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
           alvoTexto={alvoTexto} lastSetsFor={lastSetsFor} ensureSetsForExpand={ensureSetsForExpand} updateSetField={updateSetField}
           marcarSerieFeita={marcarSerieFeita} onBlocoResultado={(bid, res, exs) => onBlocoResultado && onBlocoResultado(bid, res, exs)}
           abrirTimer={setTimerBloco} startRest={startRest} stopRest={stopRest} restTimer={restTimer} restRemaining={restRemaining}
-          onConcluir={handleFinish} uid={uid} coach={coachVeNota} onVideo={updateExVideo ? (ex, v) => updateExVideo(item, ex, v) : null}
+          onConcluir={handleFinish} uid={uid} coach={coachQtd} onVideo={updateExVideo ? (ex, v) => updateExVideo(item, ex, v) : null}
         />
       ) : (
       <div className="gt-focus-body">
