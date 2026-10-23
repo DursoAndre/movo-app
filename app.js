@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v225";
+const APP_BUILD = "v226";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -23145,17 +23145,35 @@ function formatRestTime(totalSeconds) {
 // reforço pra quando o app já está na tela.
 // Vibração de "acabou o tempo" (descanso e timers): longa o bastante para sentir no bolso ou na mão.
 const VIBRA_FIM = [500, 200, 500, 200, 500];
-function notifyRestDone(label) {
+function descansoAviso(label) {
+  return {
+    title: "Descanso acabou",
+    opts: { body: label ? `Hora de voltar — ${label}` : "Hora de voltar pro próximo exercício", vibrate: VIBRA_FIM, tag: "movo-rest-timer", renotify: true },
+  };
+}
+function notifyRestDone(label, endsAt) {
   try {
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const title = "Descanso acabou";
-    const body = label ? `Hora de voltar — ${label}` : "Hora de voltar pro próximo exercício";
-    avisoLocal(title, { body, vibrate: VIBRA_FIM, tag: "movo-rest-timer", renotify: true });
+    const a = descansoAviso(label);
+    avisoLocal(a.title, a.opts, endsAt);
+  } catch (e) {}
+}
+// Com o app em segundo plano ou a tela apagada, o Android congela o JavaScript da página e o
+// aviso do fim do descanso só saía quando a pessoa voltava ao app. Por isso o descanso também
+// é agendado no service worker, que não congela junto; null cancela.
+function descansoAgendar(rt) {
+  try {
+    const sw = navigator.serviceWorker;
+    if (!sw || !sw.controller) return;
+    if (!rt) { sw.controller.postMessage({ tipo: "descanso", endsAt: null }); return; }
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const a = descansoAviso(rt.exNome);
+    sw.controller.postMessage({ tipo: "descanso", endsAt: rt.endsAt, title: a.title, opts: a.opts });
   } catch (e) {}
 }
 // Mostra um aviso do sistema pelo service worker (mesmo caminho do push, que já sai com o ícone
 // do Movo na barra). Sem service worker ativo, mostra direto com os ícones em endereço absoluto.
-function avisoLocal(title, opts) {
+function avisoLocal(title, opts, endsAt) {
   const abs = (u) => new URL(u, location.href).href;
   const completo = { ...opts, icon: abs("./icon-192.png"), badge: abs("./badge-96.png"), data: { url: "./" } };
   const sw = navigator.serviceWorker;
@@ -23168,7 +23186,7 @@ function avisoLocal(title, opts) {
   const canal = new MessageChannel();
   const t = setTimeout(direto, 1500);
   canal.port1.onmessage = () => clearTimeout(t);
-  sw.controller.postMessage({ tipo: "notificar", title, opts }, [canal.port2]);
+  sw.controller.postMessage({ tipo: "notificar", title, opts, endsAt }, [canal.port2]);
 }
 
 // ---------- Editor de sessão em blocos (o mesmo para o aluno e para o treinador) ----------
@@ -24150,7 +24168,7 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
       if (rem === 0) {
         setRestTimer(null);
         try { navigator.vibrate && navigator.vibrate(VIBRA_FIM); } catch (e) {}
-        notifyRestDone(restTimer.exNome);
+        notifyRestDone(restTimer.exNome, restTimer.endsAt);
         if (showToast) showToast(restTimer.exNome ? `Descanso acabou — ${restTimer.exNome}` : "Descanso acabou");
       }
     };
@@ -24158,6 +24176,8 @@ function TreinoFocusView({ treino, item, treinoLog, selectedDate, expandedEx, se
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, [restTimer, showToast]);
+
+  useEffect(() => { descansoAgendar(restTimer); }, [restTimer && restTimer.endsAt]);
 
   function startRest(seconds, exNome) {
     // Pede permissão de notificação no primeiro uso (dentro do clique, pra

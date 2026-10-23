@@ -1,4 +1,4 @@
-const CACHE = "treino-app-v225";
+const CACHE = "treino-app-v226";
 const SHELL = [
   "./",
   "./index.html",
@@ -64,17 +64,48 @@ self.addEventListener("push", (event) => {
 
 // Aviso local do app (fim do descanso, cronômetro de bloco): a página pede e o service worker
 // mostra, como no push do servidor, com o ícone do Movo em endereço absoluto.
+// O fim do descanso também é agendado aqui quando ele começa ({ tipo: "descanso", endsAt }): com o
+// app em segundo plano o Android congela a página, mas não o service worker. endsAt marca qual
+// descanso já foi avisado, para a página e o agendamento não avisarem duas vezes.
+let descansoPendente = null; // { endsAt, timer, fim }
+let descansoAvisado = 0;
+function avisoMostrar(title, opts, endsAt) {
+  if (endsAt && descansoAvisado === endsAt) return Promise.resolve();
+  if (endsAt) descansoAvisado = endsAt;
+  const abs = (u) => new URL(u, self.registration.scope).href;
+  return self.registration.showNotification(title, {
+    ...(opts || {}),
+    icon: abs("./icon-192.png"),
+    badge: abs("./badge-96.png"),
+    data: { url: "./" },
+  });
+}
+function descansoCancelar() {
+  if (!descansoPendente) return;
+  clearTimeout(descansoPendente.timer);
+  descansoPendente.fim();
+  descansoPendente = null;
+}
 self.addEventListener("message", (event) => {
   const d = event.data || {};
+  if (d.tipo === "descanso") {
+    descansoCancelar();
+    if (!d.endsAt || !d.title) return;
+    // waitUntil mantém o service worker vivo até o fim do descanso (o Chrome segura até ~5 min).
+    event.waitUntil(new Promise((fim) => {
+      const timer = setTimeout(() => {
+        descansoPendente = null;
+        avisoMostrar(d.title, d.opts, d.endsAt).catch(() => {}).then(fim);
+      }, Math.max(0, d.endsAt - Date.now()));
+      descansoPendente = { endsAt: d.endsAt, timer, fim };
+    }));
+    return;
+  }
   if (d.tipo !== "notificar" || !d.title) return;
-  const abs = (u) => new URL(u, self.registration.scope).href;
+  if (d.endsAt && descansoPendente && descansoPendente.endsAt === d.endsAt) descansoCancelar();
   event.waitUntil(
-    self.registration.showNotification(d.title, {
-      ...(d.opts || {}),
-      icon: abs("./icon-192.png"),
-      badge: abs("./badge-96.png"),
-      data: { url: "./" },
-    }).then(() => { if (event.ports && event.ports[0]) event.ports[0].postMessage("ok"); })
+    avisoMostrar(d.title, d.opts, d.endsAt)
+      .then(() => { if (event.ports && event.ports[0]) event.ports[0].postMessage("ok"); })
   );
 });
 
