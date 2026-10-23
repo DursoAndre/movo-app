@@ -235,6 +235,12 @@ Pedido do Andre (23/10, com prints). Avaliação de Produto, UX e Design (feita 
    - Custo/limite (regra do Andre): Supabase Storage grátis 1 GB (dividido com vídeos e fotos de medidas; 0 MB usados em 23/10) e 5 GB/mês de tráfego. Selfie reduzida no aparelho (1080 px, JPEG ~150 KB + miniatura ~20 KB). Hoje ~150 treinos/mês (22 pessoas): se todos postarem, ~25 MB/mês (1 GB em ~3 anos). Mural com miniaturas: bem abaixo de 1% do tráfego. **Custo novo: R$ 0 dentro do grátis.** Usa a chave já existente `midia_foto_checkin` (desligada).
    - Decisões do Andre: guardar para sempre ou apagar depois de X; mural do desafio junto ou numa segunda etapa.
 
+- **v224 (23/10, PR aberto, aguardando "publica"):** itens 2, 3 e 4.
+  - Item 2: `mobilidadePrimeiro(blocos)` em `tplTreino` e em `treinoIAExpandir` (fichas da IA e do plano de semanas). Lista única: mobilidade/ativação no topo, alongamento/volta à calma no fim (`exMobilidadeTipo`). Em blocos: bloco "Mobilidade/Ativação" vai para o início e o alongamento dele vira bloco "Alongamento" no fim. Prompt do `gerar-treinos` (regra 3) também pede isso (precisa publicar a função).
+  - Item 3: `ExVideoTreinador` no exercício (guiado: botão secundário abaixo de "Série feita"; lista: seção "VÍDEO" abaixo do comentário). Vídeo em `log[exId].video = { p, s, em, ex }`, pasta `sessao`, mesmos limites (30 s, sem som, 90 dias), só com treinador e `midia_video_aluno`. Exercício recolhido mostra "🎥 vídeo enviado". Check-in não grava mais vídeo (mostra o antigo, se houver). Treinador vê "Vídeo: <exercício>" no card da sessão (`coach_aluno_detalhe` já devolve o `log` com `ver_cargas`). Sem SQL.
+  - Item 4: avisos locais (`avisoLocal`) vão por `postMessage` ao service worker, que mostra com ícone/badge em endereço absoluto (igual ao push); SW antigo sem resposta em 1,5 s cai no caminho direto. SW serve os ícones do cache primeiro (com sinal ruim o network-first atrasava). Não testado em aparelho real.
+  - Revisões de UX e design aplicadas: "Apagar vídeo" com confirmação (não "Tirar vídeo"), "Enviar" em vez de "Gravar" (galeria também), dica "Só <treinador> vê, por 90 dias", toast com o nome do exercício. Ficou para depois: reenvio automático quando a internet cai.
+
 ### 6.4 Relatórios compartilhados
 - `report_shares`: aluno libera por **e-mail** com categorias (frequência, carga, peso e notas, treinos completos). Filtragem no banco (`get_shared_report`). Quem recebe vê em Configurações › "Ver relatórios". Aviso por e-mail só se a pessoa já tem conta (v188).
 

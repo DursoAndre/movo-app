@@ -118,7 +118,7 @@ function montarInstrucao(b: any): { ok: true; texto: string } | { ok: false; err
 Regras:
 1. Divisão "você decide": 1 a 2 dias = corpo todo; 3 dias = corpo todo (iniciante) ou ABC; 4 dias = superior/inferior; 5 dias = superior/inferior + empurrar/puxar/pernas; 6 dias = empurrar/puxar/pernas duas vezes. Cada grupo grande deve ser treinado 1 a 2 vezes por semana.
 2. Quantidade de exercícios por ficha conforme o tempo: 30 min = 4 a 5; 45 min = 5 a 6; 60 min = 6 a 8; 75 min = 8 a 9; 90 min = 9 a 11 (nunca mais de 12). Iniciantes: menos exercícios, movimentos simples e estáveis (máquinas e halteres quando houver).
-3. Ordem: exercícios compostos primeiro, depois isoladores, abdômen por último. Os grupos de atenção entram mais cedo na ficha e ganham 2 a 4 séries semanais a mais.
+3. Ordem: mobilidade ou ativação (se houver) abre a ficha; depois compostos, isoladores e abdômen; alongamento, se houver, por último. Os grupos de atenção entram mais cedo na ficha e ganham 2 a 4 séries semanais a mais.
 4. Séries e repetições por objetivo: hipertrofia = compostos 3-4 séries de 6-10, isoladores 3 séries de 10-15; força = compostos 4-5 séries de 3-6, acessórios 3 séries de 8-10; emagrecimento = 3 séries de 10-15, ritmo mais contínuo, pode incluir um exercício de cardio curto no fim; condicionamento = 2-3 séries de 12-20; saúde = 2-3 séries de 8-15. Iniciante: 2 a 3 séries por exercício.
 5. Local: respeite o equipamento. Em casa use somente o que existir (halteres, peso do corpo, mochila, elástico); nada de máquinas ou barras se não houver.
 6. Lesão ou limitação: evite exercícios que sobrecarreguem a região e troque por alternativas seguras; inclua um aviso curto sugerindo avaliação de um profissional de saúde.
