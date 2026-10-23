@@ -78,3 +78,4 @@ midia_config.sql
 fase5.sql
 admin_limites.sql
 fase4_resto.sql
+selfies.sql
