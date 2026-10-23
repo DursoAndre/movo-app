@@ -6,7 +6,7 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 // frontend — o acesso real aos dados é controlado pelas políticas de RLS no
 // banco, não pelo sigilo dessa chave.
 const SUPABASE_URL = "https://wgdhjkebfvcmgokxscvb.supabase.co";
-const APP_BUILD = "v224";
+const APP_BUILD = "v225";
 const SUPABASE_ANON_KEY = "sb_publishable_W0cKrWrtCwCp1XjNl1JFqQ_myok_WPk";
 // Lido ANTES de criar o cliente: ao abrir pelo link mágico do e-mail, a URL
 // traz o token, e o Supabase limpa isso logo que inicia. Serve só pra
@@ -4176,6 +4176,25 @@ const APP_CSS = `
   .gt-evo-med-pe { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; color:var(--text-muted); }
   .gt-video-add { display:flex; align-items:center; justify-content:center; gap:6px; min-height:44px; border:1px dashed var(--border); border-radius:10px; font-size:14px; color:var(--text); cursor:pointer; padding:0 12px; }
   .gt-video-add.off { opacity:.5; pointer-events:none; }
+  .gt-selfie { display:flex; flex-direction:column; gap:8px; margin:14px 0 4px; text-align:left; }
+  .gt-selfie-btn { font-weight:500; }
+  .gt-selfie-btn { gap:8px; }
+  .gt-selfie-dica { text-align:center; }
+  .gt-selfie-pronta { display:grid; grid-template-columns:112px 1fr; gap:14px; align-items:end; }
+  .gt-selfie-prev { width:112px; aspect-ratio:9/16; padding:0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface-2); cursor:pointer; }
+  .gt-selfie-prev img { width:100%; height:100%; object-fit:cover; display:block; }
+  .gt-selfie-acoes { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .gt-selfie-ok { font-size:14px; color:var(--text); }
+  .gt-selfie-mini.tl { width:48px; height:64px; border-radius:8px; margin:8px 0 0; }
+  .gt-selfie-fechar { position:absolute; top:calc(12px + env(safe-area-inset-top, 0px)); right:12px; width:44px; height:44px; border-radius:50%; border:none; background:rgba(0,0,0,.55); color:#fff; font-size:18px; cursor:pointer; }
+  .gt-selfie-apagar-full { position:absolute; bottom:calc(20px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); min-height:44px; padding:0 18px; border-radius:22px; border:1px solid rgba(255,255,255,.3); background:rgba(0,0,0,.55); color:#fff; font-size:14px; cursor:pointer; }
+  .gt-selfie-mural { display:flex; align-items:center; gap:10px; min-height:44px; font-size:14px; color:var(--text); cursor:pointer; }
+  .gt-selfie-mural input { flex:none; width:20px; height:20px; accent-color:var(--accent); }
+  .gt-selfie-rodape { display:flex; align-items:center; gap:16px; font-size:13px; color:var(--text-muted); }
+  .gt-selfie-mini { flex:none; width:44px; height:44px; padding:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface-2); cursor:pointer; margin-left:8px; }
+  .gt-selfie-mini img { width:100%; height:100%; object-fit:cover; display:block; }
+  .gt-selfie-full { display:flex; align-items:center; justify-content:center; padding:16px; }
+  .gt-selfie-full img { max-width:100%; max-height:90vh; border-radius:14px; }
   .gt-ex-video-tr { display:flex; flex-direction:column; gap:6px; margin-top:16px; }
   .gt-ex-video-tr.guiado { margin-top:4px; }
   .gt-ex-video-tr .gt-field-label { margin-bottom:0; }
@@ -9709,8 +9728,10 @@ function desafioTimelineDiaLabel(iso, hoje) {
   if (iso === addDays(hoje, -1)) return "Ontem";
   return `${DESAFIO_SEMANA_NOMES[weekdayOf(iso)].slice(0, 3)}, ${desafioDataCurta(iso)}`;
 }
-function DesafioLinhaDoTempo({ itens, meId, members, hoje, rules, podeReagir, onReagir }) {
+function DesafioLinhaDoTempo({ itens, meId, members, hoje, rules, podeReagir, onReagir, selfies }) {
   const [soEu, setSoEu] = useState(false);
+  const [selfieAberta, setSelfieAberta] = useState(null); // url grande da selfie aberta
+  const jaMostrada = new Set(); // uma selfie por pessoa e dia, no primeiro check-in dela
   const [extra, setExtra] = useState(0); // quantas atualizações além do último dia já foram abertas
   const trocaFiltro = (v) => { setSoEu(v); setExtra(0); };
   const nomeDe = (uid) => (uid === meId ? "Você" : ((members.find((m) => m.user_id === uid) || {}).nome || "Alguém"));
@@ -9751,6 +9772,13 @@ function DesafioLinhaDoTempo({ itens, meId, members, hoje, rules, podeReagir, on
                 <div className="gt-dsf-tl-corpo">
                   <div className="gt-dsf-tl-txt">{desafioTimelineTexto(it, nomeDe, rules)}</div>
                   {it.hora && <div className="gt-dsf-tl-hora">{it.hora}</div>}
+                  {(() => {
+                    const k = `${it.user_id}|${it.date}`;
+                    const sf = it.kind === "checkin" && selfies && selfies[k];
+                    if (!sf || jaMostrada.has(k)) return null;
+                    jaMostrada.add(k);
+                    return <button type="button" className="gt-selfie-mini tl" aria-label={`Ver a selfie de ${nomeDe(it.user_id)}`} onClick={async () => { setSelfieAberta(sf.t); const u = await selfieUrls([sf.path]); if (u[sf.path]) setSelfieAberta(u[sf.path]); }}><img src={sf.t} alt={`Selfie de ${nomeDe(it.user_id)}`} /></button>;
+                  })()}
                 </div>
                 {it.kind === "checkin" && (
                   podeReagir && !souEu
@@ -9763,6 +9791,7 @@ function DesafioLinhaDoTempo({ itens, meId, members, hoje, rules, podeReagir, on
         </div>
       ))}
       {faltam > 0 && <button type="button" className="gt-dsf-link big" onClick={() => setExtra(extra + 10)}>Ver mais ({Math.min(10, faltam)}) ▾</button>}
+      {selfieAberta && <SelfieTelaCheia src={selfieAberta} onClose={() => setSelfieAberta(null)} />}
     </div>
   );
 }
@@ -11130,6 +11159,22 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Selfies do "tá pago" de quem participa (só as que a pessoa deixou na linha do tempo; o banco filtra).
+  const [selfies, setSelfies] = useState({});
+  useEffect(() => {
+    if (!ov || !ov.challenge || !(ov.members || []).length) return;
+    let vivo = true;
+    supabaseClient.from("treino_selfies").select("user_id, date, path, thumb, created_at")
+      .in("user_id", ov.members.map((m) => m.user_id)).gte("date", ov.challenge.start_date).order("created_at", { ascending: false }).limit(200)
+      .then(async ({ data, error }) => {
+        if (error || !vivo || !data || !data.length) return;
+        const urls = await selfieUrls(data.map((x) => x.thumb));
+        const mapa = {};
+        data.forEach((x) => { const k = `${x.user_id}|${x.date}`; if (!mapa[k] && urls[x.thumb]) mapa[k] = { t: urls[x.thumb], path: x.path }; });
+        if (vivo) setSelfies(mapa);
+      }).catch(() => {});
+    return () => { vivo = false; };
+  }, [ov]);
   const ch = ov && ov.challenge;
   const st = useMemo(() => (ov ? desafioStandings(ov.challenge, ov.members, ov.checkins, ov.together, hoje) : null), [ov, hoje]);
 
@@ -11454,7 +11499,7 @@ function DesafioDetalhe({ friends, id, session, sessions, atividadeById, onClose
           </div>
         )}
 
-        {status.fase !== "antes" && <DesafioLinhaDoTempo itens={timeline} meId={meId} members={ov.members} hoje={hoje} rules={rules} podeReagir={podeReagir} onReagir={reagir} />}
+        {status.fase !== "antes" && <DesafioLinhaDoTempo itens={timeline} meId={meId} members={ov.members} hoje={hoje} rules={rules} podeReagir={podeReagir} onReagir={reagir} selfies={selfies} />}
 
         {status.fase !== "antes" && rules.modo !== "km" && (
           <div className="gt-card">
@@ -18545,7 +18590,7 @@ function App() {
       try { if (session && session.user) await supabaseClient.storage.from("avatars").remove([`${session.user.id}/a.jpg`]); } catch (e) {} // foto de perfil sai do storage junto
       try { // prints enviados em feedbacks também
         const uidP = session && session.user && session.user.id;
-        for (const bk of ["relatos", "medidas"]) { // e as fotos de Minhas medidas
+        for (const bk of ["relatos", "medidas", "selfies"]) { // e as fotos de Minhas medidas e as selfies dos treinos
           const ls = uidP ? await supabaseClient.storage.from(bk).list(uidP, { limit: 1000 }) : null;
           if (ls && ls.data && ls.data.length) await supabaseClient.storage.from(bk).remove(ls.data.map((o) => `${uidP}/${o.name}`));
         }
@@ -20664,6 +20709,8 @@ function App() {
               onSkip={() => setRpeModal(null)}
               coachVeNota={coachVeNota}
               uid={session ? session.user.id : null}
+              temDesafio={(desafios || []).find((ch) => desafioStatus(ch, todayISO()).fase === "rolando") || null}
+              showToast={showToast}
             />
           )}
 
@@ -21099,6 +21146,7 @@ function App() {
                         })()}
                         <button type="button" className="gt-item-carga-edit" onClick={() => openRpeModalFor(item, selectedDate, treino.nome)}>editar ✎</button>
                         {(() => { const c = (sessions[selectedDate]?.cargas || {})[key] || {}; return <>{c.nota ? <div className="gt-sessao-nota">{c.nota}</div> : null}{c.video ? <VideoPrivado video={c.video} rotulo="Ver seu vídeo" /> : null}</>; })()}
+                        <SelfieDoTreino uid={session ? session.user.id : null} date={selectedDate} itemKey={key} />
                       </div>
                     )}
                   </div>
@@ -21878,6 +21926,8 @@ function App() {
           onSkip={() => setRpeModal(null)}
           coachVeNota={coachVeNota}
           uid={session ? session.user.id : null}
+          temDesafio={(desafios || []).find((ch) => desafioStatus(ch, todayISO()).fase === "rolando") || null}
+          showToast={showToast}
         />
       )}
 
@@ -24759,7 +24809,211 @@ function FichaPromptModal({ prompt, setPrompt, onSave, onSkip }) {
   );
 }
 
-function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
+// ---------- Selfie do "tá pago" (v225, chave midia_foto_checkin) ----------
+// Tirada no fim do treino. Fica no bucket privado "selfies" (1080 px + miniatura de 320 px) e numa linha
+// de treino_selfies; aparece na linha do tempo dos desafios para quem divide um desafio com a pessoa,
+// se ela deixar ligado. Guardada enquanto a conta existir (Andre, 23/10).
+function selfieReduzir(file, lado, q) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, lado / Math.max(im.naturalWidth, im.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+      cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+      cv.toBlob((b) => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error("blob")); }, "image/jpeg", q);
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não consegui abrir essa foto.")); };
+    im.src = url;
+  });
+}
+// Cartão 9:16 para stories: a selfie cobrindo tudo, "TÁ PAGO", o treino e os números do dia.
+async function selfieRenderCartao(fotoBlob, d) {
+  const W = 1080, H = 1920;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  try { await Promise.all([document.fonts.load("700 64px Oswald"), document.fonts.load("600 30px Inter"), document.fonts.load("500 30px 'Roboto Mono'")]); } catch (e) {}
+  const OSW = "Oswald, 'Arial Narrow', sans-serif";
+  const INT = "Inter, Arial, sans-serif";
+  const url = URL.createObjectURL(fotoBlob);
+  try {
+    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.max(W / im.naturalWidth, H / im.naturalHeight);
+    const w = im.naturalWidth * k, h = im.naturalHeight * k;
+    g.fillStyle = "#14161A"; g.fillRect(0, 0, W, H);
+    g.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+  } finally { URL.revokeObjectURL(url); }
+  // Texto e logo fora das faixas que o Stories cobre (~220 px em cima, ~300 px embaixo).
+  const sombra = g.createLinearGradient(0, 0, 0, H);
+  sombra.addColorStop(0.45, "rgba(0,0,0,0)"); sombra.addColorStop(0.62, "rgba(0,0,0,0.55)"); sombra.addColorStop(1, "rgba(0,0,0,0.85)");
+  g.fillStyle = sombra; g.fillRect(0, 0, W, H);
+  const topo = g.createLinearGradient(0, 0, 0, 420);
+  topo.addColorStop(0, "rgba(0,0,0,0.5)"); topo.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = topo; g.fillRect(0, 0, W, 420);
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const M = 72, s = 0.36, ly = 232;
+  g.fillStyle = "#C6F135";
+  [[36, 126, 74], [98, 86, 114], [160, 46, 154]].forEach(([bx, by, bh]) => { rr(M - 36 * s + bx * s, ly + by * s, 44 * s, bh * s, 14 * s); g.fill(); });
+  g.beginPath(); g.arc(M - 36 * s + 182 * s, ly + 25 * s, 13 * s, 0, Math.PI * 2); g.fill();
+  g.font = `600 44px ${OSW}`; g.textBaseline = "alphabetic"; g.fillText("movo", M + 66, ly + 70);
+  const fit = (txt, maxW) => { let t = String(txt || ""); while (t.length > 1 && g.measureText(t).width > maxW) t = t.slice(0, -1); return t === String(txt || "") ? t : t.trimEnd() + "…"; };
+  g.shadowColor = "rgba(0,0,0,0.55)"; g.shadowBlur = 32; g.shadowOffsetY = 4;
+  g.fillStyle = "#C6F135"; g.font = `700 190px ${OSW}`;
+  g.fillText("TÁ PAGO", M - 6, 1410);
+  g.fillStyle = "#FFFFFF"; g.font = `600 48px ${INT}`;
+  g.fillText(fit(d.treino, W - 2 * M), M, 1490);
+  if (d.linha) { g.fillStyle = "rgba(255,255,255,0.85)"; g.font = `500 38px 'Roboto Mono', monospace`; g.fillText(fit(d.linha, W - 2 * M), M, 1560); }
+  g.shadowBlur = 0; g.shadowOffsetY = 0;
+  return await new Promise((res) => cv.toBlob((b) => res(b), "image/jpeg", 0.9));
+}
+function selfieLinhaDoCartao(celeb) {
+  if (!celeb) return "";
+  const vol = celeb.volume >= 1000 ? `${(celeb.volume / 1000).toFixed(1).replace(".", ",")} t` : `${celeb.volume} kg`;
+  const pl = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  return [pl(celeb.exFeitos, "exercício", "exercícios"), pl(celeb.series, "série", "séries"), celeb.volume > 0 ? vol : ""].filter(Boolean).join(" · ");
+}
+async function selfieUrls(paths) {
+  const lista = paths.filter(Boolean);
+  if (!lista.length) return {};
+  const { data } = await supabaseClient.storage.from("selfies").createSignedUrls(lista, 3600);
+  const out = {};
+  (data || []).forEach((x) => { if (x && x.signedUrl && x.path) out[x.path] = x.signedUrl; });
+  return out;
+}
+// Na tela "Treino concluído". Envia assim que a foto é escolhida; dá para compartilhar o cartão,
+// tirar da linha do tempo do desafio e apagar.
+function selfieMuralPadrao() { try { return localStorage.getItem("treino-app:selfieMural") === "1"; } catch (e) { return false; } }
+function SelfieTaPago({ uid, date, itemKey, treino, celeb, temDesafio, desafioNome, showToast }) {
+  const [st, setSt] = useState(null); // null | "enviando" | { row, cartao, cartaoUrl }
+  const [erro, setErro] = useState("");
+  const [grande, setGrande] = useState(false);
+  useEffect(() => () => { if (st && st.cartaoUrl) URL.revokeObjectURL(st.cartaoUrl); }, [st]);
+  if (!uid || !midiaLigada("foto_checkin")) return null;
+  async function escolher(ev) {
+    const f = (ev.target.files || [])[0];
+    ev.target.value = "";
+    if (!f) return;
+    setErro(""); setSt("enviando");
+    try {
+      const [foto, mini] = await Promise.all([selfieReduzir(f, 1080, 0.82), selfieReduzir(f, 320, 0.75)]);
+      const id = Math.random().toString(36).slice(2, 10);
+      const base = `${uid}/${date}-${id}`;
+      const up1 = await supabaseClient.storage.from("selfies").upload(`${base}.jpg`, foto, { contentType: "image/jpeg" });
+      const up2 = up1.error ? up1 : await supabaseClient.storage.from("selfies").upload(`${base}-t.jpg`, mini, { contentType: "image/jpeg" });
+      if (up1.error || up2.error) throw new Error((up1.error || up2.error).message);
+      // Uma selfie por treino do dia: a nova substitui a anterior.
+      const { data: antiga } = await supabaseClient.from("treino_selfies").select("path, thumb").eq("user_id", uid).eq("date", date).eq("item_key", itemKey).maybeSingle();
+      const { data: row, error } = await supabaseClient.from("treino_selfies")
+        .upsert({ user_id: uid, date, item_key: itemKey, path: `${base}.jpg`, thumb: `${base}-t.jpg`, mural: !!temDesafio && selfieMuralPadrao() }, { onConflict: "user_id,date,item_key" })
+        .select().single();
+      if (error) { supabaseClient.storage.from("selfies").remove([`${base}.jpg`, `${base}-t.jpg`]).catch(() => {}); throw new Error(error.message); }
+      if (antiga) supabaseClient.storage.from("selfies").remove([antiga.path, antiga.thumb]).catch(() => {});
+      const cartao = await selfieRenderCartao(foto, { treino, linha: selfieLinhaDoCartao(celeb) });
+      setSt({ row, cartao, cartaoUrl: cartao ? URL.createObjectURL(cartao) : null });
+      logEventFor(uid, "selfie_treino", { mural: !!(row && row.mural) });
+    } catch (e) {
+      logErroModulo("selfie_upload", (e && e.message) || "");
+      setSt(null);
+      setErro("Não consegui salvar a selfie. Tente de novo.");
+    }
+  }
+  async function compartilhar() {
+    if (!st || !st.cartao) return;
+    const file = new File([st.cartao], "movo-ta-pago.jpg", { type: "image/jpeg" });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); logEventFor(uid, "selfie_compartilhar"); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    const a = document.createElement("a"); a.href = st.cartaoUrl; a.download = "movo-ta-pago.jpg";
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast("Imagem baixada");
+  }
+  async function trocarMural() {
+    const novo = !st.row.mural;
+    try { localStorage.setItem("treino-app:selfieMural", novo ? "1" : "0"); } catch (e) {}
+    setSt({ ...st, row: { ...st.row, mural: novo } });
+    const { error } = await supabaseClient.from("treino_selfies").update({ mural: novo }).eq("id", st.row.id);
+    if (error) { setSt({ ...st, row: { ...st.row, mural: !novo } }); showToast("Não consegui salvar agora"); }
+  }
+  async function apagar() {
+    if (!window.confirm("Apagar a selfie deste treino?")) return;
+    const { error } = await supabaseClient.from("treino_selfies").delete().eq("id", st.row.id);
+    if (error) { showToast("Não consegui apagar agora"); return; }
+    supabaseClient.storage.from("selfies").remove([st.row.path, st.row.thumb]).catch(() => {});
+    setSt(null);
+  }
+  const entrada = (rotulo, cls) => (
+    <label className={cls}>
+      {rotulo}
+      <input type="file" accept="image/*" style={{ display: "none" }} onChange={escolher} />
+    </label>
+  );
+  if (st === "enviando") return <div className="gt-selfie"><div className="gt-video-prog" role="status">Salvando a selfie…</div></div>;
+  if (st && st.row) return (
+    <div className="gt-selfie gt-selfie-pronta">
+      {st.cartaoUrl
+        ? <button type="button" className="gt-selfie-prev" onClick={() => setGrande(true)} aria-label="Ver o cartão inteiro"><img src={st.cartaoUrl} alt="Cartão da selfie com o treino de hoje" /></button>
+        : <div className="gt-selfie-prev" />}
+      <div className="gt-selfie-acoes">
+        <div className="gt-selfie-ok">✓ Selfie salva neste treino</div>
+        <button type="button" className="gt-video-add gt-video-sec" onClick={compartilhar}><Icon name="arrow-up-right" size={18} /> Compartilhar</button>
+        {temDesafio && (
+          <label className="gt-selfie-mural">
+            <input type="checkbox" checked={!!st.row.mural} onChange={trocarMural} />
+            <span>Mostrar para o pessoal {desafioNome ? `do ${desafioNome}` : "do desafio"}</span>
+          </label>
+        )}
+        <div className="gt-selfie-rodape">{entrada("Tirar outra", "gt-ex-video-apagar")}<button type="button" className="gt-ex-video-apagar" onClick={apagar}>Apagar</button></div>
+      </div>
+      {grande && st.cartaoUrl && <SelfieTelaCheia src={st.cartaoUrl} onClose={() => setGrande(false)} />}
+    </div>
+  );
+  return (
+    <div className="gt-selfie">
+      {entrada(<><IconCamera size={20} /> Selfie do tá pago</>, "gt-video-add gt-video-sec gt-selfie-btn")}
+      <div className="gt-rpe-hint gt-selfie-dica">Opcional. Vira um cartão para compartilhar e fica salva neste treino.{temDesafio ? " Você escolhe se o pessoal do desafio vê." : ""}</div>
+      {erro && <div className="gt-plano-erro" role="alert">{erro}</div>}
+    </div>
+  );
+}
+// Selfie de um treino no histórico (só a dona; carrega quando o dia é aberto).
+function SelfieDoTreino({ uid, date, itemKey }) {
+  const [url, setUrl] = useState(null);
+  const [grande, setGrande] = useState(false);
+  async function apagar() {
+    if (!window.confirm("Apagar a selfie deste treino?")) return;
+    const { error } = await supabaseClient.from("treino_selfies").delete().eq("user_id", uid).eq("date", date).eq("item_key", itemKey);
+    if (error) return;
+    if (url && url.paths) supabaseClient.storage.from("selfies").remove(url.paths).catch(() => {});
+    setGrande(false); setUrl(null);
+  }
+  useEffect(() => {
+    let vivo = true;
+    if (!uid) return;
+    supabaseClient.from("treino_selfies").select("path, thumb").eq("user_id", uid).eq("date", date).eq("item_key", itemKey).maybeSingle()
+      .then(async ({ data }) => { if (!data || !vivo) return; const u = await selfieUrls([data.thumb, data.path]); if (vivo) setUrl({ t: u[data.thumb], f: u[data.path], paths: [data.path, data.thumb] }); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [uid, date, itemKey]);
+  if (!url || !url.t) return null;
+  return (
+    <>
+      <button type="button" className="gt-selfie-mini" onClick={(e) => { e.stopPropagation(); setGrande(true); }} aria-label="Ver a selfie do treino"><img src={url.t} alt="" /></button>
+      {grande && <SelfieTelaCheia src={url.f || url.t} onClose={() => setGrande(false)} onApagar={apagar} />}
+    </>
+  );
+}
+function SelfieTelaCheia({ src, onClose, onApagar }) {
+  return (
+    <div className="gt-modal-backdrop gt-selfie-full" onClick={(e) => { e.stopPropagation(); onClose(); }} role="dialog" aria-modal="true" aria-label="Selfie">
+      <img src={src} alt="Selfie do treino" />
+      <button type="button" className="gt-selfie-fechar" aria-label="Fechar" onClick={(e) => { e.stopPropagation(); onClose(); }}>✕</button>
+      {onApagar && <button type="button" className="gt-selfie-apagar-full" onClick={(e) => { e.stopPropagation(); onApagar(); }}>Apagar selfie</button>}
+    </div>
+  );
+}
+
+function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid, temDesafio, showToast }) {
   const rpeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const kmNum = parseFloat(String(rpeModal.km || "").replace(",", ".")) || 0;
   const durNum = Number(rpeModal.duracaoMin) || 0;
@@ -24788,6 +25042,9 @@ function RpeModal({ rpeModal, setRpeModal, onSave, onSkip, coachVeNota, uid }) {
             {rpeModal.celeb.recordes.length === 0 && <div className="gt-celeb-msg">Constância também é progresso.</div>}
             {(rpeModal.celeb.selos || []).map((n) => <div className="gt-celeb-rec" key={n}><Ei e="🏅" /> Novo selo: <b>{n}</b></div>)}
             <div className="gt-celeb-semana">{rpeModal.celeb.diasSemana} dia{rpeModal.celeb.diasSemana > 1 ? "s" : ""} ativo{rpeModal.celeb.diasSemana > 1 ? "s" : ""} esta semana{rpeModal.celeb.streak > 1 ? ` · ${rpeModal.celeb.streak} dias seguidos` : ""}</div>
+            {rpeModal.item && rpeModal.date && (
+              <SelfieTaPago uid={uid} date={rpeModal.date} itemKey={itemKey(rpeModal.item)} treino={rpeModal.label} celeb={rpeModal.celeb} temDesafio={!!temDesafio} desafioNome={temDesafio && temDesafio.nome} showToast={showToast} />
+            )}
           </div>
         )}
         <h3>{rpeModal.manual ? "Registrar corrida" : rpeModal.celeb ? "Como foi? (opcional)" : `Como foi "${rpeModal.label}"?`}</h3>
