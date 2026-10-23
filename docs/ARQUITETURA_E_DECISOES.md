@@ -205,9 +205,10 @@ Marcos recentes:
 - Revisado pelos diretores de UX e design. Não testado em aparelho real (só Chromium com dados de exemplo).
 
 ### 6.3.7 Ajustes do treino guiado e fim do treino (backlog, 23/10, aguardando aprovação do Andre)
-Pedido do Andre (23/10, com prints). Avaliação de Produto, UX e Design. **Nada implementado.** Ordem sugerida: 1, 4 e 2 juntos (pequenos, sem custo), depois 3, depois 5.
+Pedido do Andre (23/10, com prints). Avaliação de Produto, UX e Design (feita numa passada só; revisões separadas de UX/design antes de mostrar as telas). **Nada implementado.**
+- **Respostas do Andre (23/10):** item 1 **não precisa mais** (fora do backlog). Item 2: é o treino da IA e dos modelos; mobilidade precisa vir primeiro. Item 3: ok. Item 4: push do servidor já aparece com o ícone certo; só o do timer não. Item 5: **incluir o mural**; retenção: sugestão do Claude = guardar enquanto a conta existir (apagar as de mais de 1 ano só se o storage passar de 70%), aguardando o ok. Próximo: 2, 3 e 4 juntos, depois 5.
 
-1. **Pular uma série, não o exercício inteiro.**
+1. ~~**Pular uma série, não o exercício inteiro.**~~ (Andre, 23/10: não precisa mais)
    - Hoje: o modo guiado só tem "Pular este exercício" (`marcarSerieFeita(ex, -1)`, status `pulei`).
    - Produto: prioridade alta, sem custo. Caso comum: cansou na última série, aparelho ocupado.
    - UX: abaixo de "✓ Série feita", "Pular série" (link) e "⋮ Mais" com "Pular exercício" (e "Gravar vídeo", item 3). Pular série vai para o próximo passo sem descanso, com toast "Série pulada · Desfazer". Todas puladas = exercício pulado.
@@ -250,7 +251,7 @@ Pedido do Andre (23/10, com prints). Avaliação de Produto, UX e Design. **Nada
 5. Responder: o fallback de grupo pequeno em desafios é "tudo para o 1º e o último paga"?
 
 ### Do Claude / backlog
-- **Ajustes do treino guiado e fim do treino (23/10, aguardando aprovação):** pular série, mobilidade no começo, vídeo por exercício, ícone do timer de descanso, selfie "tá pago". Ver 6.3.7.
+- **Ajustes do treino guiado e fim do treino (23/10, aguardando ok da retenção das selfies):** mobilidade no começo (IA e modelos), vídeo por exercício, ícone do timer de descanso, selfie "tá pago". Ver 6.3.7.
 - Flag `blocos`: liberada para todas as contas em 20/10 (v205, decisão do Andre: "pode publicar pra todo mundo"); `feature_allowed` devolve true para `'blocos'` (aplicado em produção). Fase 1 fechada na v206 (modo guiado, Roxzone, comparação). Fase 2 na v207 (plano de semanas, flag `plano`): **liberada para todas as contas em 20/10** (`app_config.ff_plano_todos = true`; dá para desligar no painel via `admin_feature_todos_set('plano', false)`). Fase 2 fechada na v210 (IA híbrida na v209; "Trazer meu treinador" e plano do treinador virando "Meu plano" na v210). Fase 3 (Acompanhar) fechada na v214 (21/10). Push: conferir na segunda 26/10 se o cron `push-desafios-semanal` rodou (`push_envios` tipo desafios).
 - ~~Bug em produção (20/10): `feature_allowed` sem a cláusula `ff_ajuste_semana_todos`~~: corrigido em 20/10 junto com a v207 (aplicadas só `feature_allowed`, `my_features` e as funções de `feature_flags_todos.sql`). **Atenção:** não rodar `feature_flags.sql` inteiro em produção: a `reserve_ai_generation` dele é mais antiga que a de `billing_base.sql` e tiraria o limite por plano.
 - Exportar `race_favorites` no pedido de dados (LGPD).
